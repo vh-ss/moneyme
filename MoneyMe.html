@@ -349,16 +349,23 @@ function bankOutstanding(bankId){ return round2(state.loans.filter(l=>l.bank_id=
 function bankAvailable(bank){ return round2((bank.limit || 0) - bankOutstanding(bank.id)); }
 function bankMonthlyBurden(bankId){ return round2(state.loans.filter(l=>l.bank_id===bankId && loanActive(l)).reduce((s,l)=>s+loanMonthly(l),0)); }
 
-//==================== Навігація ====================
+//==================== Навігація (через хеш URL — зберігається при перезавантаженні) ====================
 const views = {};
 let currentView = 'dashboard';
+function hashView(){ const v = decodeURIComponent((location.hash || '').replace(/^#/, '')); return views[v] ? v : null; }
 function navigate(v){
+  if (!views[v]) v = 'dashboard';
+  const changed = v !== currentView;
   currentView = v;
+  if (('#' + v) !== location.hash) location.hash = v;   // запамʼятовуємо вкладку в URL
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.dataset.view === v));
   render();
+  if (changed) window.scrollTo(0, 0);   // при зміні вкладки — на початок
 }
-function render(){ const app = $('#app'); app.innerHTML = ''; views[currentView](app); }
+// Перемальовує поточну вкладку, зберігаючи позицію прокрутки (щоб зміни оновлювались «на місці»).
+function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTML = ''; views[currentView](app); window.scrollTo(0, y); }
 
+window.addEventListener('hashchange', () => { const v = hashView(); if (v && v !== currentView) navigate(v); });
 document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigate(a.dataset.view); }));
 
 //==================== Модалка ====================
@@ -1430,7 +1437,7 @@ function openLoanForm(existing, presetBankId) {
 }
 
 //==================== Старт ====================
-navigate('dashboard');
+navigate(hashView() || 'dashboard');   // відкриваємо вкладку з URL (зберігається при F5)
 ensureRatesFresh();
 </script>
 </body>
