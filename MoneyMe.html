@@ -272,6 +272,15 @@ function reorderAccount(srcId, dstId) {
   save(); render();
 }
 
+function reorderBank(srcId, dstId) {
+  const src = state.banks.find(b=>b.id===srcId), dst = state.banks.find(b=>b.id===dstId);
+  if (!src || !dst || srcId === dstId) return;
+  const arr = state.banks;
+  arr.splice(arr.indexOf(src), 1);
+  arr.splice(arr.indexOf(dst), 0, src);
+  save(); render();
+}
+
 //==================== Утиліти ====================
 const $ = (sel, root=document) => root.querySelector(sel);
 const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -1114,19 +1123,29 @@ views.credits = (app) => {
   const addBank = el(`<button class="btn primary">+ Банк</button>`); addBank.onclick = () => openBankForm();
   head.appendChild(addBank); app.appendChild(head);
 
-  // Загальне фінансове навантаження за місяць (за валютами).
+  // Зведена статистика по всіх банках (за валютами).
+  const agg = {};
+  state.banks.forEach(b => {
+    const c = b.currency;
+    if (!agg[c]) agg[c] = { limit:0, used:0, avail:0 };
+    agg[c].limit += b.limit || 0;
+    agg[c].used  += bankOutstanding(b.id);
+    agg[c].avail += bankAvailable(b);
+  });
   const burdenByCur = {};
   state.loans.filter(loanActive).forEach(l => {
     const b = bankById(l.bank_id); const cur = b ? b.currency : 'UAH';
     burdenByCur[cur] = (burdenByCur[cur] || 0) + loanMonthly(l);
   });
-  const sum = el(`<section class="card" style="padding:16px;margin-top:12px">
-    <div class="muted small">Загальне навантаження за місяць</div>
-    <div class="row" style="flex-wrap:wrap;gap:4px 24px;margin-top:6px" id="burden"></div></section>`);
-  const bd = $('#burden', sum);
-  const be = Object.entries(burdenByCur);
-  if (be.length === 0) bd.appendChild(el(`<div class="muted">Немає активних кредитів</div>`));
-  be.forEach(([cur,v]) => bd.appendChild(el(`<div class="tabnum" style="font-size:24px;font-weight:800;color:var(--amber)">${money(round2(v),cur)}</div>`)));
+  // зводимо значення за валютами в рядок
+  const joinObj = (obj, key) => { const e = Object.entries(obj); return e.length ? e.map(([c,o])=>money(round2(key?o[key]:o),c)).join(' · ') : '—'; };
+
+  const sum = el(`<div class="sumcards" style="margin-top:12px">
+    <div class="card sumcard"><div class="k">Всього (ліміт)</div><div class="v tabnum">${joinObj(agg,'limit')}</div></div>
+    <div class="card sumcard"><div class="k">Використано</div><div class="v tabnum" style="color:var(--red)">${joinObj(agg,'used')}</div></div>
+    <div class="card sumcard"><div class="k">Доступно</div><div class="v tabnum" style="color:var(--green)">${joinObj(agg,'avail')}</div></div>
+    <div class="card sumcard"><div class="k">Навантаження/міс</div><div class="v tabnum" style="color:var(--amber)">${joinObj(burdenByCur,null)}</div></div>
+  </div>`);
   app.appendChild(sum);
 
   if (state.banks.length === 0) {
@@ -1141,7 +1160,7 @@ views.credits = (app) => {
     const usedPct = bank.limit > 0 ? Math.min(100, Math.round(out / bank.limit * 100)) : 0;
     const card = el(`<section class="card" style="padding:16px;margin-top:12px">
       <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
-        <h2 style="min-width:0">${esc(bank.name)} <span class="muted small">${bank.currency}</span></h2>
+        <h2 style="min-width:0;display:flex;align-items:center;gap:8px"><span class="grip" title="Перетягніть, щоб змінити порядок банків">⠿</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(bank.name)}</span> <span class="muted small">${bank.currency}</span></h2>
         <div class="bankacts" style="display:flex;gap:6px;flex:0 0 auto"></div></div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-top:12px">
         <div><div class="muted small">Ліміт</div><div class="tabnum" style="font-weight:700">${money(bank.limit,bank.currency)}</div></div>
@@ -1167,6 +1186,7 @@ views.credits = (app) => {
     const loans = state.loans.filter(l => l.bank_id === bank.id);
     if (loans.length === 0) box.appendChild(el(`<div class="muted small">Кредитів немає.</div>`));
     loans.forEach(l => box.appendChild(loanRow(l, bank)));
+    makeReorderable(card, 'bank', bank.id, reorderBank);
     app.appendChild(card);
   });
 };
