@@ -764,14 +764,6 @@ views.dashboard = (app) => {
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   app.appendChild(head);
 
-  const quick = el(`<div class="quick">
-    <button class="exp"><span class="dot">−</span> Витрата</button>
-    <button class="inc"><span class="dot">+</span> Надходження</button>
-  </div>`);
-  quick.children[0].onclick = () => openEntryForm('EXPENSE');
-  quick.children[1].onclick = () => openEntryForm('INCOME');
-  app.appendChild(quick);
-
   // рахунки з drag-and-drop
   const sec = el(`<section>
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
