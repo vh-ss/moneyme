@@ -887,6 +887,7 @@ views.dashboard = (app) => {
       <div class="muted small">Загальний баланс</div>
       <div class="row" style="align-items:center;gap:8px">
         <div class="row" id="curfilter" style="flex-wrap:wrap;gap:4px"></div>
+        <button class="btn ${screenshotMode?'primary':'ghost'} sm" id="randfill" title="Цифри для скріна (лише візуально, реальні дані не змінюються)">🎲</button>
         <button class="btn ghost sm" id="togglehide" title="${hideBalances?'Показати баланси':'Приховати баланси'}">${hideBalances?'🙈':'👁️'}</button>
       </div>
     </div>
@@ -913,19 +914,12 @@ views.dashboard = (app) => {
   }
   $('#rrefresh', head).onclick = () => ensureRatesFresh(true);
   $('#togglehide', head).onclick = () => setHideBalances(!hideBalances);
+  $('#randfill', head).onclick = () => toggleScreenshot();
 
   const bc = $('#bc', head);
   if (selected.length === 0) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   app.appendChild(head);
-
-  // кнопка демо-цифр для скріншота (лише візуально, реальні дані не змінюються)
-  const sb = el(`<div style="margin-top:8px">
-    <button class="btn ${screenshotMode?'primary':'ghost'} sm" id="randfill" title="Показати випадкові суми лише для скріншота; реальні дані не змінюються">🎲 Цифри для скріна${screenshotMode?' (увімкнено)':''}</button>
-    ${screenshotMode?'<span class="muted small" style="margin-left:8px">показано демо-суми — реальні дані не змінено</span>':''}
-  </div>`);
-  $('#randfill', sb).onclick = () => toggleScreenshot();
-  app.appendChild(sb);
 
   // рахунки з drag-and-drop
   const sec = el(`<section>
