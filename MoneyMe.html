@@ -245,19 +245,14 @@ function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 let hideBalances = localStorage.getItem('moneyme.hide') === '1';
 function setHideBalances(v) { hideBalances = v; localStorage.setItem('moneyme.hide', v ? '1' : '0'); render(); }
 
-// Демо-цифри для скріншота: випадкові правдоподібні баланси (через стартовий залишок, щоб усе сходилось).
-function randomBalance(cur) {
-  const big = cur === 'UAH';
-  const min = big ? 2000 : 100, max = big ? 250000 : 9000, step = big ? 50 : 5;
-  return Math.round((min + Math.random() * (max - min)) / step) * step;
-}
-function randomizeForScreenshot() {
-  state.accounts.forEach(a => {
-    const effect = accountBalance(a.id) - (a.initial_balance || 0); // вплив операцій
-    a.initial_balance = round2(randomBalance(a.currency_code) - effect); // щоб поточний баланс = випадкове число
-  });
-  state.loans.forEach(l => { l.paid = round2(Math.min(l.principal || 0, (l.principal || 0) * Math.random())); });
-  save(); render();
+// Демо-цифри для скріншота: ЛИШЕ візуально. Реальні дані не змінюються — усі суми
+// множаться на випадковий коефіцієнт у money() (лінійно, тож усе сходиться скрізь).
+let screenshotMode = false;
+let screenshotFactor = 1;
+function toggleScreenshot() {
+  screenshotMode = !screenshotMode;
+  if (screenshotMode) screenshotFactor = Math.round((0.6 + Math.random() * 1.7) * 1000) / 1000; // 0.6..2.3
+  render();
 }
 
 function seed() {
@@ -350,7 +345,8 @@ const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.g
 const monthStartISO = () => todayISO().slice(0,8) + '01';
 function money(amount, cur='UAH') {
   if (hideBalances) return '••••• ' + cur;
-  const v = isFinite(amount) ? amount : 0;
+  let v = isFinite(amount) ? amount : 0;
+  if (screenshotMode) v = v * screenshotFactor;   // лише для скріншота, реальні дані не змінюються
   try { return new Intl.NumberFormat('uk-UA',{style:'currency',currency:cur,maximumFractionDigits:2}).format(v); }
   catch(e){ return v.toFixed(2) + ' ' + cur; }
 }
@@ -923,11 +919,12 @@ views.dashboard = (app) => {
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   app.appendChild(head);
 
-  // кнопка демо-цифр для скріншота
-  const sb = el(`<div style="margin-top:8px"><button class="btn ghost sm" id="randfill" title="Підставити випадкові правдоподібні суми для скріншота">🎲 Цифри для скріна</button></div>`);
-  $('#randfill', sb).onclick = () => {
-    if (confirm('Підставити ВИПАДКОВІ суми всім рахункам і кредитам (для скріншота)?\nПоточні стартові залишки буде підлаштовано — реальні значення втратяться. Зробіть бекап у Налаштуваннях, якщо потрібно.')) randomizeForScreenshot();
-  };
+  // кнопка демо-цифр для скріншота (лише візуально, реальні дані не змінюються)
+  const sb = el(`<div style="margin-top:8px">
+    <button class="btn ${screenshotMode?'primary':'ghost'} sm" id="randfill" title="Показати випадкові суми лише для скріншота; реальні дані не змінюються">🎲 Цифри для скріна${screenshotMode?' (увімкнено)':''}</button>
+    ${screenshotMode?'<span class="muted small" style="margin-left:8px">показано демо-суми — реальні дані не змінено</span>':''}
+  </div>`);
+  $('#randfill', sb).onclick = () => toggleScreenshot();
   app.appendChild(sb);
 
   // рахунки з drag-and-drop
