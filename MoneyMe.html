@@ -212,6 +212,10 @@ function load() {
 }
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 
+// Приватність: приховування сум балансів (зберігається між сесіями).
+let hideBalances = localStorage.getItem('moneyme.hide') === '1';
+function setHideBalances(v) { hideBalances = v; localStorage.setItem('moneyme.hide', v ? '1' : '0'); render(); }
+
 function seed() {
   const cats = [];
   let cid = 1;
@@ -301,6 +305,7 @@ const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
 const monthStartISO = () => todayISO().slice(0,8) + '01';
 function money(amount, cur='UAH') {
+  if (hideBalances) return '••••• ' + cur;
   const v = isFinite(amount) ? amount : 0;
   try { return new Intl.NumberFormat('uk-UA',{style:'currency',currency:cur,maximumFractionDigits:2}).format(v); }
   catch(e){ return v.toFixed(2) + ' ' + cur; }
@@ -725,7 +730,10 @@ views.dashboard = (app) => {
   const head = el(`<section class="card" style="padding:18px">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
       <div class="muted small">Загальний баланс</div>
-      <div class="row" id="curfilter" style="flex-wrap:wrap;gap:4px"></div>
+      <div class="row" style="align-items:center;gap:8px">
+        <div class="row" id="curfilter" style="flex-wrap:wrap;gap:4px"></div>
+        <button class="btn ghost sm" id="togglehide" title="${hideBalances?'Показати баланси':'Приховати баланси'}">${hideBalances?'🙈':'👁️'}</button>
+      </div>
     </div>
     <div class="row" style="flex-wrap:wrap;gap:6px 28px;margin-top:8px" id="bc"></div>
     <div style="margin-top:10px">
@@ -749,6 +757,7 @@ views.dashboard = (app) => {
     allCurs.forEach(c => cf.appendChild(mkChip(c, dashCurSet.has(c), () => { dashCurSet.has(c)?dashCurSet.delete(c):dashCurSet.add(c); render(); })));
   }
   $('#rrefresh', head).onclick = () => ensureRatesFresh(true);
+  $('#togglehide', head).onclick = () => setHideBalances(!hideBalances);
 
   const bc = $('#bc', head);
   if (selected.length === 0) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
