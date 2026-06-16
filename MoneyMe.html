@@ -212,6 +212,15 @@ function reorderCategory(srcId, dstId) {
   save(); render();
 }
 
+function reorderAccount(srcId, dstId) {
+  const src = state.accounts.find(a=>a.id===srcId), dst = state.accounts.find(a=>a.id===dstId);
+  if (!src || !dst || srcId === dstId) return;
+  const arr = state.accounts;
+  arr.splice(arr.indexOf(src), 1);
+  arr.splice(arr.indexOf(dst), 0, src);
+  save(); render();
+}
+
 //==================== Утиліти ====================
 const $ = (sel, root=document) => root.querySelector(sel);
 const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -405,6 +414,86 @@ function openTransferDialog(fromId, toId) {
   });
 }
 
+//==================== Редагування переказу ====================
+function openTransferEdit(tx) {
+  if (state.accounts.length < 2) { alert('Для переказу потрібно щонайменше два рахунки.'); return; }
+  const opts = (sel) => state.accounts.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${esc(a.name)} (${a.currency_code})</option>`).join('');
+  const body = el(`<div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">З рахунку</label><select id="e-from">${opts(tx.account_id)}</select></div>
+      <div style="flex:1"><label class="lab">На рахунок</label><select id="e-to">${opts(tx.to_account_id)}</select></div>
+    </div>
+    <div><label class="lab">Сума (<span id="e-curfrom"></span>)</label><input id="e-amt" inputmode="decimal" style="font-size:22px;font-weight:700" value="${tx.amount}"></div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Комісія</label><select id="e-feetype">
+        <option value="NONE">Без комісії</option><option value="PERCENT">Відсоток %</option><option value="FIXED">Фіксована</option></select></div>
+      <div style="flex:1"><label class="lab" id="e-feelab">Сума комісії</label><input id="e-feeval" inputmode="decimal" value="${tx.fee_value || ''}"></div>
+    </div>
+    <div id="e-ratewrap" class="hidden"><label class="lab" id="e-ratelab">Курс</label><input id="e-rate" inputmode="decimal" value="${tx.exchange_rate || 1}"></div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Дата</label><input id="e-date" type="date" value="${tx.date}"></div>
+      <div style="flex:1"><label class="lab">Нотатка</label><input id="e-note" value="${esc(tx.note||'')}" placeholder="—"></div>
+    </div>
+    <div class="preview">
+      <div class="pl"><span class="muted">Спишеться</span><b style="color:var(--red)" id="e-debit">—</b></div>
+      <div class="pl"><span class="muted">Зарахується</span><b style="color:var(--green)" id="e-credit">—</b></div>
+      <div class="pl"><span class="muted">Комісія</span><b style="color:var(--amber)" id="e-fee">—</b></div>
+    </div>
+    <div class="err hidden" id="e-err"></div>
+  </div>`);
+
+  const $$ = (s) => $(s, body);
+  $$('#e-feetype').value = tx.fee_type || 'NONE';
+  const acc = (id) => state.accounts.find(a => a.id === parseInt(id));
+
+  function upd() {
+    const from = acc($$('#e-from').value), to = acc($$('#e-to').value);
+    const ft = $$('#e-feetype').value;
+    const cross = from && to && from.currency_code !== to.currency_code;
+    $$('#e-curfrom').textContent = from ? from.currency_code : '';
+    $$('#e-feeval').disabled = ft === 'NONE';
+    $$('#e-feelab').textContent = ft === 'PERCENT' ? 'Відсоток, %' : 'Сума комісії';
+    $$('#e-ratewrap').classList.toggle('hidden', !cross);
+    $$('#e-ratelab').textContent = cross ? `Курс (${from.currency_code} → ${to.currency_code})` : 'Курс';
+    const amt = num($$('#e-amt').value);
+    const fee = computeFee(amt, ft, num($$('#e-feeval').value));
+    const rate = cross ? (num($$('#e-rate').value) || 0) : 1;
+    const r = rate > 0 ? rate : 1;
+    $$('#e-debit').textContent = '−' + money(round2(amt + fee), from?.currency_code);
+    $$('#e-credit').textContent = '+' + money(round2(amt * r), to?.currency_code);
+    $$('#e-fee').textContent = money(fee, from?.currency_code);
+  }
+  body.addEventListener('input', upd);
+  body.addEventListener('change', upd);
+  upd();
+
+  openModal('Редагувати переказ', body, {
+    saveLabel: 'Зберегти',
+    onSave: (close) => {
+      const from = acc($$('#e-from').value), to = acc($$('#e-to').value);
+      const err = $$('#e-err');
+      const show = (m) => { err.textContent = m; err.classList.remove('hidden'); };
+      if (!from || !to) return show('Оберіть рахунки');
+      if (from.id === to.id) return show('Рахунок-джерело і призначення мають відрізнятися');
+      const amt = num($$('#e-amt').value);
+      if (amt <= 0) return show('Введіть суму більше 0');
+      const ft = $$('#e-feetype').value;
+      const cross = from.currency_code !== to.currency_code;
+      const rate = cross ? num($$('#e-rate').value) : 1;
+      if (cross && rate <= 0) return show('Введіть курс конвертації');
+      const fee = computeFee(amt, ft, num($$('#e-feeval').value));
+      Object.assign(tx, {
+        account_id: from.id, to_account_id: to.id,
+        amount: round2(amt), to_amount: round2(amt * (rate > 0 ? rate : 1)),
+        exchange_rate: rate > 0 ? rate : 1,
+        fee_type: ft, fee_value: num($$('#e-feeval').value), fee_amount: fee,
+        date: $$('#e-date').value || todayISO(), note: $$('#e-note').value.trim() || null,
+      });
+      save(); close(); render();
+    }
+  });
+}
+
 //==================== Рядок операції ====================
 function txRow(t, { onEdit, onDelete } = {}) {
   const isT = t.kind === 'TRANSFER', isInc = t.kind === 'INCOME';
@@ -423,7 +512,7 @@ function txRow(t, { onEdit, onDelete } = {}) {
       <div class="txsub">${fmtDate(t.date)} · ${esc(sub)}${t.note?' · '+esc(t.note):''}</div></div>
     <div style="text-align:right">${amtHtml}</div>
   </div>`);
-  if (onEdit && !isT) { const b = el(`<button class="btn ghost sm">✎</button>`); b.onclick=()=>onEdit(t); row.appendChild(b); }
+  if (onEdit) { const b = el(`<button class="btn ghost sm">✎</button>`); b.onclick=()=>onEdit(t); row.appendChild(b); }
   if (onDelete) { const b = el(`<button class="btn danger sm">✕</button>`); b.onclick=()=>onDelete(t); row.appendChild(b); }
   return row;
 }
@@ -530,7 +619,7 @@ views.dashboard = (app) => {
   const rl = $('#recent', list);
   if (recent.length === 0) rl.appendChild(el(`<div class="empty">Операцій ще немає</div>`));
   recent.forEach(t => rl.appendChild(txRow(t, {
-    onEdit: (tx) => openEntryForm(tx.kind, tx),
+    onEdit: (tx) => tx.kind === 'TRANSFER' ? openTransferEdit(tx) : openEntryForm(tx.kind, tx),
     onDelete: (tx) => { if(confirm('Видалити операцію?')){ state.transactions = state.transactions.filter(x=>x.id!==tx.id); save(); render(); } }
   })));
   app.appendChild(list);
@@ -565,7 +654,7 @@ views.transactions = (app) => {
   if (rows.length === 0) ll.appendChild(el(`<div class="empty">Нічого не знайдено за фільтрами</div>`));
   rows.forEach(t => {
     const row = txRow(t, {
-      onEdit: (tx) => openEntryForm(tx.kind, tx),
+      onEdit: (tx) => tx.kind === 'TRANSFER' ? openTransferEdit(tx) : openEntryForm(tx.kind, tx),
       onDelete: (tx) => { if(confirm('Видалити операцію?')){ state.transactions = state.transactions.filter(x=>x.id!==tx.id); save(); render(); } }
     });
     makeReorderable(row, 'tx', t.id, reorderTx);
@@ -650,12 +739,13 @@ views.accounts = (app) => {
   const add = el(`<button class="btn primary">+ Додати рахунок</button>`);
   add.onclick = () => openAccountForm();
   head.appendChild(add); app.appendChild(head);
+  app.appendChild(el(`<div class="muted small" style="margin-top:8px">Перетягуйте картки, щоб змінити порядок відображення рахунків (він застосується і на «Огляді»).</div>`));
 
-  const grid = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:14px"></div>`);
+  const grid = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:8px"></div>`);
   if (state.accounts.length === 0) grid.appendChild(el(`<div class="muted">Ще немає рахунків.</div>`));
   state.accounts.forEach(a => {
     const c = el(`<div class="card" style="padding:14px;border-left:4px solid ${a.color};display:flex;justify-content:space-between;gap:10px">
-      <div><div style="font-weight:600">${a.icon?a.icon+' ':''}${esc(a.name)}</div>
+      <div style="min-width:0"><div style="font-weight:600">${a.icon?a.icon+' ':''}${esc(a.name)}</div>
       <div class="muted small">${TYPE_LABEL[a.type]} · ${a.currency_code} · старт: ${money(a.initial_balance,a.currency_code)}</div>
       <div class="tabnum" style="font-size:18px;font-weight:800;margin-top:4px">${money(accountBalance(a.id),a.currency_code)}</div></div>
       <div style="display:flex;flex-direction:column;gap:4px"></div></div>`);
@@ -667,6 +757,7 @@ views.accounts = (app) => {
       state.transactions = state.transactions.filter(t=>t.account_id!==a.id && t.to_account_id!==a.id);
       save(); render(); } };
     actions.appendChild(ed); actions.appendChild(del);
+    makeReorderable(c, 'acc', a.id, reorderAccount);
     grid.appendChild(c);
   });
   app.appendChild(grid);
