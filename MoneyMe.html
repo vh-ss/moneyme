@@ -95,6 +95,9 @@
   .grip { color: #cbd5e1; font-size: 16px; cursor: grab; flex: 0 0 auto; }
   .bar { height: 7px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
   .bar > i { display: block; height: 100%; background: var(--accent); }
+  .curchip { border: 1px solid var(--line); background: #fff; color: var(--muted); border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 600; }
+  .curchip:hover { background: #f1f5f9; }
+  .curchip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
   .swatch { width: 28px; height: 28px; border-radius: 999px; border: 0; }
@@ -157,6 +160,37 @@ function normalize() {
   if (changed) save();
 }
 function nextOrd() { return state.transactions.reduce((m, t) => Math.max(m, t.ord || 0), 0) + 1; }
+
+//==================== Курси валют (НБУ, раз на день) ====================
+const RATES_KEY = 'moneyme.rates';
+let ratesCache = loadRates();
+function loadRates() {
+  try { const r = JSON.parse(localStorage.getItem(RATES_KEY)); if (r && r.rates) return r; } catch (e) {}
+  return { date: '', base: 'UAH', rates: { UAH: 1 }, error: null };
+}
+// Курс: скільки UAH за 1 одиницю валюти (UAH = 1). null, якщо курсу немає.
+function rateFor(cur) {
+  if (cur === 'UAH') return 1;
+  const r = ratesCache.rates ? ratesCache.rates[cur] : null;
+  return (typeof r === 'number' && r > 0) ? r : null;
+}
+function toUAH(amount, cur) { const r = rateFor(cur); return r == null ? null : amount * r; }
+
+async function ensureRatesFresh(force) {
+  if (!force && ratesCache.date === todayISO() && Object.keys(ratesCache.rates || {}).length > 1) return;
+  try {
+    const res = await fetch('https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const rates = { UAH: 1 };
+    data.forEach(x => { if (x.cc && typeof x.rate === 'number') rates[x.cc] = x.rate; });
+    ratesCache = { date: todayISO(), base: 'UAH', rates, fetched_at: new Date().toISOString(), error: null };
+    localStorage.setItem(RATES_KEY, JSON.stringify(ratesCache));
+  } catch (e) {
+    ratesCache.error = e.message || 'не вдалося отримати курси';
+  }
+  if (currentView === 'dashboard') render();
+}
 
 function load() {
   try {
@@ -581,10 +615,15 @@ function barsSVG(months) {
 }
 
 //==================== Вигляд: Огляд ====================
+let dashCurSet = new Set();   // порожньо = всі валюти
 views.dashboard = (app) => {
-  // зведення за валютами
+  // баланси за валютами
   const byCur = {};
   state.accounts.forEach(a => { byCur[a.currency_code] = (byCur[a.currency_code]||0) + accountBalance(a.id); });
+  const allCurs = Object.keys(byCur);
+  [...dashCurSet].forEach(c => { if (!allCurs.includes(c)) dashCurSet.delete(c); });
+  const selected = dashCurSet.size ? allCurs.filter(c => dashCurSet.has(c)) : allCurs;
+
   const from = monthStartISO(), to = todayISO();
   let inc=0, exp=0, fees=0;
   state.transactions.forEach(t => { if(!inRange(t,from,to))return;
@@ -594,20 +633,43 @@ views.dashboard = (app) => {
   state.loans.filter(loanActive).forEach(l => { const b = bankById(l.bank_id); const c = b?b.currency:'UAH'; burden[c] = (burden[c]||0) + loanMonthly(l); });
   const burdenStr = Object.entries(burden).map(([c,v])=>money(round2(v),c)).join(' + ');
 
+  // підсумок у UAH за курсом
+  let uah = 0, missing = false;
+  selected.forEach(c => { const v = toUAH(byCur[c], c); if (v == null) missing = true; else uah += v; });
+  const ratesNote = ratesCache.date ? `курс НБУ на ${fmtDate(ratesCache.date)}`
+    : (ratesCache.error ? 'курси недоступні' : 'завантаження курсів…');
+
   const head = el(`<section class="card" style="padding:18px">
-    <div class="muted small">Загальний баланс</div>
-    <div class="row" style="flex-wrap:wrap;gap:6px 28px;margin-top:6px" id="bc"></div>
-    <div class="row small" style="flex-wrap:wrap;gap:16px;margin-top:14px">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
+      <div class="muted small">Загальний баланс</div>
+      <div class="row" id="curfilter" style="flex-wrap:wrap;gap:4px"></div>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:6px 28px;margin-top:8px" id="bc"></div>
+    <div style="margin-top:10px">
+      <span class="muted">Разом ≈ </span><b class="tabnum" style="font-size:20px">${money(round2(uah),'UAH')}</b>
+      <span class="muted small"> · ${ratesNote}${missing?' · деякі валюти без курсу':''}</span>
+      <button class="btn ghost sm" id="rrefresh" title="Оновити курси">⟳</button>
+    </div>
+    <div class="row small" style="flex-wrap:wrap;gap:16px;margin-top:12px">
       <div><span class="muted">Надходження (міс.): </span><b style="color:var(--green)">${money(inc)}</b></div>
       <div><span class="muted">Витрати (міс.): </span><b style="color:var(--red)">${money(exp)}</b></div>
       <div><span class="muted">Комісії (міс.): </span><b style="color:var(--amber)">${money(fees)}</b></div>
       ${burdenStr?`<div><span class="muted">Кредити/міс: </span><b style="color:var(--amber)">${burdenStr}</b></div>`:''}
     </div>
   </section>`);
+
+  // чіпи фільтра валют
+  const cf = $('#curfilter', head);
+  if (allCurs.length > 1) {
+    const mkChip = (label, active, onClick) => { const b = el(`<button class="curchip${active?' on':''}">${label}</button>`); b.onclick = onClick; return b; };
+    cf.appendChild(mkChip('Всі', dashCurSet.size===0, () => { dashCurSet.clear(); render(); }));
+    allCurs.forEach(c => cf.appendChild(mkChip(c, dashCurSet.has(c), () => { dashCurSet.has(c)?dashCurSet.delete(c):dashCurSet.add(c); render(); })));
+  }
+  $('#rrefresh', head).onclick = () => ensureRatesFresh(true);
+
   const bc = $('#bc', head);
-  const entries = Object.entries(byCur);
-  if (entries.length === 0) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
-  entries.forEach(([cur,total]) => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(total,cur)}</div>`)));
+  if (selected.length === 0) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
+  selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   app.appendChild(head);
 
   const quick = el(`<div class="quick">
@@ -624,10 +686,14 @@ views.dashboard = (app) => {
       <h2>Рахунки</h2><span class="muted small">Перетягніть картку на іншу — переказ</span></div>
     <div class="accgrid" id="accgrid"></div></section>`);
   const grid = $('#accgrid', sec);
+  const accs = state.accounts.filter(a => selected.includes(a.currency_code));
   if (state.accounts.length === 0) grid.appendChild(el(`<div class="muted small">Ще немає рахунків. Додайте у вкладці «Рахунки».</div>`));
-  state.accounts.forEach(a => {
+  else if (accs.length === 0) grid.appendChild(el(`<div class="muted small">Немає рахунків за обраними валютами.</div>`));
+  accs.forEach(a => {
+    const bnk = a.bank_id ? bankById(a.bank_id) : null;
     const node = el(`<div class="acc" draggable="true" style="border-top-color:${a.color}" title="Перетягніть на інший рахунок для переказу">
       <div class="top"><span class="name">${a.icon?a.icon+' ':''}${esc(a.name)}</span><span class="type">${TYPE_LABEL[a.type]||a.type}</span></div>
+      ${bnk?`<div class="muted" style="font-size:11px;margin-top:2px">${esc(bnk.name)}</div>`:''}
       <div class="bal tabnum">${money(accountBalance(a.id), a.currency_code)}</div></div>`);
     node.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', String(a.id)); node.classList.add('dragging'); });
     node.addEventListener('dragend', () => node.classList.remove('dragging'));
@@ -763,19 +829,31 @@ views.analytics = (app) => {
 };
 
 //==================== Вигляд: Рахунки ====================
+let accBankFilter = '';   // '' = усі (групувати по банках); 'none' = без банку; інакше id банку
 views.accounts = (app) => {
   const head = el(`<div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Рахунки</h1></div>`);
   const add = el(`<button class="btn primary">+ Додати рахунок</button>`);
   add.onclick = () => openAccountForm();
   head.appendChild(add); app.appendChild(head);
-  app.appendChild(el(`<div class="muted small" style="margin-top:8px">Перетягуйте картки, щоб змінити порядок відображення рахунків (він застосується і на «Огляді»).</div>`));
 
-  const grid = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:8px"></div>`);
-  if (state.accounts.length === 0) grid.appendChild(el(`<div class="muted">Ще немає рахунків.</div>`));
-  state.accounts.forEach(a => {
+  // фільтр по банку
+  if (state.banks.length > 0) {
+    const f = el(`<div style="max-width:280px;margin-top:10px"><label class="lab">Банк</label><select id="acc-bf">
+      <option value="">Усі (по банках)</option>
+      ${state.banks.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('')}
+      <option value="none">Без банку</option>
+    </select></div>`);
+    $('#acc-bf', f).value = accBankFilter;
+    $('#acc-bf', f).onchange = (e) => { accBankFilter = e.target.value; render(); };
+    app.appendChild(f);
+  }
+  app.appendChild(el(`<div class="muted small" style="margin-top:8px">Перетягуйте картки, щоб змінити порядок (застосується і на «Огляді»).</div>`));
+
+  function accCard(a) {
+    const bnk = a.bank_id ? bankById(a.bank_id) : null;
     const c = el(`<div class="card" style="padding:14px;border-left:4px solid ${a.color};display:flex;justify-content:space-between;gap:10px">
       <div style="min-width:0"><div style="font-weight:600">${a.icon?a.icon+' ':''}${esc(a.name)}</div>
-      <div class="muted small">${TYPE_LABEL[a.type]} · ${a.currency_code} · старт: ${money(a.initial_balance,a.currency_code)}</div>
+      <div class="muted small">${TYPE_LABEL[a.type]} · ${a.currency_code}${bnk?' · '+esc(bnk.name):''} · старт: ${money(a.initial_balance,a.currency_code)}</div>
       <div class="tabnum" style="font-size:18px;font-weight:800;margin-top:4px">${money(accountBalance(a.id),a.currency_code)}</div></div>
       <div style="display:flex;flex-direction:column;gap:4px"></div></div>`);
     const actions = c.lastElementChild;
@@ -787,9 +865,35 @@ views.accounts = (app) => {
       save(); render(); } };
     actions.appendChild(ed); actions.appendChild(del);
     makeReorderable(c, 'acc', a.id, reorderAccount);
-    grid.appendChild(c);
-  });
-  app.appendChild(grid);
+    return c;
+  }
+  const gridOf = (list) => { const g = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:8px"></div>`); list.forEach(a=>g.appendChild(accCard(a))); return g; };
+
+  if (state.accounts.length === 0) { app.appendChild(el(`<div class="muted" style="margin-top:8px">Ще немає рахунків.</div>`)); return; }
+
+  if (accBankFilter === '') {
+    const hasBanks = state.banks.length > 0;
+    // групування по банках + сумарний баланс групи за валютами
+    state.banks.forEach(b => {
+      const list = state.accounts.filter(a => a.bank_id === b.id);
+      if (list.length === 0) return;
+      const total = {}; list.forEach(a => total[a.currency_code]=(total[a.currency_code]||0)+accountBalance(a.id));
+      const totStr = Object.entries(total).map(([c,v])=>money(v,c)).join(' · ');
+      app.appendChild(el(`<div class="row" style="justify-content:space-between;align-items:baseline;margin-top:16px"><h2 style="min-width:0">${esc(b.name)}</h2><span class="muted small tabnum">${totStr}</span></div>`));
+      app.appendChild(gridOf(list));
+    });
+    const none = state.accounts.filter(a => !a.bank_id);
+    if (none.length) {
+      if (hasBanks) app.appendChild(el(`<div class="row" style="margin-top:16px"><h2 class="muted">Без банку</h2></div>`));
+      app.appendChild(gridOf(none));
+    }
+  } else {
+    const list = accBankFilter === 'none'
+      ? state.accounts.filter(a => !a.bank_id)
+      : state.accounts.filter(a => a.bank_id === parseInt(accBankFilter));
+    if (list.length === 0) app.appendChild(el(`<div class="muted" style="margin-top:8px">Немає рахунків у цій групі.</div>`));
+    else app.appendChild(gridOf(list));
+  }
 };
 
 function openAccountForm(existing) {
@@ -802,11 +906,13 @@ function openAccountForm(existing) {
         <option value="CASH">Готівка</option><option value="CARD">Картка</option><option value="BANK">Банк. рахунок</option></select></div>
       <div style="flex:1"><label class="lab">Валюта</label><select id="a-cur">${CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join('')}</select></div>
     </div>
+    <div><label class="lab">Банк (необовʼязково)</label><select id="a-bank"><option value="">— без банку —</option>${state.banks.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
     <div><label class="lab">Стартовий залишок</label><input id="a-init" inputmode="decimal" value="${e.initial_balance ?? 0}"></div>
     <div><label class="lab">Колір</label><div id="a-color"></div></div>
     <div class="err hidden" id="a-err"></div>
   </div>`);
   $('#a-type', body).value = e.type; $('#a-cur', body).value = e.currency_code;
+  $('#a-bank', body).value = e.bank_id ? String(e.bank_id) : '';
   $('#a-color', body).appendChild(swatchPicker(color, c => color = c));
   openModal(existing?'Редагувати рахунок':'Новий рахунок', body, {
     onSave: (close) => {
@@ -814,6 +920,7 @@ function openAccountForm(existing) {
       const err = $('#a-err', body);
       if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
       const rec = { name, type:$('#a-type',body).value, currency_code:$('#a-cur',body).value,
+        bank_id: $('#a-bank',body).value ? parseInt($('#a-bank',body).value) : null,
         initial_balance: round2(num($('#a-init',body).value)), color };
       if (existing) Object.assign(existing, rec);
       else { rec.id = nextId('acc'); rec.icon=null; state.accounts.push(rec); }
@@ -993,9 +1100,10 @@ views.credits = (app) => {
     const addLoan = el(`<button class="btn sm">+ Кредит</button>`); addLoan.onclick = () => openLoanForm(null, bank.id);
     const edB = el(`<button class="btn ghost sm" title="Редагувати банк">✎</button>`); edB.onclick = () => openBankForm(bank);
     const delB = el(`<button class="btn danger sm" title="Видалити банк">✕</button>`);
-    delB.onclick = () => { if (confirm(`Видалити банк «${bank.name}» разом з його кредитами?`)) {
+    delB.onclick = () => { if (confirm(`Видалити банк «${bank.name}» разом з його кредитами? Рахунки лишаться, але без привʼязки до банку.`)) {
       state.banks = state.banks.filter(x=>x.id!==bank.id);
       state.loans = state.loans.filter(l=>l.bank_id!==bank.id);
+      state.accounts.forEach(a => { if (a.bank_id === bank.id) a.bank_id = null; });
       save(); render(); } };
     acts.appendChild(addLoan); acts.appendChild(edB); acts.appendChild(delB);
 
@@ -1118,6 +1226,7 @@ function openLoanForm(existing, presetBankId) {
 
 //==================== Старт ====================
 navigate('dashboard');
+ensureRatesFresh();
 </script>
 </body>
 </html>
