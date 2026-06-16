@@ -1,0 +1,8 @@
+# Нормалізація закінчень рядків: у репозиторії — LF.
+* text=auto eol=lf
+
+# Бінарні/непорівнювані файли
+*.png binary
+*.jpg binary
+*.ico binary
+*.db binary

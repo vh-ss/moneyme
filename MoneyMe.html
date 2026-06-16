@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MoneyMe — облік фінансів</title>
+<style>
+  :root {
+    --bg: #f1f5f9; --card: #fff; --ink: #1e293b; --muted: #64748b; --line: #e2e8f0;
+    --ink2: #0f172a; --green: #16a34a; --red: #dc2626; --amber: #d97706; --accent: #0f172a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: 'Segoe UI', system-ui, Roboto, sans-serif; font-size: 15px;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 16px 60px; }
+
+  header {
+    position: sticky; top: 0; z-index: 30; background: rgba(255,255,255,.85);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+  }
+  .nav { max-width: 920px; margin: 0 auto; display: flex; align-items: center; gap: 4px;
+    padding: 10px 16px; overflow-x: auto; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 18px; margin-right: 14px; white-space: nowrap; }
+  .brand .logo { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: var(--accent); color: #fff; }
+  .nav a { padding: 7px 13px; border-radius: 10px; color: var(--muted); text-decoration: none; font-weight: 500; white-space: nowrap; font-size: 14px; }
+  .nav a.active { background: var(--accent); color: #fff; }
+  .nav a:hover:not(.active) { background: #e2e8f0; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  h1 { font-size: 22px; margin: 22px 0 14px; }
+  h2 { font-size: 16px; margin: 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .row { display: flex; gap: 12px; }
+  .grid { display: grid; gap: 12px; }
+  .tabnum { font-variant-numeric: tabular-nums; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    border: 0; border-radius: 11px; padding: 9px 15px; font-size: 14px; font-weight: 600; background: #e2e8f0; color: var(--ink); }
+  .btn:hover { background: #cbd5e1; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #334155; }
+  .btn.ghost { background: transparent; color: var(--muted); }
+  .btn.ghost:hover { background: #e2e8f0; }
+  .btn.danger { background: transparent; color: var(--red); }
+  .btn.danger:hover { background: #fee2e2; }
+  .btn.sm { padding: 5px 9px; font-size: 13px; border-radius: 8px; }
+
+  label.lab { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
+  input, select { width: 100%; border: 1px solid #cbd5e1; border-radius: 11px; padding: 9px 11px; font-size: 14px; font-family: inherit; outline: none; background: #fff; }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+  .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .quick button { display: flex; align-items: center; justify-content: center; gap: 12px; border: 0; border-radius: 18px; padding: 18px; font-size: 16px; font-weight: 700; }
+  .quick .exp { background: #fef2f2; color: var(--red); } .quick .exp:hover { background: #fee2e2; }
+  .quick .inc { background: #f0fdf4; color: var(--green); } .quick .inc:hover { background: #dcfce7; }
+  .quick .dot { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; color: #fff; font-size: 26px; line-height: 1; }
+  .quick .exp .dot { background: var(--red); } .quick .inc .dot { background: var(--green); }
+
+  .accgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .acc { border-top: 4px solid #999; padding: 14px; border-radius: 16px; background: #fff; border: 1px solid var(--line); cursor: grab; user-select: none; }
+  .acc:active { cursor: grabbing; }
+  .acc.dragover { box-shadow: 0 0 0 2px var(--accent); }
+  .acc.dragging { opacity: .4; }
+  .acc .top { display: flex; justify-content: space-between; align-items: center; }
+  .acc .name { font-weight: 600; font-size: 14px; }
+  .acc .type { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .acc .bal { margin-top: 10px; font-size: 22px; font-weight: 800; }
+
+  .txrow { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid #f1f5f9; }
+  .txrow:last-child { border-bottom: 0; }
+  .txicon { width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; font-size: 15px; flex: 0 0 auto; }
+  .txmain { flex: 1; min-width: 0; }
+  .txtitle { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .txsub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .txamt { font-weight: 700; font-size: 14px; }
+
+  .pill { display: inline-flex; background: #e2e8f0; border-radius: 11px; padding: 3px; gap: 3px; }
+  .pill button { border: 0; background: transparent; padding: 6px 14px; border-radius: 9px; font-weight: 600; font-size: 14px; color: var(--muted); }
+  .pill button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+  .sumcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap: 12px; }
+  .sumcard { padding: 14px; }
+  .sumcard .k { font-size: 12px; color: var(--muted); }
+  .sumcard .v { font-size: 20px; font-weight: 800; margin-top: 3px; }
+
+  .draggable { cursor: grab; }
+  .draggable:active { cursor: grabbing; }
+  .dragging { opacity: .4; }
+  .card.dragover { box-shadow: 0 0 0 2px var(--accent); }
+  .txrow.dragover { background: #eff6ff; border-radius: 8px; }
+  .grip { color: #cbd5e1; font-size: 16px; cursor: grab; flex: 0 0 auto; }
+
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatch { width: 28px; height: 28px; border-radius: 999px; border: 0; }
+  .swatch.sel { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--accent); }
+
+  /* modal */
+  .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: grid; place-items: center; padding: 16px; z-index: 50; }
+  .modal { width: 100%; max-width: 430px; max-height: 90vh; overflow-y: auto; padding: 20px; }
+  .modal .mhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .modal .mhead h2 { font-size: 18px; }
+  .modal .x { border: 0; background: transparent; font-size: 22px; color: var(--muted); line-height: 1; }
+  .modal .mbody > * + * { margin-top: 12px; }
+  .mfoot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .preview { border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 14px; }
+  .preview .pl { display: flex; justify-content: space-between; }
+  .preview .pl + .pl { margin-top: 4px; }
+  .err { color: var(--red); font-size: 13px; }
+  .empty { text-align: center; color: var(--muted); padding: 28px 0; }
+  .legend { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+  .legend li { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+  .legend .ld { width: 12px; height: 12px; border-radius: 999px; flex: 0 0 auto; }
+  .legend .ln { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <div class="brand"><span class="logo">₴</span> MoneyMe</div>
+    <a data-view="dashboard">Огляд</a>
+    <a data-view="transactions">Операції</a>
+    <a data-view="analytics">Аналітика</a>
+    <a data-view="accounts">Рахунки</a>
+    <a data-view="categories">Категорії</a>
+    <a data-view="settings">Налаштування</a>
+  </div>
+</header>
+<div class="wrap" id="app"></div>
+<div id="modal-root"></div>
+
+<script>
+//==================== Стан і збереження ====================
+const STORE_KEY = 'moneyme.v1';
+const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
+const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
+const TYPE_LABEL = { CASH:'Готівка', CARD:'Картка', BANK:'Банк. рахунок' };
+
+let state = load();
+normalize();
+
+// Гарантуємо, що кожна операція має поле ручного порядку `ord` (для drag-перетягування).
+function normalize() {
+  let changed = false;
+  (state.transactions || []).forEach(t => { if (typeof t.ord !== 'number') { t.ord = t.id; changed = true; } });
+  if (changed) save();
+}
+function nextOrd() { return state.transactions.reduce((m, t) => Math.max(m, t.ord || 0), 0) + 1; }
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return seed();
+}
+function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+
+function seed() {
+  const cats = [];
+  let cid = 1;
+  [['Продукти','#22c55e','🛒'],['Кафе','#f97316','🍽️'],['Транспорт','#3b82f6','🚕'],
+   ['Житло','#8b5cf6','🏠'],['Здоровʼя','#ef4444','💊'],['Розваги','#ec4899','🎬'],
+   ['Одяг','#14b8a6','👕'],['Інше','#64748b','📦']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'EXPENSE',color:c,icon:i}));
+  [['Зарплата','#16a34a','💼'],['Підробіток','#0ea5e9','💸'],['Подарунки','#eab308','🎁'],
+   ['Інше','#64748b','📥']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'INCOME',color:c,icon:i}));
+  return { seq: { acc:1, cat:cid, tx:1 }, accounts: [], categories: cats, transactions: [] };
+}
+function nextId(kind){ const v = state.seq[kind]++; save(); return v; }
+
+//==================== Перетягування для зміни порядку ====================
+// Робить елемент draggable; при киданні на інший такого ж типу викликає onReorder(srcId, dstId).
+function makeReorderable(node, type, id, onReorder) {
+  node.draggable = true;
+  node.classList.add('draggable');
+  node.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', type + ':' + id); e.dataTransfer.effectAllowed = 'move'; node.classList.add('dragging'); e.stopPropagation(); });
+  node.addEventListener('dragend', () => node.classList.remove('dragging'));
+  node.addEventListener('dragover', e => { e.preventDefault(); node.classList.add('dragover'); });
+  node.addEventListener('dragleave', () => node.classList.remove('dragover'));
+  node.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation(); node.classList.remove('dragover');
+    const data = e.dataTransfer.getData('text/plain') || '';
+    const sep = data.indexOf(':');
+    if (sep < 0) return;
+    if (data.slice(0, sep) !== type) return;
+    const srcId = parseInt(data.slice(sep + 1));
+    if (srcId && srcId !== id) onReorder(srcId, id);
+  });
+}
+
+function reorderTx(srcId, dstId) {
+  if (srcId === dstId) return;
+  const all = [...state.transactions].sort((a,b)=>(b.ord||0)-(a.ord||0));
+  const src = all.find(t=>t.id===srcId), dst = all.find(t=>t.id===dstId);
+  if (!src || !dst) return;
+  const arr = all.filter(t=>t.id!==srcId);
+  arr.splice(arr.indexOf(dst), 0, src);          // перетягнута операція стає одразу над цільовою
+  arr.forEach((t,i)=> t.ord = arr.length - i);    // верх = найбільший ord
+  save(); render();
+}
+
+function reorderCategory(srcId, dstId) {
+  const src = state.categories.find(c=>c.id===srcId), dst = state.categories.find(c=>c.id===dstId);
+  if (!src || !dst || src.kind !== dst.kind || srcId === dstId) return;
+  const arr = state.categories;
+  arr.splice(arr.indexOf(src), 1);
+  arr.splice(arr.indexOf(dst), 0, src);
+  save(); render();
+}
+
+//==================== Утиліти ====================
+const $ = (sel, root=document) => root.querySelector(sel);
+const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = (s) => { const n = parseFloat(String(s).replace(',', '.')); return isNaN(n) ? 0 : n; };
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+const monthStartISO = () => todayISO().slice(0,8) + '01';
+function money(amount, cur='UAH') {
+  const v = isFinite(amount) ? amount : 0;
+  try { return new Intl.NumberFormat('uk-UA',{style:'currency',currency:cur,maximumFractionDigits:2}).format(v); }
+  catch(e){ return v.toFixed(2) + ' ' + cur; }
+}
+function fmtDate(iso){ if(!iso) return ''; const [y,m,d] = iso.slice(0,10).split('-'); return `${d}.${m}.${y}`; }
+
+//==================== Доменні обчислення ====================
+function accountBalance(id) {
+  const a = state.accounts.find(x => x.id === id);
+  if (!a) return 0;
+  let bal = a.initial_balance || 0;
+  for (const t of state.transactions) {
+    if (t.kind === 'INCOME' && t.account_id === id) bal += t.amount;
+    else if (t.kind === 'EXPENSE' && t.account_id === id) bal -= t.amount;
+    else if (t.kind === 'TRANSFER') {
+      if (t.account_id === id) bal -= (t.amount + (t.fee_amount||0));
+      if (t.to_account_id === id) bal += (t.to_amount||0);
+    }
+  }
+  return round2(bal);
+}
+function computeFee(amount, type, val) {
+  if (type === 'PERCENT') return round2(amount * (val||0) / 100);
+  if (type === 'FIXED') return round2(Math.max(0, val||0));
+  return 0;
+}
+function accountName(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.name : '—'; }
+function accountCur(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.currency_code : 'UAH'; }
+function categoryById(id){ return state.categories.find(c=>c.id===id); }
+
+function inRange(t, from, to){ return (!from || t.date >= from) && (!to || t.date <= to); }
+
+//==================== Навігація ====================
+const views = {};
+let currentView = 'dashboard';
+function navigate(v){
+  currentView = v;
+  document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.dataset.view === v));
+  render();
+}
+function render(){ const app = $('#app'); app.innerHTML = ''; views[currentView](app); }
+
+document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigate(a.dataset.view); }));
+
+//==================== Модалка ====================
+function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide=false } = {}) {
+  const root = $('#modal-root');
+  const overlay = el(`<div class="overlay"></div>`);
+  const modal = el(`<div class="card modal"></div>`);
+  const head = el(`<div class="mhead"><h2>${esc(title)}</h2><button class="x" aria-label="Закрити">×</button></div>`);
+  const body = el(`<div class="mbody"></div>`);
+  body.appendChild(bodyNode);
+  modal.appendChild(head); modal.appendChild(body);
+  if (onSave) {
+    const foot = el(`<div class="mfoot"></div>`);
+    const cancel = el(`<button class="btn ghost">Скасувати</button>`);
+    const ok = el(`<button class="btn primary">${esc(saveLabel)}</button>`);
+    cancel.onclick = close; ok.onclick = () => onSave(close);
+    foot.appendChild(cancel); foot.appendChild(ok); modal.appendChild(foot);
+  }
+  overlay.appendChild(modal); root.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(); });
+  head.querySelector('.x').onclick = close;
+  document.addEventListener('keydown', function onKey(e){ if(e.key==='Escape'){ close(); document.removeEventListener('keydown', onKey);} });
+  const firstInput = modal.querySelector('input, select');
+  if (firstInput) firstInput.focus();
+  return close;
+}
+
+function swatchPicker(selected, onPick) {
+  const wrap = el(`<div class="swatches"></div>`);
+  PALETTE.forEach(c => {
+    const b = el(`<button class="swatch ${c===selected?'sel':''}" style="background:${c}"></button>`);
+    b.onclick = () => { wrap.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel')); b.classList.add('sel'); onPick(c); };
+    wrap.appendChild(b);
+  });
+  return wrap;
+}
+
+//==================== Форма витрати/надходження ====================
+function openEntryForm(kind, existing) {
+  if (state.accounts.length === 0) { alert('Спершу додайте хоча б один рахунок.'); navigate('accounts'); return; }
+  const isInc = kind === 'INCOME';
+  const cats = state.categories.filter(c => c.kind === kind);
+  const e = existing || {};
+  const body = el(`<div>
+    <div><label class="lab">Сума</label><input id="f-amt" inputmode="decimal" placeholder="0.00" style="font-size:22px;font-weight:700" value="${e.amount ?? ''}"></div>
+    <div><label class="lab">Рахунок</label><select id="f-acc">${state.accounts.map(a=>`<option value="${a.id}" ${e.account_id===a.id?'selected':''}>${esc(a.name)} (${a.currency_code})</option>`).join('')}</select></div>
+    <div><label class="lab">Категорія</label><select id="f-cat"><option value="">Без категорії</option>${cats.map(c=>`<option value="${c.id}" ${e.category_id===c.id?'selected':''}>${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Дата</label><input id="f-date" type="date" value="${e.date || todayISO()}"></div>
+      <div style="flex:1"><label class="lab">Нотатка</label><input id="f-note" value="${esc(e.note||'')}" placeholder="—"></div>
+    </div>
+    <div class="err hidden" id="f-err"></div>
+  </div>`);
+  openModal((existing?'Редагувати ':'') + (isInc?'надходження':'витрату'), body, {
+    saveLabel: 'Зберегти',
+    onSave: (close) => {
+      const amt = num($('#f-amt', body).value);
+      const err = $('#f-err', body);
+      if (amt <= 0) { err.textContent = 'Введіть суму більше 0'; err.classList.remove('hidden'); return; }
+      const rec = {
+        kind, amount: round2(amt),
+        account_id: parseInt($('#f-acc', body).value),
+        category_id: $('#f-cat', body).value ? parseInt($('#f-cat', body).value) : null,
+        date: $('#f-date', body).value || todayISO(),
+        note: $('#f-note', body).value.trim() || null,
+      };
+      if (existing) { Object.assign(existing, rec); }
+      else { rec.id = nextId('tx'); rec.ord = nextOrd(); state.transactions.push(rec); }
+      save(); close(); render();
+    }
+  });
+}
+
+//==================== Діалог переказу ====================
+function openTransferDialog(fromId, toId) {
+  const from = state.accounts.find(a=>a.id===fromId);
+  const to = state.accounts.find(a=>a.id===toId);
+  if (!from || !to) return;
+  const cross = from.currency_code !== to.currency_code;
+  const body = el(`<div>
+    <div class="preview" style="display:flex;justify-content:space-between;align-items:center;background:#f8fafc">
+      <b>${esc(from.name)}</b><span class="muted">→</span><b>${esc(to.name)}</b>
+    </div>
+    <div><label class="lab">Сума (${from.currency_code})</label><input id="t-amt" inputmode="decimal" placeholder="0.00" style="font-size:22px;font-weight:700"></div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Комісія</label>
+        <select id="t-feetype"><option value="NONE">Без комісії</option><option value="PERCENT">Відсоток %</option><option value="FIXED">Фіксована</option></select></div>
+      <div style="flex:1"><label class="lab" id="t-feelab">Сума комісії</label><input id="t-feeval" inputmode="decimal" placeholder="0" disabled></div>
+    </div>
+    <div id="t-ratewrap" class="${cross?'':'hidden'}"><label class="lab">Курс (${from.currency_code} → ${to.currency_code})</label><input id="t-rate" inputmode="decimal" placeholder="напр. 41.5" value="1"></div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Дата</label><input id="t-date" type="date" value="${todayISO()}"></div>
+      <div style="flex:1"><label class="lab">Нотатка</label><input id="t-note" placeholder="—"></div>
+    </div>
+    <div class="preview">
+      <div class="pl"><span class="muted">Спишеться з «${esc(from.name)}»</span><b style="color:var(--red)" id="t-debit">—</b></div>
+      <div class="pl"><span class="muted">Зарахується на «${esc(to.name)}»</span><b style="color:var(--green)" id="t-credit">—</b></div>
+      <div class="pl"><span class="muted">Комісія</span><b style="color:var(--amber)" id="t-fee">—</b></div>
+    </div>
+    <div class="err hidden" id="t-err"></div>
+  </div>`);
+
+  const feeType = $('#t-feetype', body), feeVal = $('#t-feeval', body), feeLab = $('#t-feelab', body);
+  feeType.onchange = () => {
+    feeVal.disabled = feeType.value === 'NONE';
+    feeLab.textContent = feeType.value === 'PERCENT' ? 'Відсоток, %' : 'Сума комісії';
+    if (feeType.value === 'NONE') feeVal.value = '';
+    upd();
+  };
+  function upd(){
+    const amt = num($('#t-amt', body).value);
+    const fee = computeFee(amt, feeType.value, num(feeVal.value));
+    const rate = cross ? num($('#t-rate', body).value) : 1;
+    const r = rate > 0 ? rate : 1;
+    $('#t-debit', body).textContent = '−' + money(round2(amt+fee), from.currency_code);
+    $('#t-credit', body).textContent = '+' + money(round2(amt*r), to.currency_code);
+    $('#t-fee', body).textContent = money(fee, from.currency_code);
+  }
+  body.addEventListener('input', upd); upd();
+
+  openModal('Переказ між рахунками', body, {
+    saveLabel: 'Переказати',
+    onSave: (close) => {
+      const amt = num($('#t-amt', body).value);
+      const err = $('#t-err', body);
+      const rate = cross ? num($('#t-rate', body).value) : 1;
+      if (amt <= 0) { err.textContent='Введіть суму більше 0'; err.classList.remove('hidden'); return; }
+      if (cross && rate <= 0) { err.textContent='Введіть курс конвертації'; err.classList.remove('hidden'); return; }
+      const fee = computeFee(amt, feeType.value, num(feeVal.value));
+      state.transactions.push({
+        id: nextId('tx'), ord: nextOrd(), kind:'TRANSFER', date: $('#t-date', body).value || todayISO(),
+        note: $('#t-note', body).value.trim() || null,
+        account_id: from.id, to_account_id: to.id,
+        amount: round2(amt), to_amount: round2(amt * (rate>0?rate:1)),
+        exchange_rate: rate>0?rate:1, fee_type: feeType.value, fee_value: num(feeVal.value), fee_amount: fee,
+      });
+      save(); close(); render();
+    }
+  });
+}
+
+//==================== Рядок операції ====================
+function txRow(t, { onEdit, onDelete } = {}) {
+  const isT = t.kind === 'TRANSFER', isInc = t.kind === 'INCOME';
+  const cat = t.category_id ? categoryById(t.category_id) : null;
+  const icon = isT ? '⇄' : isInc ? '＋' : (cat?.icon || '－');
+  const color = isT ? '#0ea5e9' : isInc ? 'var(--green)' : (cat?.color || 'var(--red)');
+  const cur = accountCur(t.account_id);
+  const title = isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : (cat?.name || 'Без категорії');
+  const sub = isT ? (t.fee_amount>0 ? `Комісія ${money(t.fee_amount,cur)}` : 'Переказ') : accountName(t.account_id);
+  const amtHtml = isT
+    ? `<span class="txamt muted">${money(t.amount,cur)}</span>`
+    : `<span class="txamt" style="color:${isInc?'var(--green)':'var(--red)'}">${isInc?'+':'−'}${money(t.amount,cur)}</span>`;
+  const row = el(`<div class="txrow">
+    <span class="txicon" style="background:${color}22;color:${color}">${icon}</span>
+    <div class="txmain"><div class="txtitle">${esc(title)}</div>
+      <div class="txsub">${fmtDate(t.date)} · ${esc(sub)}${t.note?' · '+esc(t.note):''}</div></div>
+    <div style="text-align:right">${amtHtml}</div>
+  </div>`);
+  if (onEdit && !isT) { const b = el(`<button class="btn ghost sm">✎</button>`); b.onclick=()=>onEdit(t); row.appendChild(b); }
+  if (onDelete) { const b = el(`<button class="btn danger sm">✕</button>`); b.onclick=()=>onDelete(t); row.appendChild(b); }
+  return row;
+}
+
+//==================== SVG-діаграми ====================
+function pieSVG(data, size=170) {
+  const total = data.reduce((s,d)=>s+d.total,0);
+  if (total <= 0) return el(`<div class="empty">Немає даних</div>`);
+  const r = size/2, ir = r*0.58, cx = r, cy = r;
+  let ang = -Math.PI/2; let paths = '';
+  if (data.length === 1) {
+    paths = `<circle cx="${cx}" cy="${cy}" r="${(r+ir)/2}" fill="none" stroke="${data[0].color}" stroke-width="${r-ir}"/>`;
+  } else {
+    for (const d of data) {
+      const frac = d.total/total; const a2 = ang + frac*2*Math.PI;
+      const large = frac > 0.5 ? 1 : 0;
+      const x1=cx+r*Math.cos(ang), y1=cy+r*Math.sin(ang), x2=cx+r*Math.cos(a2), y2=cy+r*Math.sin(a2);
+      const xi2=cx+ir*Math.cos(a2), yi2=cy+ir*Math.sin(a2), xi1=cx+ir*Math.cos(ang), yi1=cy+ir*Math.sin(ang);
+      paths += `<path d="M${x1} ${y1} A${r} ${r} 0 ${large} 1 ${x2} ${y2} L${xi2} ${yi2} A${ir} ${ir} 0 ${large} 0 ${xi1} ${yi1} Z" fill="${d.color}"/>`;
+      ang = a2;
+    }
+  }
+  return el(`<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`);
+}
+
+function barsSVG(months) {
+  // Координати по горизонталі — в одиницях viewBox (0..100), щоб усе вирівнювалось незалежно від ширини.
+  const w = 100/Math.max(months.length,1);
+  const max = Math.max(1, ...months.flatMap(m=>[m.income,m.expense,m.fees]));
+  const H = 180;
+  let bars = '';
+  months.forEach((m,i) => {
+    const bw = w*0.22, gap = w*0.06, base = i*w + w*0.12;
+    const vals = [[m.income,'#16a34a'],[m.expense,'#ef4444'],[m.fees,'#f59e0b']];
+    vals.forEach(([v,c],j) => {
+      const h = (v/max)*(H-26);
+      bars += `<rect x="${base + j*(bw+gap)}" y="${H-h-18}" width="${bw}" height="${h}" rx="0.6" fill="${c}"/>`;
+    });
+    bars += `<text x="${i*w + w/2}" y="${H-4}" font-size="4.5" fill="#94a3b8" text-anchor="middle">${m.month.slice(5)}</text>`;
+  });
+  return el(`<svg width="100%" height="${H}" viewBox="0 0 100 ${H}" preserveAspectRatio="none" style="overflow:visible">${bars}</svg>`);
+}
+
+//==================== Вигляд: Огляд ====================
+views.dashboard = (app) => {
+  // зведення за валютами
+  const byCur = {};
+  state.accounts.forEach(a => { byCur[a.currency_code] = (byCur[a.currency_code]||0) + accountBalance(a.id); });
+  const from = monthStartISO(), to = todayISO();
+  let inc=0, exp=0, fees=0;
+  state.transactions.forEach(t => { if(!inRange(t,from,to))return;
+    if(t.kind==='INCOME')inc+=t.amount; else if(t.kind==='EXPENSE')exp+=t.amount; else if(t.kind==='TRANSFER')fees+=(t.fee_amount||0); });
+
+  const head = el(`<section class="card" style="padding:18px">
+    <div class="muted small">Загальний баланс</div>
+    <div class="row" style="flex-wrap:wrap;gap:6px 28px;margin-top:6px" id="bc"></div>
+    <div class="row small" style="flex-wrap:wrap;gap:16px;margin-top:14px">
+      <div><span class="muted">Надходження (міс.): </span><b style="color:var(--green)">${money(inc)}</b></div>
+      <div><span class="muted">Витрати (міс.): </span><b style="color:var(--red)">${money(exp)}</b></div>
+      <div><span class="muted">Комісії (міс.): </span><b style="color:var(--amber)">${money(fees)}</b></div>
+    </div>
+  </section>`);
+  const bc = $('#bc', head);
+  const entries = Object.entries(byCur);
+  if (entries.length === 0) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
+  entries.forEach(([cur,total]) => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(total,cur)}</div>`)));
+  app.appendChild(head);
+
+  const quick = el(`<div class="quick">
+    <button class="exp"><span class="dot">−</span> Витрата</button>
+    <button class="inc"><span class="dot">+</span> Надходження</button>
+  </div>`);
+  quick.children[0].onclick = () => openEntryForm('EXPENSE');
+  quick.children[1].onclick = () => openEntryForm('INCOME');
+  app.appendChild(quick);
+
+  // рахунки з drag-and-drop
+  const sec = el(`<section>
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2>Рахунки</h2><span class="muted small">Перетягніть картку на іншу — переказ</span></div>
+    <div class="accgrid" id="accgrid"></div></section>`);
+  const grid = $('#accgrid', sec);
+  if (state.accounts.length === 0) grid.appendChild(el(`<div class="muted small">Ще немає рахунків. Додайте у вкладці «Рахунки».</div>`));
+  state.accounts.forEach(a => {
+    const node = el(`<div class="acc" draggable="true" style="border-top-color:${a.color}" title="Перетягніть на інший рахунок для переказу">
+      <div class="top"><span class="name">${a.icon?a.icon+' ':''}${esc(a.name)}</span><span class="type">${TYPE_LABEL[a.type]||a.type}</span></div>
+      <div class="bal tabnum">${money(accountBalance(a.id), a.currency_code)}</div></div>`);
+    node.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', String(a.id)); node.classList.add('dragging'); });
+    node.addEventListener('dragend', () => node.classList.remove('dragging'));
+    node.addEventListener('dragover', e => { e.preventDefault(); node.classList.add('dragover'); });
+    node.addEventListener('dragleave', () => node.classList.remove('dragover'));
+    node.addEventListener('drop', e => {
+      e.preventDefault(); node.classList.remove('dragover');
+      const fromId = parseInt(e.dataTransfer.getData('text/plain'));
+      if (fromId && fromId !== a.id) openTransferDialog(fromId, a.id);
+    });
+    grid.appendChild(node);
+  });
+  app.appendChild(sec);
+
+  // останні операції
+  const recent = [...state.transactions].sort((a,b)=>(b.ord||0)-(a.ord||0)).slice(0,8);
+  const list = el(`<section class="card" style="padding:14px;margin-top:18px"><h2 style="margin-bottom:6px">Останні операції</h2><div id="recent"></div></section>`);
+  const rl = $('#recent', list);
+  if (recent.length === 0) rl.appendChild(el(`<div class="empty">Операцій ще немає</div>`));
+  recent.forEach(t => rl.appendChild(txRow(t, {
+    onEdit: (tx) => openEntryForm(tx.kind, tx),
+    onDelete: (tx) => { if(confirm('Видалити операцію?')){ state.transactions = state.transactions.filter(x=>x.id!==tx.id); save(); render(); } }
+  })));
+  app.appendChild(list);
+};
+
+//==================== Вигляд: Операції ====================
+let txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO() };
+views.transactions = (app) => {
+  app.appendChild(el(`<h1>Операції</h1>`));
+  const f = el(`<div class="card" style="padding:14px"><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+    <div><label class="lab">Рахунок</label><select id="ff-acc"><option value="">Усі</option>${state.accounts.map(a=>`<option value="${a.id}" ${txFilter.account==a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
+    <div><label class="lab">Тип</label><select id="ff-kind">
+      <option value="">Усі</option><option value="EXPENSE">Витрати</option><option value="INCOME">Надходження</option><option value="TRANSFER">Перекази</option></select></div>
+    <div><label class="lab">Від</label><input id="ff-from" type="date" value="${txFilter.from}"></div>
+    <div><label class="lab">До</label><input id="ff-to" type="date" value="${txFilter.to}"></div>
+  </div></div>`);
+  $('#ff-kind', f).value = txFilter.kind;
+  f.addEventListener('change', () => {
+    txFilter = { account:$('#ff-acc',f).value, kind:$('#ff-kind',f).value, from:$('#ff-from',f).value, to:$('#ff-to',f).value };
+    render();
+  });
+  app.appendChild(f);
+  app.appendChild(el(`<div class="muted small" style="margin-top:10px">Перетягуйте рядки, щоб змінити їхній порядок у списку.</div>`));
+
+  const list = el(`<div class="card" style="padding:12px;margin-top:8px"></div>`);
+  const ll = list;
+  let rows = state.transactions.filter(t => {
+    if (txFilter.account && t.account_id != txFilter.account && t.to_account_id != txFilter.account) return false;
+    if (txFilter.kind && t.kind !== txFilter.kind) return false;
+    return inRange(t, txFilter.from, txFilter.to);
+  }).sort((a,b)=>(b.ord||0)-(a.ord||0));
+  if (rows.length === 0) ll.appendChild(el(`<div class="empty">Нічого не знайдено за фільтрами</div>`));
+  rows.forEach(t => {
+    const row = txRow(t, {
+      onEdit: (tx) => openEntryForm(tx.kind, tx),
+      onDelete: (tx) => { if(confirm('Видалити операцію?')){ state.transactions = state.transactions.filter(x=>x.id!==tx.id); save(); render(); } }
+    });
+    makeReorderable(row, 'tx', t.id, reorderTx);
+    ll.appendChild(row);
+  });
+  app.appendChild(list);
+};
+
+//==================== Вигляд: Аналітика ====================
+let anFilter = { from: monthStartISO(), to: todayISO() };
+views.analytics = (app) => {
+  const top = el(`<div class="row" style="justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">
+    <h1 style="margin:0">Аналітика</h1>
+    <div class="row"><div><label class="lab">Від</label><input id="an-from" type="date" value="${anFilter.from}"></div>
+    <div><label class="lab">До</label><input id="an-to" type="date" value="${anFilter.to}"></div></div></div>`);
+  top.addEventListener('change', () => { anFilter = { from:$('#an-from',top).value, to:$('#an-to',top).value }; render(); });
+  app.appendChild(top);
+
+  const inR = (t) => inRange(t, anFilter.from, anFilter.to);
+  let inc=0, exp=0, fees=0;
+  state.transactions.forEach(t => { if(!inR(t))return;
+    if(t.kind==='INCOME')inc+=t.amount; else if(t.kind==='EXPENSE')exp+=t.amount; else if(t.kind==='TRANSFER')fees+=(t.fee_amount||0); });
+  const net = inc - exp - fees;
+
+  const sum = el(`<div class="sumcards" style="margin-top:14px">
+    ${[['Надходження',inc,'var(--green)',''],['Витрати',exp,'var(--red)',''],
+       ['Комісії',fees,'var(--amber)','окремо від витрат'],['Чистий потік',net,net>=0?'var(--green)':'var(--red)','']]
+      .map(([k,v,c,h])=>`<div class="card sumcard"><div class="k">${k}</div><div class="v tabnum" style="color:${c}">${money(v)}</div>${h?`<div class="k" style="font-size:10px">${h}</div>`:''}</div>`).join('')}
+  </div>`);
+  app.appendChild(sum);
+
+  // за категоріями
+  function catData(kind) {
+    const map = {};
+    state.transactions.forEach(t => { if(t.kind!==kind || !inR(t)) return;
+      const c = t.category_id ? categoryById(t.category_id) : null;
+      const key = c ? c.id : 0;
+      if (!map[key]) map[key] = { name: c?c.name:'Без категорії', color: c?c.color:'#94a3b8', icon: c?c.icon:'', total:0 };
+      map[key].total += t.amount; });
+    return Object.values(map).sort((a,b)=>b.total-a.total);
+  }
+  const grid = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:14px"></div>`);
+  [['Витрати за статтями', catData('EXPENSE')], ['Надходження за статтями', catData('INCOME')]].forEach(([title,data]) => {
+    const total = data.reduce((s,d)=>s+d.total,0);
+    const cardEl = el(`<div class="card" style="padding:14px"><h2 style="margin-bottom:10px">${title}</h2></div>`);
+    if (data.length === 0) { cardEl.appendChild(el(`<div class="empty">Немає даних</div>`)); }
+    else {
+      const wrap = el(`<div class="row" style="align-items:center;flex-wrap:wrap"></div>`);
+      const pieBox = el(`<div style="flex:0 0 auto"></div>`); pieBox.appendChild(pieSVG(data));
+      const leg = el(`<ul class="legend" style="flex:1;min-width:150px"></ul>`);
+      data.forEach(d => leg.appendChild(el(`<li><span class="ld" style="background:${d.color}"></span>
+        <span class="ln">${d.icon?d.icon+' ':''}${esc(d.name)}</span>
+        <b class="tabnum">${money(d.total)}</b>
+        <span class="muted" style="width:38px;text-align:right">${total?Math.round(d.total/total*100):0}%</span></li>`)));
+      wrap.appendChild(pieBox); wrap.appendChild(leg); cardEl.appendChild(wrap);
+    }
+    grid.appendChild(cardEl);
+  });
+  app.appendChild(grid);
+
+  // помісячна динаміка
+  const mMap = {};
+  state.transactions.forEach(t => { if(!inR(t))return; const m = t.date.slice(0,7);
+    if(!mMap[m]) mMap[m] = { month:m, income:0, expense:0, fees:0 };
+    if(t.kind==='INCOME')mMap[m].income+=t.amount; else if(t.kind==='EXPENSE')mMap[m].expense+=t.amount; else if(t.kind==='TRANSFER')mMap[m].fees+=(t.fee_amount||0); });
+  const months = Object.values(mMap).sort((a,b)=>a.month<b.month?-1:1);
+  const dyn = el(`<div class="card" style="padding:14px;margin-top:14px"><h2 style="margin-bottom:10px">Динаміка по місяцях</h2></div>`);
+  if (months.length === 0) dyn.appendChild(el(`<div class="empty">Немає даних за період</div>`));
+  else {
+    dyn.appendChild(barsSVG(months));
+    dyn.appendChild(el(`<div class="row small muted" style="gap:16px;margin-top:8px">
+      <span><span style="color:#16a34a">■</span> Надходження</span>
+      <span><span style="color:#ef4444">■</span> Витрати</span>
+      <span><span style="color:#f59e0b">■</span> Комісії</span></div>`));
+  }
+  app.appendChild(dyn);
+};
+
+//==================== Вигляд: Рахунки ====================
+views.accounts = (app) => {
+  const head = el(`<div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Рахунки</h1></div>`);
+  const add = el(`<button class="btn primary">+ Додати рахунок</button>`);
+  add.onclick = () => openAccountForm();
+  head.appendChild(add); app.appendChild(head);
+
+  const grid = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:14px"></div>`);
+  if (state.accounts.length === 0) grid.appendChild(el(`<div class="muted">Ще немає рахунків.</div>`));
+  state.accounts.forEach(a => {
+    const c = el(`<div class="card" style="padding:14px;border-left:4px solid ${a.color};display:flex;justify-content:space-between;gap:10px">
+      <div><div style="font-weight:600">${a.icon?a.icon+' ':''}${esc(a.name)}</div>
+      <div class="muted small">${TYPE_LABEL[a.type]} · ${a.currency_code} · старт: ${money(a.initial_balance,a.currency_code)}</div>
+      <div class="tabnum" style="font-size:18px;font-weight:800;margin-top:4px">${money(accountBalance(a.id),a.currency_code)}</div></div>
+      <div style="display:flex;flex-direction:column;gap:4px"></div></div>`);
+    const actions = c.lastElementChild;
+    const ed = el(`<button class="btn ghost sm">Змінити</button>`); ed.onclick=()=>openAccountForm(a);
+    const del = el(`<button class="btn danger sm">Видалити</button>`);
+    del.onclick=()=>{ if(confirm(`Видалити «${a.name}»? Усі його операції також буде видалено.`)){
+      state.accounts = state.accounts.filter(x=>x.id!==a.id);
+      state.transactions = state.transactions.filter(t=>t.account_id!==a.id && t.to_account_id!==a.id);
+      save(); render(); } };
+    actions.appendChild(ed); actions.appendChild(del);
+    grid.appendChild(c);
+  });
+  app.appendChild(grid);
+};
+
+function openAccountForm(existing) {
+  const e = existing || { type:'CARD', currency_code:'UAH', initial_balance:0, color:PALETTE[0] };
+  let color = e.color;
+  const body = el(`<div>
+    <div><label class="lab">Назва</label><input id="a-name" value="${esc(e.name||'')}" placeholder="напр. Monobank"></div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Тип</label><select id="a-type">
+        <option value="CASH">Готівка</option><option value="CARD">Картка</option><option value="BANK">Банк. рахунок</option></select></div>
+      <div style="flex:1"><label class="lab">Валюта</label><select id="a-cur">${CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join('')}</select></div>
+    </div>
+    <div><label class="lab">Стартовий залишок</label><input id="a-init" inputmode="decimal" value="${e.initial_balance ?? 0}"></div>
+    <div><label class="lab">Колір</label><div id="a-color"></div></div>
+    <div class="err hidden" id="a-err"></div>
+  </div>`);
+  $('#a-type', body).value = e.type; $('#a-cur', body).value = e.currency_code;
+  $('#a-color', body).appendChild(swatchPicker(color, c => color = c));
+  openModal(existing?'Редагувати рахунок':'Новий рахунок', body, {
+    onSave: (close) => {
+      const name = $('#a-name', body).value.trim();
+      const err = $('#a-err', body);
+      if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
+      const rec = { name, type:$('#a-type',body).value, currency_code:$('#a-cur',body).value,
+        initial_balance: round2(num($('#a-init',body).value)), color };
+      if (existing) Object.assign(existing, rec);
+      else { rec.id = nextId('acc'); rec.icon=null; state.accounts.push(rec); }
+      save(); close(); render();
+    }
+  });
+}
+
+//==================== Вигляд: Категорії ====================
+let catKind = 'EXPENSE';
+views.categories = (app) => {
+  const head = el(`<div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Категорії</h1></div>`);
+  const add = el(`<button class="btn primary">+ Додати</button>`); add.onclick=()=>openCategoryForm();
+  head.appendChild(add); app.appendChild(head);
+
+  const pill = el(`<div class="pill" style="margin-top:12px">
+    <button data-k="EXPENSE">Витрати</button><button data-k="INCOME">Надходження</button></div>`);
+  pill.querySelectorAll('button').forEach(b => { b.classList.toggle('on', b.dataset.k===catKind);
+    b.onclick=()=>{ catKind=b.dataset.k; render(); }; });
+  app.appendChild(pill);
+
+  app.appendChild(el(`<div class="muted small" style="margin-top:10px">Перетягуйте за ручку ⠿ або кнопками ↑ / ↓, щоб змінити порядок — він застосується і у списках вибору категорії.</div>`));
+  const grid = el(`<div class="grid" style="grid-template-columns:1fr;max-width:520px;margin-top:8px"></div>`);
+  const list = state.categories.filter(c => c.kind === catKind);
+  if (list.length === 0) grid.appendChild(el(`<div class="muted">Категорій немає.</div>`));
+  list.forEach((c, i) => {
+    const node = el(`<div class="card" style="padding:9px 11px;display:flex;align-items:center;gap:8px">
+      <span class="grip" title="Перетягніть, щоб змінити порядок">⠿</span>
+      <span class="txicon" style="background:${c.color}22;color:${c.color}">${c.icon||'•'}</span>
+      <span style="flex:1;font-weight:600">${esc(c.name)}</span></div>`);
+    makeReorderable(node, 'cat', c.id, reorderCategory);
+    const up = el(`<button class="btn ghost sm" title="Перемістити вище">↑</button>`);
+    const down = el(`<button class="btn ghost sm" title="Перемістити нижче">↓</button>`);
+    if (i === 0) { up.disabled = true; up.style.opacity = .3; }
+    if (i === list.length - 1) { down.disabled = true; down.style.opacity = .3; }
+    up.onclick = () => moveCategory(c, -1);
+    down.onclick = () => moveCategory(c, 1);
+    const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick=()=>openCategoryForm(c);
+    const del = el(`<button class="btn danger sm">✕</button>`);
+    del.onclick=()=>{ if(confirm(`Видалити «${c.name}»? В операціях стане «Без категорії».`)){
+      state.categories = state.categories.filter(x=>x.id!==c.id);
+      state.transactions.forEach(t=>{ if(t.category_id===c.id)t.category_id=null; });
+      save(); render(); } };
+    node.appendChild(up); node.appendChild(down); node.appendChild(ed); node.appendChild(del);
+    grid.appendChild(node);
+  });
+  app.appendChild(grid);
+};
+
+// Переміщення категорії в межах свого типу (міняємо місцями із сусідньою у спільному масиві).
+function moveCategory(cat, dir) {
+  const same = state.categories.filter(c => c.kind === cat.kind);
+  const idx = same.indexOf(cat);
+  const target = same[idx + dir];
+  if (!target) return;
+  const i1 = state.categories.indexOf(cat), i2 = state.categories.indexOf(target);
+  [state.categories[i1], state.categories[i2]] = [state.categories[i2], state.categories[i1]];
+  save(); render();
+}
+
+function openCategoryForm(existing) {
+  const e = existing || { color: PALETTE[0], icon:'' };
+  let color = e.color;
+  const body = el(`<div>
+    <div class="row"><div style="flex:0 0 70px"><label class="lab">Емодзі</label><input id="c-icon" maxlength="2" value="${esc(e.icon||'')}" placeholder="🙂" style="text-align:center;font-size:18px"></div>
+    <div style="flex:1"><label class="lab">Назва</label><input id="c-name" value="${esc(e.name||'')}"></div></div>
+    <div><label class="lab">Колір</label><div id="c-color"></div></div>
+    <div class="err hidden" id="c-err"></div></div>`);
+  $('#c-color', body).appendChild(swatchPicker(color, c => color = c));
+  openModal(existing?'Редагувати категорію':'Нова категорія', body, {
+    onSave: (close) => {
+      const name = $('#c-name', body).value.trim();
+      const err = $('#c-err', body);
+      if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
+      const rec = { name, kind: catKind, color, icon: $('#c-icon',body).value.trim() || null };
+      if (existing) Object.assign(existing, rec);
+      else { rec.id = nextId('cat'); state.categories.push(rec); }
+      save(); close(); render();
+    }
+  });
+}
+
+//==================== Вигляд: Налаштування ====================
+views.settings = (app) => {
+  app.appendChild(el(`<h1>Налаштування</h1>`));
+  const backup = el(`<section class="card" style="padding:18px">
+    <h2>Резервне копіювання</h2>
+    <p class="muted small">Експортуйте всі дані у файл JSON (його можна зберегти будь-де, зокрема на Google Drive) і відновіть за потреби.</p>
+    <div class="row" style="flex-wrap:wrap;margin-top:12px">
+      <button class="btn primary" id="exp">⬇ Експорт у файл</button>
+      <button class="btn" id="imp">⬆ Імпорт із файлу</button>
+      <input type="file" id="impfile" accept="application/json,.json" class="hidden">
+    </div>
+    <div id="bk-msg" class="small" style="margin-top:10px"></div>
+  </section>`);
+  $('#exp', backup).onclick = () => {
+    const blob = new Blob([JSON.stringify({ app:'MoneyMe', version:1, exported_at:new Date().toISOString(), ...state }, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = url; a.download = 'moneyme-backup.json'; a.click(); URL.revokeObjectURL(url);
+  };
+  $('#imp', backup).onclick = () => $('#impfile', backup).click();
+  $('#impfile', backup).onchange = async (ev) => {
+    const file = ev.target.files[0]; if (!file) return;
+    const msg = $('#bk-msg', backup);
+    try {
+      const data = JSON.parse(await file.text());
+      if (!Array.isArray(data.accounts) || !Array.isArray(data.transactions)) throw new Error('Файл не схожий на бекап MoneyMe');
+      if (!confirm('Імпорт ЗАМІНИТЬ усі поточні дані. Продовжити?')) return;
+      state = { seq: data.seq || recalcSeq(data), accounts:data.accounts, categories:data.categories||[], transactions:data.transactions };
+      save(); msg.style.color='var(--green)'; msg.textContent='Дані успішно відновлено.'; render();
+    } catch (e) { msg.style.color='var(--red)'; msg.textContent='Помилка імпорту: '+e.message; }
+    ev.target.value='';
+  };
+  app.appendChild(backup);
+
+  const danger = el(`<section class="card" style="padding:18px;margin-top:16px">
+    <h2>Очистити дані</h2><p class="muted small">Видалити всі рахунки, операції та категорії й почати з нуля.</p>
+    <button class="btn danger" id="wipe" style="margin-top:8px">Скинути все</button></section>`);
+  $('#wipe', danger).onclick = () => { if(confirm('Видалити ВСІ дані без відновлення?')){ localStorage.removeItem(STORE_KEY); state = seed(); save(); navigate('dashboard'); } };
+  app.appendChild(danger);
+
+  app.appendChild(el(`<section class="card" style="padding:18px;margin-top:16px">
+    <h2>Про застосунок</h2><p class="muted small">MoneyMe працює повністю у вашому браузері. Дані зберігаються локально (localStorage) на цьому ПК — інтернет не потрібен. Для перенесення чи бекапу користуйтесь експортом у файл.</p></section>`));
+};
+function recalcSeq(data){
+  const mx = (arr)=>arr.reduce((m,x)=>Math.max(m,x.id||0),0);
+  return { acc: mx(data.accounts||[])+1, cat: mx(data.categories||[])+1, tx: mx(data.transactions||[])+1 };
+}
+
+//==================== Старт ====================
+navigate('dashboard');
+</script>
+</body>
+</html>
