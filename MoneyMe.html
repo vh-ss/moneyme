@@ -361,6 +361,17 @@ function computeFee(amount, type, val) {
   if (type === 'FIXED') return round2(Math.max(0, val||0));
   return 0;
 }
+// Комісія у валюті рахунку-джерела (для списання). Для FIXED дозволяємо валюту feeCur;
+// якщо це валюта призначення — конвертуємо в джерело за множником mult (T за 1 F).
+function feeSourceAmount(type, val, feeCur, srcCur, amount, mult) {
+  if (type === 'PERCENT') return round2(amount * (val||0) / 100);
+  if (type === 'FIXED') {
+    const v = Math.max(0, val||0);
+    if (feeCur && feeCur !== srcCur && mult > 0) return round2(v / mult);
+    return round2(v);
+  }
+  return 0;
+}
 function accountName(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.name : '—'; }
 function accountCur(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.currency_code : 'UAH'; }
 function categoryById(id){ return state.categories.find(c=>c.id===id); }
@@ -537,7 +548,11 @@ function openTransferDialog(fromId, toId) {
     <div class="row">
       <div style="flex:1"><label class="lab">Комісія</label>
         <select id="t-feetype"><option value="NONE">Без комісії</option><option value="PERCENT">Відсоток %</option><option value="FIXED">Фіксована</option></select></div>
-      <div style="flex:1"><label class="lab" id="t-feelab">Сума комісії</label><input id="t-feeval" inputmode="decimal" placeholder="0" disabled></div>
+      <div style="flex:1"><label class="lab" id="t-feelab">Сума комісії</label>
+        <div style="display:flex;gap:6px">
+          <input id="t-feeval" inputmode="decimal" placeholder="0" disabled style="flex:1">
+          <select id="t-feecur" class="hidden" style="width:84px">${cross?`<option value="${F}">${F}</option><option value="${T}">${T}</option>`:''}</select>
+        </div></div>
     </div>
     <div class="row ${cross?'':'hidden'}">
       <div style="flex:1"><label class="lab">${cross?`Курс: 1 ${ori.strong} = X ${ori.weak}`:'Курс'}</label><input id="t-rate" inputmode="decimal" placeholder="напр. 41.5"></div>
@@ -556,16 +571,21 @@ function openTransferDialog(fromId, toId) {
     <div class="err hidden" id="t-err"></div>
   </div>`);
 
-  const feeType = $('#t-feetype', body), feeVal = $('#t-feeval', body), feeLab = $('#t-feelab', body);
-  const amtEl = $('#t-amt', body), rateEl = $('#t-rate', body), toEl = $('#t-toamt', body);
+  const feeType = $('#t-feetype', body), feeVal = $('#t-feeval', body), feeLab = $('#t-feelab', body), feeCurEl = $('#t-feecur', body);
 
+  const feeCurNow = () => (cross && feeType.value === 'FIXED') ? feeCurEl.value : F;
+  function curMult(){ const A = num(amtEl.value), B = cross ? num(toEl.value) : A; return (cross && A > 0 && B > 0) ? B / A : 1; }
   function paint(){
     const A = num(amtEl.value);
-    const fee = computeFee(A, feeType.value, num(feeVal.value));
+    const fc = feeCurNow();
+    const fee = feeSourceAmount(feeType.value, num(feeVal.value), fc, F, A, curMult());
     const B = cross ? num(toEl.value) : A;
     $('#t-debit', body).textContent = '−' + money(round2(A + fee), F);
     $('#t-credit', body).textContent = '+' + money(round2(B), T);
-    $('#t-fee', body).textContent = money(fee, F);
+    // комісію показуємо у введеній валюті (а якщо вона інша — ще й еквівалент у джерелі)
+    $('#t-fee', body).textContent = (feeType.value === 'FIXED' && fc !== F)
+      ? `${money(round2(num(feeVal.value)), fc)} ≈ ${money(fee, F)}`
+      : money(fee, F);
   }
   function fromRate(){ // змінилась сума/курс → перерахувати суму призначення
     if (cross) { const A = num(amtEl.value), m = xToMultiplier(F, T, num(rateEl.value)); toEl.value = (A > 0 && m > 0) ? String(round2(A * m)) : ''; }
@@ -579,12 +599,14 @@ function openTransferDialog(fromId, toId) {
     feeVal.disabled = feeType.value === 'NONE';
     feeLab.textContent = feeType.value === 'PERCENT' ? 'Відсоток, %' : 'Сума комісії';
     if (feeType.value === 'NONE') feeVal.value = '';
+    feeCurEl.classList.toggle('hidden', !(cross && feeType.value === 'FIXED'));
     paint();
   };
   amtEl.addEventListener('input', fromRate);
   rateEl.addEventListener('input', fromRate);
   toEl.addEventListener('input', fromTo);
   feeVal.addEventListener('input', paint);
+  feeCurEl.addEventListener('change', paint);
   if (cross) {
     const defX = defaultCrossX(F, T);
     if (defX != null) { rateEl.value = String(defX); $('#t-ratehint', body).textContent = `Курс НБУ${ratesCache.date ? ' на ' + fmtDate(ratesCache.date) : ''} — змініть курс або суму нижче.`; }
@@ -603,13 +625,14 @@ function openTransferDialog(fromId, toId) {
         if (toAmount <= 0) { err.textContent='Вкажіть курс або суму в валюті призначення'; err.classList.remove('hidden'); return; }
         mult = toAmount / amt;
       } else { toAmount = round2(amt); mult = 1; }
-      const fee = computeFee(amt, feeType.value, num(feeVal.value));
+      const fc = feeCurNow();
+      const fee = feeSourceAmount(feeType.value, num(feeVal.value), fc, F, amt, mult);
       state.transactions.push({
         id: nextId('tx'), ord: nextOrd(), kind:'TRANSFER', date: $('#t-date', body).value || todayISO(),
         note: $('#t-note', body).value.trim() || null,
         account_id: from.id, to_account_id: to.id,
         amount: round2(amt), to_amount: toAmount,
-        exchange_rate: mult, fee_type: feeType.value, fee_value: num(feeVal.value), fee_amount: fee,
+        exchange_rate: mult, fee_type: feeType.value, fee_value: num(feeVal.value), fee_currency: fc, fee_amount: fee,
       });
       save(); close(); render();
     }
@@ -629,7 +652,11 @@ function openTransferEdit(tx) {
     <div class="row">
       <div style="flex:1"><label class="lab">Комісія</label><select id="e-feetype">
         <option value="NONE">Без комісії</option><option value="PERCENT">Відсоток %</option><option value="FIXED">Фіксована</option></select></div>
-      <div style="flex:1"><label class="lab" id="e-feelab">Сума комісії</label><input id="e-feeval" inputmode="decimal" value="${tx.fee_value || ''}"></div>
+      <div style="flex:1"><label class="lab" id="e-feelab">Сума комісії</label>
+        <div style="display:flex;gap:6px">
+          <input id="e-feeval" inputmode="decimal" value="${tx.fee_value || ''}" style="flex:1">
+          <select id="e-feecur" class="hidden" style="width:84px"></select>
+        </div></div>
     </div>
     <div id="e-ratewrap" class="hidden"><div class="row">
       <div style="flex:1"><label class="lab" id="e-ratelab">Курс</label><input id="e-rate" inputmode="decimal"></div>
@@ -651,6 +678,9 @@ function openTransferEdit(tx) {
   $$('#e-feetype').value = tx.fee_type || 'NONE';
   const acc = (id) => state.accounts.find(a => a.id === parseInt(id));
   const isCross = () => { const f = acc($$('#e-from').value), t = acc($$('#e-to').value); return !!(f && t && f.currency_code !== t.currency_code); };
+  let feeCurChoice = tx.fee_currency || null;
+  const feeCurNow = () => { const f = acc($$('#e-from').value); return (isCross() && $$('#e-feetype').value === 'FIXED') ? $$('#e-feecur').value : (f ? f.currency_code : 'UAH'); };
+  const curMult = () => { const A = num($$('#e-amt').value), B = isCross() ? num($$('#e-toamt').value) : A; return (isCross() && A > 0 && B > 0) ? B / A : 1; };
 
   function meta() {
     const from = acc($$('#e-from').value), to = acc($$('#e-to').value);
@@ -663,16 +693,28 @@ function openTransferEdit(tx) {
     $$('#e-ratewrap').classList.toggle('hidden', !cross);
     $$('#e-ratelab').textContent = cross ? `Курс: 1 ${ori.strong} = X ${ori.weak}` : 'Курс';
     $$('#e-tolab').textContent = cross ? `Сума (${to.currency_code})` : 'Сума';
+    // вибір валюти комісії (лише для FIXED у міжвалютному переказі)
+    const feeCurEl = $$('#e-feecur');
+    const showFeeCur = cross && ft === 'FIXED';
+    feeCurEl.classList.toggle('hidden', !showFeeCur);
+    if (showFeeCur) {
+      feeCurEl.innerHTML = `<option value="${from.currency_code}">${from.currency_code}</option><option value="${to.currency_code}">${to.currency_code}</option>`;
+      const valid = [from.currency_code, to.currency_code];
+      feeCurEl.value = (feeCurChoice && valid.includes(feeCurChoice)) ? feeCurChoice : from.currency_code;
+    }
   }
   function paint() {
     const from = acc($$('#e-from').value), to = acc($$('#e-to').value);
     const cross = isCross();
     const A = num($$('#e-amt').value);
-    const fee = computeFee(A, $$('#e-feetype').value, num($$('#e-feeval').value));
+    const ft = $$('#e-feetype').value, fc = feeCurNow();
+    const fee = feeSourceAmount(ft, num($$('#e-feeval').value), fc, from?.currency_code, A, curMult());
     const B = cross ? num($$('#e-toamt').value) : A;
     $$('#e-debit').textContent = '−' + money(round2(A + fee), from?.currency_code);
     $$('#e-credit').textContent = '+' + money(round2(B), to?.currency_code);
-    $$('#e-fee').textContent = money(fee, from?.currency_code);
+    $$('#e-fee').textContent = (ft === 'FIXED' && from && fc !== from.currency_code)
+      ? `${money(round2(num($$('#e-feeval').value)), fc)} ≈ ${money(fee, from.currency_code)}`
+      : money(fee, from?.currency_code);
   }
   function fromRate() { // сума/курс → перерахувати суму призначення
     const from = acc($$('#e-from').value), to = acc($$('#e-to').value);
@@ -697,6 +739,7 @@ function openTransferEdit(tx) {
   $$('#e-toamt').addEventListener('input', fromTo);
   $$('#e-feetype').addEventListener('change', () => { meta(); paint(); });
   $$('#e-feeval').addEventListener('input', paint);
+  $$('#e-feecur').addEventListener('change', () => { feeCurChoice = $$('#e-feecur').value; paint(); });
 
   meta();
   { // початкові значення курсу й суми призначення зі збереженого переказу
@@ -726,12 +769,13 @@ function openTransferEdit(tx) {
         if (toAmount <= 0) return show('Вкажіть курс або суму в валюті призначення');
         mult = toAmount / amt;
       } else { toAmount = round2(amt); mult = 1; }
-      const fee = computeFee(amt, ft, num($$('#e-feeval').value));
+      const fc = feeCurNow();
+      const fee = feeSourceAmount(ft, num($$('#e-feeval').value), fc, from.currency_code, amt, mult);
       Object.assign(tx, {
         account_id: from.id, to_account_id: to.id,
         amount: round2(amt), to_amount: toAmount,
         exchange_rate: mult,
-        fee_type: ft, fee_value: num($$('#e-feeval').value), fee_amount: fee,
+        fee_type: ft, fee_value: num($$('#e-feeval').value), fee_currency: fc, fee_amount: fee,
         date: $$('#e-date').value || todayISO(), note: $$('#e-note').value.trim() || null,
       });
       save(); close(); render();
