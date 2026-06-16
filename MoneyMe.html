@@ -346,7 +346,8 @@ const monthStartISO = () => todayISO().slice(0,8) + '01';
 function money(amount, cur='UAH') {
   if (hideBalances) return '••••• ' + cur;
   let v = isFinite(amount) ? amount : 0;
-  if (screenshotMode) v = v * screenshotFactor;   // лише для скріншота, реальні дані не змінюються
+  // демо-масштаб лише для скріншота і ТІЛЬКИ коли немає відкритого діалогу (щоб у формах були справжні числа)
+  if (screenshotMode && !document.querySelector('.overlay')) v = v * screenshotFactor;
   try { return new Intl.NumberFormat('uk-UA',{style:'currency',currency:cur,maximumFractionDigits:2}).format(v); }
   catch(e){ return v.toFixed(2) + ' ' + cur; }
 }
