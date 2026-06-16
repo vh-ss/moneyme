@@ -155,6 +155,8 @@
 const STORE_KEY = 'moneyme.v1';
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
+const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
+function curSym(cur){ return CUR_SYMBOL[cur] || cur; }
 const TYPE_LABEL = { CASH:'Готівка', CARD:'Картка', BANK:'Банк. рахунок' };
 
 let state = load();
@@ -344,12 +346,12 @@ const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
 const monthStartISO = () => todayISO().slice(0,8) + '01';
 function money(amount, cur='UAH') {
-  if (hideBalances) return '••••• ' + cur;
+  if (hideBalances) return '••••• ' + curSym(cur);
   let v = isFinite(amount) ? amount : 0;
   // демо-масштаб лише для скріншота і ТІЛЬКИ коли немає відкритого діалогу (щоб у формах були справжні числа)
   if (screenshotMode && !document.querySelector('.overlay')) v = v * screenshotFactor;
-  try { return new Intl.NumberFormat('uk-UA',{style:'currency',currency:cur,maximumFractionDigits:2}).format(v); }
-  catch(e){ return v.toFixed(2) + ' ' + cur; }
+  try { return new Intl.NumberFormat('uk-UA',{style:'currency',currency:cur,currencyDisplay:'narrowSymbol',maximumFractionDigits:2}).format(v); }
+  catch(e){ return v.toFixed(2) + ' ' + curSym(cur); }
 }
 function fmtDate(iso){ if(!iso) return ''; const [y,m,d] = iso.slice(0,10).split('-'); return `${d}.${m}.${y}`; }
 
@@ -481,7 +483,7 @@ function openTransferPicker(fromId) {
   const others = state.accounts.filter(a => a.id !== fromId);
   if (others.length === 0) { alert('Потрібен щонайменше ще один рахунок.'); return; }
   const body = el(`<div><label class="lab">На який рахунок переказати?</label>
-    <select id="tp-to">${others.map(a=>`<option value="${a.id}">${esc(a.name)} (${a.currency_code})</option>`).join('')}</select></div>`);
+    <select id="tp-to">${others.map(a=>`<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select></div>`);
   openModal('Переказ із «' + accountName(fromId) + '»', body, {
     saveLabel: 'Далі', onSave: (close) => { const toId = parseInt($('#tp-to', body).value); close(); openTransferDialog(fromId, toId); }
   });
@@ -506,7 +508,7 @@ function openEntryForm(kind, existing, presetAccountId) {
   if (!existing && presetAccountId) e.account_id = presetAccountId;
   const body = el(`<div>
     <div><label class="lab">Сума</label><input id="f-amt" inputmode="decimal" placeholder="0.00" style="font-size:22px;font-weight:700" value="${e.amount ?? ''}"></div>
-    <div><label class="lab">Рахунок</label><select id="f-acc">${state.accounts.map(a=>`<option value="${a.id}" ${e.account_id===a.id?'selected':''}>${esc(a.name)} (${a.currency_code})</option>`).join('')}</select></div>
+    <div><label class="lab">Рахунок</label><select id="f-acc">${state.accounts.map(a=>`<option value="${a.id}" ${e.account_id===a.id?'selected':''}>${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select></div>
     <div><label class="lab">Категорія</label><select id="f-cat"><option value="">Без категорії</option>${cats.map(c=>`<option value="${c.id}" ${e.category_id===c.id?'selected':''}>${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select></div>
     <div class="row">
       <div style="flex:1"><label class="lab">Дата</label><input id="f-date" type="date" value="${e.date || todayISO()}"></div>
@@ -556,19 +558,19 @@ function openTransferDialog(fromId, toId) {
     <div class="preview" style="display:flex;justify-content:space-between;align-items:center;background:#f8fafc">
       <b>${esc(from.name)}</b><span class="muted">→</span><b>${esc(to.name)}</b>
     </div>
-    <div><label class="lab">Сума (${from.currency_code})</label><input id="t-amt" inputmode="decimal" placeholder="0.00" style="font-size:22px;font-weight:700"></div>
+    <div><label class="lab">Сума (${curSym(from.currency_code)})</label><input id="t-amt" inputmode="decimal" placeholder="0.00" style="font-size:22px;font-weight:700"></div>
     <div class="row">
       <div style="flex:1"><label class="lab">Комісія</label>
         <select id="t-feetype"><option value="NONE">Без комісії</option><option value="PERCENT">Відсоток %</option><option value="FIXED">Фіксована</option></select></div>
       <div style="flex:1"><label class="lab" id="t-feelab">Сума комісії</label>
         <div style="display:flex;gap:6px">
           <input id="t-feeval" inputmode="decimal" placeholder="0" disabled style="flex:1">
-          <select id="t-feecur" class="hidden" style="width:84px">${cross?`<option value="${F}">${F}</option><option value="${T}">${T}</option>`:''}</select>
+          <select id="t-feecur" class="hidden" style="width:84px">${cross?`<option value="${F}">${curSym(F)}</option><option value="${T}">${curSym(T)}</option>`:''}</select>
         </div></div>
     </div>
     <div class="row ${cross?'':'hidden'}">
-      <div style="flex:1"><label class="lab">${cross?`Курс: 1 ${ori.strong} = X ${ori.weak}`:'Курс'}</label><input id="t-rate" inputmode="decimal" placeholder="напр. 41.5"></div>
-      <div style="flex:1"><label class="lab">Сума (${cross?T:''}) — зарахується</label><input id="t-toamt" inputmode="decimal" placeholder="0.00"></div>
+      <div style="flex:1"><label class="lab">${cross?`Курс: 1 ${curSym(ori.strong)} = X ${curSym(ori.weak)}`:'Курс'}</label><input id="t-rate" inputmode="decimal" placeholder="напр. 41.5"></div>
+      <div style="flex:1"><label class="lab">Сума (${cross?curSym(T):''}) — зарахується</label><input id="t-toamt" inputmode="decimal" placeholder="0.00"></div>
     </div>
     <div class="muted small ${cross?'':'hidden'}" id="t-ratehint" style="margin-top:-4px"></div>
     <div class="row">
@@ -655,7 +657,7 @@ function openTransferDialog(fromId, toId) {
 //==================== Редагування переказу ====================
 function openTransferEdit(tx) {
   if (state.accounts.length < 2) { alert('Для переказу потрібно щонайменше два рахунки.'); return; }
-  const opts = (sel) => state.accounts.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${esc(a.name)} (${a.currency_code})</option>`).join('');
+  const opts = (sel) => state.accounts.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('');
   const body = el(`<div>
     <div class="row">
       <div style="flex:1"><label class="lab">З рахунку</label><select id="e-from">${opts(tx.account_id)}</select></div>
@@ -700,18 +702,18 @@ function openTransferEdit(tx) {
     const ft = $$('#e-feetype').value;
     const cross = isCross();
     const ori = cross ? rateOrientation(from.currency_code, to.currency_code) : null;
-    $$('#e-curfrom').textContent = from ? from.currency_code : '';
+    $$('#e-curfrom').textContent = from ? curSym(from.currency_code) : '';
     $$('#e-feeval').disabled = ft === 'NONE';
     $$('#e-feelab').textContent = ft === 'PERCENT' ? 'Відсоток, %' : 'Сума комісії';
     $$('#e-ratewrap').classList.toggle('hidden', !cross);
-    $$('#e-ratelab').textContent = cross ? `Курс: 1 ${ori.strong} = X ${ori.weak}` : 'Курс';
-    $$('#e-tolab').textContent = cross ? `Сума (${to.currency_code})` : 'Сума';
+    $$('#e-ratelab').textContent = cross ? `Курс: 1 ${curSym(ori.strong)} = X ${curSym(ori.weak)}` : 'Курс';
+    $$('#e-tolab').textContent = cross ? `Сума (${curSym(to.currency_code)})` : 'Сума';
     // вибір валюти комісії (лише для FIXED у міжвалютному переказі)
     const feeCurEl = $$('#e-feecur');
     const showFeeCur = cross && ft === 'FIXED';
     feeCurEl.classList.toggle('hidden', !showFeeCur);
     if (showFeeCur) {
-      feeCurEl.innerHTML = `<option value="${from.currency_code}">${from.currency_code}</option><option value="${to.currency_code}">${to.currency_code}</option>`;
+      feeCurEl.innerHTML = `<option value="${from.currency_code}">${curSym(from.currency_code)}</option><option value="${to.currency_code}">${curSym(to.currency_code)}</option>`;
       const valid = [from.currency_code, to.currency_code];
       feeCurEl.value = (feeCurChoice && valid.includes(feeCurChoice)) ? feeCurChoice : from.currency_code;
     }
@@ -911,7 +913,7 @@ views.dashboard = (app) => {
   if (allCurs.length > 1) {
     const mkChip = (label, active, onClick) => { const b = el(`<button class="curchip${active?' on':''}">${label}</button>`); b.onclick = onClick; return b; };
     cf.appendChild(mkChip('Всі', dashCurSet.size===0, () => { dashCurSet.clear(); render(); }));
-    allCurs.forEach(c => cf.appendChild(mkChip(c, dashCurSet.has(c), () => { dashCurSet.has(c)?dashCurSet.delete(c):dashCurSet.add(c); render(); })));
+    allCurs.forEach(c => cf.appendChild(mkChip(curSym(c), dashCurSet.has(c), () => { dashCurSet.has(c)?dashCurSet.delete(c):dashCurSet.add(c); render(); })));
   }
   $('#rrefresh', head).onclick = () => ensureRatesFresh(true);
   $('#togglehide', head).onclick = () => setHideBalances(!hideBalances);
@@ -1116,7 +1118,7 @@ views.accounts = (app) => {
     const bnk = a.bank_id ? bankById(a.bank_id) : null;
     const c = el(`<div class="card" style="padding:14px;border-left:4px solid ${a.color};display:flex;justify-content:space-between;gap:10px">
       <div style="min-width:0"><div style="font-weight:600">${a.icon?a.icon+' ':''}${esc(a.name)}</div>
-      <div class="muted small">${TYPE_LABEL[a.type]} · ${a.currency_code}${bnk?' · '+esc(bnk.name):''} · старт: ${money(a.initial_balance,a.currency_code)}</div>
+      <div class="muted small">${TYPE_LABEL[a.type]} · ${curSym(a.currency_code)}${bnk?' · '+esc(bnk.name):''} · старт: ${money(a.initial_balance,a.currency_code)}</div>
       <div class="tabnum" style="font-size:18px;font-weight:800;margin-top:4px">${money(accountBalance(a.id),a.currency_code)}</div></div>
       <div style="display:flex;flex-direction:column;gap:4px"></div></div>`);
     const actions = c.lastElementChild;
@@ -1375,7 +1377,7 @@ views.credits = (app) => {
     const usedPct = bank.limit > 0 ? Math.min(100, Math.round(out / bank.limit * 100)) : 0;
     const card = el(`<section class="card" style="padding:16px;margin-top:12px">
       <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
-        <h2 style="min-width:0;display:flex;align-items:center;gap:8px"><span class="grip" title="Перетягніть, щоб змінити порядок банків">⠿</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(bank.name)}</span> <span class="muted small">${bank.currency}</span></h2>
+        <h2 style="min-width:0;display:flex;align-items:center;gap:8px"><span class="grip" title="Перетягніть, щоб змінити порядок банків">⠿</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(bank.name)}</span> <span class="muted small">${curSym(bank.currency)}</span></h2>
         <div class="bankacts" style="display:flex;gap:6px;flex:0 0 auto"></div></div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-top:12px">
         <div><div class="muted small">Ліміт</div><div class="tabnum" style="font-weight:700">${money(bank.limit,bank.currency)}</div></div>
@@ -1458,10 +1460,10 @@ function openLoanPayment(l, bank) {
       <div class="pl"><span class="muted">Поточний залишок</span><b>${money(out,bank.currency)}</b></div>
       <div class="pl"><span class="muted">Залишок після платежу</span><b id="pp-after">—</b></div>
     </div>
-    <div><label class="lab">Сума платежу (${bank.currency})</label><input id="pp-amt" inputmode="decimal" value="${pay}"></div>
+    <div><label class="lab">Сума платежу (${curSym(bank.currency)})</label><input id="pp-amt" inputmode="decimal" value="${pay}"></div>
     <div><label class="lab">Списати з рахунку (як «витрату»)</label><select id="pp-acc">
       <option value="">— не створювати операцію —</option>
-      ${accs.map(a=>`<option value="${a.id}">${esc(a.name)} (${a.currency_code})</option>`).join('')}
+      ${accs.map(a=>`<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}
     </select></div>
     <div class="row">
       <div style="flex:1"><label class="lab">Категорія</label><select id="pp-cat"><option value="">Без категорії</option>${expCats.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select></div>
@@ -1486,7 +1488,7 @@ function openLoanPayment(l, bank) {
     const acc = $$('#pp-acc').value ? state.accounts.find(a=>a.id===parseInt($$('#pp-acc').value)) : null;
     const warn = $$('#pp-curwarn');
     if (acc && acc.currency_code !== bank.currency) {
-      warn.textContent = `Увага: валюта рахунку (${acc.currency_code}) відрізняється від ${bank.currency}; суму спишеться як є.`;
+      warn.textContent = `Увага: валюта рахунку (${curSym(acc.currency_code)}) відрізняється від ${curSym(bank.currency)}; суму спишеться як є.`;
       warn.classList.remove('hidden');
     } else warn.classList.add('hidden');
   }
@@ -1531,7 +1533,7 @@ function openBankForm(existing) {
     </div>
     <div><label class="lab">Основний рахунок (для платежів за кредитами)</label><select id="b-primary">
       <option value="">— не вказано —</option>
-      ${linked.map(a=>`<option value="${a.id}">${esc(a.name)} (${a.currency_code})</option>`).join('')}
+      ${linked.map(a=>`<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}
     </select>
     ${existing && linked.length === 0 ? `<div class="muted small" style="margin-top:4px">Привʼяжіть рахунки до цього банку у вкладці «Рахунки», щоб обрати основний.</div>` : ''}</div>
     <div class="err hidden" id="b-err"></div>
@@ -1554,7 +1556,7 @@ function openLoanForm(existing, presetBankId) {
   if (state.banks.length === 0) { alert('Спершу додайте банк.'); return; }
   const e = existing || { bank_id: presetBankId ?? state.banks[0].id, months:12, has_interest:false, rate:0, paid:0, due_date: todayISO() };
   const body = el(`<div>
-    <div><label class="lab">Банк</label><select id="l-bank">${state.banks.map(b=>`<option value="${b.id}">${esc(b.name)} (${b.currency})</option>`).join('')}</select></div>
+    <div><label class="lab">Банк</label><select id="l-bank">${state.banks.map(b=>`<option value="${b.id}">${esc(b.name)} (${curSym(b.currency)})</option>`).join('')}</select></div>
     <div><label class="lab">Опис</label><input id="l-name" value="${esc(e.name||'')}" placeholder="напр. Розстрочка на холодильник"></div>
     <div class="row">
       <div style="flex:1"><label class="lab">Сума кредиту</label><input id="l-amt" inputmode="decimal" value="${e.principal ?? ''}"></div>
