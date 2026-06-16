@@ -572,6 +572,7 @@ function openTransferDialog(fromId, toId) {
   </div>`);
 
   const feeType = $('#t-feetype', body), feeVal = $('#t-feeval', body), feeLab = $('#t-feelab', body), feeCurEl = $('#t-feecur', body);
+  const amtEl = $('#t-amt', body), rateEl = $('#t-rate', body), toEl = $('#t-toamt', body);
 
   const feeCurNow = () => (cross && feeType.value === 'FIXED') ? feeCurEl.value : F;
   function curMult(){ const A = num(amtEl.value), B = cross ? num(toEl.value) : A; return (cross && A > 0 && B > 0) ? B / A : 1; }
