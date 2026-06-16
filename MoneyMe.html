@@ -1224,11 +1224,59 @@ function loanRow(l, bank) {
     </div>
   </div>`);
   const acts = $('.loanacts', node);
+  if (!closed) {
+    const pay = el(`<button class="btn sm" title="Внести платіж за місяць">Платіж</button>`);
+    pay.onclick = () => openLoanPayment(l, bank);
+    acts.appendChild(pay);
+  }
   const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openLoanForm(l);
   const del = el(`<button class="btn danger sm">✕</button>`);
   del.onclick = () => { if (confirm('Видалити цей кредит?')) { state.loans = state.loans.filter(x=>x.id!==l.id); save(); render(); } };
   acts.appendChild(ed); acts.appendChild(del);
   return node;
+}
+
+// Внесення платежу: сума за місяць рахується автоматично, користувач підтверджує (або змінює).
+function openLoanPayment(l, bank) {
+  const monthly = loanMonthly(l);
+  const out = loanOutstanding(l);
+  const pay = round2(Math.min(monthly, out));
+  const body = el(`<div>
+    <div class="preview">
+      <div class="pl"><span class="muted">Платіж за місяць (авто)</span><b style="color:var(--amber)" id="pp-monthly">${money(pay,bank.currency)}</b></div>
+      <div class="pl"><span class="muted">Поточний залишок</span><b>${money(out,bank.currency)}</b></div>
+      <div class="pl"><span class="muted">Залишок після платежу</span><b id="pp-after">—</b></div>
+    </div>
+    <div><label class="lab">Сума платежу</label><input id="pp-amt" inputmode="decimal" value="${pay}"></div>
+    <div class="muted small">Суму розраховано автоматично (платіж за місяць); за потреби змініть її вручну.</div>
+    <div id="pp-close-note" class="small hidden" style="color:var(--green)">Після цього платежу кредит буде закрито.</div>
+    <button class="btn ghost sm" id="pp-full" style="margin-top:6px">Закрити кредит повністю</button>
+  </div>`);
+  const $$ = (s) => $(s, body);
+  function upd() {
+    let amt = round2(num($$('#pp-amt').value));
+    amt = Math.max(0, Math.min(amt, out));
+    const after = round2(out - amt);
+    $$('#pp-after').textContent = money(after, bank.currency);
+    $$('#pp-close-note').classList.toggle('hidden', after > 0.005);
+  }
+  body.addEventListener('input', upd); upd();
+
+  const close = openModal('Платіж — ' + (l.name || 'Кредит'), body, {
+    saveLabel: 'Підтвердити платіж',
+    onSave: (close) => {
+      let amt = round2(num($$('#pp-amt').value));
+      if (amt <= 0) return;
+      amt = Math.min(amt, loanOutstanding(l));
+      l.paid = round2(Math.min(l.principal, (l.paid || 0) + amt));
+      save(); close(); render();
+    }
+  });
+  $$('#pp-full').onclick = () => {
+    if (confirm(`Закрити кредит «${l.name || 'Кредит'}» повністю? Залишок ${money(out, bank.currency)} буде погашено.`)) {
+      l.paid = l.principal; save(); close(); render();
+    }
+  };
 }
 
 function openBankForm(existing) {
