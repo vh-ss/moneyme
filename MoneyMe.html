@@ -802,11 +802,16 @@ views.dashboard = (app) => {
   });
   app.appendChild(sec);
 
-  // останні операції
-  const recent = [...state.transactions].sort((a,b)=>(b.ord||0)-(a.ord||0)).slice(0,8);
+  // останні операції (з урахуванням фільтра валют)
+  const inSel = (t) => {
+    if (selected.includes(accountCur(t.account_id))) return true;
+    if (t.kind === 'TRANSFER' && t.to_account_id && selected.includes(accountCur(t.to_account_id))) return true;
+    return false;
+  };
+  const recent = [...state.transactions].filter(inSel).sort((a,b)=>(b.ord||0)-(a.ord||0)).slice(0,8);
   const list = el(`<section class="card" style="padding:14px;margin-top:18px"><h2 style="margin-bottom:6px">Останні операції</h2><div id="recent"></div></section>`);
   const rl = $('#recent', list);
-  if (recent.length === 0) rl.appendChild(el(`<div class="empty">Операцій ще немає</div>`));
+  if (recent.length === 0) rl.appendChild(el(`<div class="empty">${dashCurSet.size ? 'Немає операцій за обраними валютами' : 'Операцій ще немає'}</div>`));
   recent.forEach(t => rl.appendChild(txRow(t, {
     onEdit: (tx) => tx.kind === 'TRANSFER' ? openTransferEdit(tx) : openEntryForm(tx.kind, tx),
     onDelete: (tx) => { if(confirm(tx.loan_id ? 'Видалити цей платіж? Сума повернеться до залишку кредиту.' : 'Видалити операцію?')) deleteTx(tx); }
