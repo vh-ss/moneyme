@@ -1118,6 +1118,7 @@ function recalcSeq(data){
 }
 
 //==================== Вигляд: Кредити ====================
+let showZeroLimitBanks = false;   // показувати банки з нульовим кредитним лімітом
 views.credits = (app) => {
   const head = el(`<div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Кредити</h1></div>`);
   const addBank = el(`<button class="btn primary">+ Банк</button>`); addBank.onclick = () => openBankForm();
@@ -1153,7 +1154,16 @@ views.credits = (app) => {
     return;
   }
 
-  state.banks.forEach(bank => {
+  // банки з нульовим лімітом — приховані, з кнопкою показу
+  const hidden = state.banks.filter(b => (b.limit || 0) <= 0);
+  const visible = showZeroLimitBanks ? state.banks : state.banks.filter(b => (b.limit || 0) > 0);
+  if (hidden.length > 0) {
+    const t = el(`<div style="margin-top:10px"><button class="btn ghost sm">${showZeroLimitBanks ? `Сховати банки без ліміту (${hidden.length})` : `Показати банки без ліміту (${hidden.length})`}</button></div>`);
+    t.firstElementChild.onclick = () => { showZeroLimitBanks = !showZeroLimitBanks; render(); };
+    app.appendChild(t);
+  }
+
+  visible.forEach(bank => {
     const out = bankOutstanding(bank.id);
     const avail = bankAvailable(bank);
     const burden = bankMonthlyBurden(bank.id);
