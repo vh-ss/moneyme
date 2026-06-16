@@ -187,6 +187,35 @@ function rateFor(cur) {
 }
 function toUAH(amount, cur) { const r = rateFor(cur); return r == null ? null : amount * r; }
 
+// Орієнтація крос-курсу для зручного вводу: «1 strong = X weak». Грн завжди weak (тобто «X грн за 1 валюту»).
+function rateOrientation(F, T) {
+  if (F === 'UAH' && T !== 'UAH') return { strong: T, weak: F };
+  if (T === 'UAH' && F !== 'UAH') return { strong: F, weak: T };
+  const rF = rateFor(F), rT = rateFor(T);
+  if (rF != null && rT != null) return rF >= rT ? { strong: F, weak: T } : { strong: T, weak: F };
+  return { strong: T, weak: F };
+}
+// Курс за замовчуванням (X = скільки weak за 1 strong) з даних НБУ; null, якщо невідомо.
+function defaultCrossX(F, T) {
+  const { strong, weak } = rateOrientation(F, T);
+  const rs = rateFor(strong), rw = rateFor(weak);
+  if (rs != null && rw != null && rw > 0) return Math.round(rs / rw * 10000) / 10000;
+  return null;
+}
+// Перетворення введеного X у множник: toAmount = amount(F) * mult (результат у T).
+function xToMultiplier(F, T, X) {
+  if (!(X > 0)) return 1;
+  const { strong } = rateOrientation(F, T);
+  return F === strong ? X : 1 / X;
+}
+// Зворотне: з множника отримати X (для редагування переказу).
+function multiplierToX(F, T, mult) {
+  const { strong } = rateOrientation(F, T);
+  if (!(mult > 0)) return defaultCrossX(F, T) || 1;
+  const x = F === strong ? mult : 1 / mult;
+  return Math.round(x * 10000) / 10000;
+}
+
 async function ensureRatesFresh(force) {
   if (!force && ratesCache.date === todayISO() && Object.keys(ratesCache.rates || {}).length > 1) return;
   try {
@@ -498,6 +527,8 @@ function openTransferDialog(fromId, toId) {
   const to = state.accounts.find(a=>a.id===toId);
   if (!from || !to) return;
   const cross = from.currency_code !== to.currency_code;
+  const F = from.currency_code, T = to.currency_code;
+  const ori = cross ? rateOrientation(F, T) : null;
   const body = el(`<div>
     <div class="preview" style="display:flex;justify-content:space-between;align-items:center;background:#f8fafc">
       <b>${esc(from.name)}</b><span class="muted">→</span><b>${esc(to.name)}</b>
@@ -508,7 +539,7 @@ function openTransferDialog(fromId, toId) {
         <select id="t-feetype"><option value="NONE">Без комісії</option><option value="PERCENT">Відсоток %</option><option value="FIXED">Фіксована</option></select></div>
       <div style="flex:1"><label class="lab" id="t-feelab">Сума комісії</label><input id="t-feeval" inputmode="decimal" placeholder="0" disabled></div>
     </div>
-    <div id="t-ratewrap" class="${cross?'':'hidden'}"><label class="lab">Курс (${from.currency_code} → ${to.currency_code})</label><input id="t-rate" inputmode="decimal" placeholder="напр. 41.5" value="1"></div>
+    <div id="t-ratewrap" class="${cross?'':'hidden'}"><label class="lab">${cross?`Курс: 1 ${ori.strong} = X ${ori.weak}`:'Курс'}</label><input id="t-rate" inputmode="decimal" placeholder="напр. 41.5"><div class="muted small" id="t-ratehint" style="margin-top:2px"></div></div>
     <div class="row">
       <div style="flex:1"><label class="lab">Дата</label><input id="t-date" type="date" value="${todayISO()}"></div>
       <div style="flex:1"><label class="lab">Нотатка</label><input id="t-note" placeholder="—"></div>
@@ -531,11 +562,14 @@ function openTransferDialog(fromId, toId) {
   function upd(){
     const amt = num($('#t-amt', body).value);
     const fee = computeFee(amt, feeType.value, num(feeVal.value));
-    const rate = cross ? num($('#t-rate', body).value) : 1;
-    const r = rate > 0 ? rate : 1;
+    const mult = cross ? xToMultiplier(F, T, num($('#t-rate', body).value)) : 1;
     $('#t-debit', body).textContent = '−' + money(round2(amt+fee), from.currency_code);
-    $('#t-credit', body).textContent = '+' + money(round2(amt*r), to.currency_code);
+    $('#t-credit', body).textContent = '+' + money(round2(amt*mult), to.currency_code);
     $('#t-fee', body).textContent = money(fee, from.currency_code);
+  }
+  if (cross) {
+    const defX = defaultCrossX(F, T);
+    if (defX != null) { $('#t-rate', body).value = String(defX); $('#t-ratehint', body).textContent = `Підставлено курс НБУ${ratesCache.date ? ' на ' + fmtDate(ratesCache.date) : ''}; змініть за потреби.`; }
   }
   body.addEventListener('input', upd); upd();
 
@@ -544,16 +578,17 @@ function openTransferDialog(fromId, toId) {
     onSave: (close) => {
       const amt = num($('#t-amt', body).value);
       const err = $('#t-err', body);
-      const rate = cross ? num($('#t-rate', body).value) : 1;
+      const X = cross ? num($('#t-rate', body).value) : 1;
       if (amt <= 0) { err.textContent='Введіть суму більше 0'; err.classList.remove('hidden'); return; }
-      if (cross && rate <= 0) { err.textContent='Введіть курс конвертації'; err.classList.remove('hidden'); return; }
+      if (cross && X <= 0) { err.textContent='Введіть курс конвертації'; err.classList.remove('hidden'); return; }
+      const mult = cross ? xToMultiplier(F, T, X) : 1;
       const fee = computeFee(amt, feeType.value, num(feeVal.value));
       state.transactions.push({
         id: nextId('tx'), ord: nextOrd(), kind:'TRANSFER', date: $('#t-date', body).value || todayISO(),
         note: $('#t-note', body).value.trim() || null,
         account_id: from.id, to_account_id: to.id,
-        amount: round2(amt), to_amount: round2(amt * (rate>0?rate:1)),
-        exchange_rate: rate>0?rate:1, fee_type: feeType.value, fee_value: num(feeVal.value), fee_amount: fee,
+        amount: round2(amt), to_amount: round2(amt * mult),
+        exchange_rate: mult, fee_type: feeType.value, fee_value: num(feeVal.value), fee_amount: fee,
       });
       save(); close(); render();
     }
@@ -575,7 +610,7 @@ function openTransferEdit(tx) {
         <option value="NONE">Без комісії</option><option value="PERCENT">Відсоток %</option><option value="FIXED">Фіксована</option></select></div>
       <div style="flex:1"><label class="lab" id="e-feelab">Сума комісії</label><input id="e-feeval" inputmode="decimal" value="${tx.fee_value || ''}"></div>
     </div>
-    <div id="e-ratewrap" class="hidden"><label class="lab" id="e-ratelab">Курс</label><input id="e-rate" inputmode="decimal" value="${tx.exchange_rate || 1}"></div>
+    <div id="e-ratewrap" class="hidden"><label class="lab" id="e-ratelab">Курс</label><input id="e-rate" inputmode="decimal"></div>
     <div class="row">
       <div style="flex:1"><label class="lab">Дата</label><input id="e-date" type="date" value="${tx.date}"></div>
       <div style="flex:1"><label class="lab">Нотатка</label><input id="e-note" value="${esc(tx.note||'')}" placeholder="—"></div>
@@ -592,23 +627,41 @@ function openTransferEdit(tx) {
   $$('#e-feetype').value = tx.fee_type || 'NONE';
   const acc = (id) => state.accounts.find(a => a.id === parseInt(id));
 
+  // ініціалізуємо поле курсу як X («скільки weak за 1 strong») зі збереженого множника
+  {
+    const f0 = acc($$('#e-from').value), t0 = acc($$('#e-to').value);
+    if (f0 && t0 && f0.currency_code !== t0.currency_code) {
+      $$('#e-rate').value = String(multiplierToX(f0.currency_code, t0.currency_code, tx.exchange_rate || 1));
+    }
+  }
   function upd() {
     const from = acc($$('#e-from').value), to = acc($$('#e-to').value);
     const ft = $$('#e-feetype').value;
     const cross = from && to && from.currency_code !== to.currency_code;
+    const ori = cross ? rateOrientation(from.currency_code, to.currency_code) : null;
     $$('#e-curfrom').textContent = from ? from.currency_code : '';
     $$('#e-feeval').disabled = ft === 'NONE';
     $$('#e-feelab').textContent = ft === 'PERCENT' ? 'Відсоток, %' : 'Сума комісії';
     $$('#e-ratewrap').classList.toggle('hidden', !cross);
-    $$('#e-ratelab').textContent = cross ? `Курс (${from.currency_code} → ${to.currency_code})` : 'Курс';
+    $$('#e-ratelab').textContent = cross ? `Курс: 1 ${ori.strong} = X ${ori.weak}` : 'Курс';
     const amt = num($$('#e-amt').value);
     const fee = computeFee(amt, ft, num($$('#e-feeval').value));
-    const rate = cross ? (num($$('#e-rate').value) || 0) : 1;
-    const r = rate > 0 ? rate : 1;
+    const mult = cross ? xToMultiplier(from.currency_code, to.currency_code, num($$('#e-rate').value)) : 1;
     $$('#e-debit').textContent = '−' + money(round2(amt + fee), from?.currency_code);
-    $$('#e-credit').textContent = '+' + money(round2(amt * r), to?.currency_code);
+    $$('#e-credit').textContent = '+' + money(round2(amt * mult), to?.currency_code);
     $$('#e-fee').textContent = money(fee, from?.currency_code);
   }
+  // при зміні рахунків — підставляємо курс НБУ для нової пари валют
+  const prefill = () => {
+    const from = acc($$('#e-from').value), to = acc($$('#e-to').value);
+    if (from && to && from.currency_code !== to.currency_code) {
+      const d = defaultCrossX(from.currency_code, to.currency_code);
+      if (d != null) $$('#e-rate').value = String(d);
+    }
+    upd();
+  };
+  $$('#e-from').addEventListener('change', prefill);
+  $$('#e-to').addEventListener('change', prefill);
   body.addEventListener('input', upd);
   body.addEventListener('change', upd);
   upd();
@@ -625,13 +678,14 @@ function openTransferEdit(tx) {
       if (amt <= 0) return show('Введіть суму більше 0');
       const ft = $$('#e-feetype').value;
       const cross = from.currency_code !== to.currency_code;
-      const rate = cross ? num($$('#e-rate').value) : 1;
-      if (cross && rate <= 0) return show('Введіть курс конвертації');
+      const X = cross ? num($$('#e-rate').value) : 1;
+      if (cross && X <= 0) return show('Введіть курс конвертації');
+      const mult = cross ? xToMultiplier(from.currency_code, to.currency_code, X) : 1;
       const fee = computeFee(amt, ft, num($$('#e-feeval').value));
       Object.assign(tx, {
         account_id: from.id, to_account_id: to.id,
-        amount: round2(amt), to_amount: round2(amt * (rate > 0 ? rate : 1)),
-        exchange_rate: rate > 0 ? rate : 1,
+        amount: round2(amt), to_amount: round2(amt * mult),
+        exchange_rate: mult,
         fee_type: ft, fee_value: num($$('#e-feeval').value), fee_amount: fee,
         date: $$('#e-date').value || todayISO(), note: $$('#e-note').value.trim() || null,
       });
