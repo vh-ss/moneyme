@@ -245,6 +245,21 @@ function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 let hideBalances = localStorage.getItem('moneyme.hide') === '1';
 function setHideBalances(v) { hideBalances = v; localStorage.setItem('moneyme.hide', v ? '1' : '0'); render(); }
 
+// Демо-цифри для скріншота: випадкові правдоподібні баланси (через стартовий залишок, щоб усе сходилось).
+function randomBalance(cur) {
+  const big = cur === 'UAH';
+  const min = big ? 2000 : 100, max = big ? 250000 : 9000, step = big ? 50 : 5;
+  return Math.round((min + Math.random() * (max - min)) / step) * step;
+}
+function randomizeForScreenshot() {
+  state.accounts.forEach(a => {
+    const effect = accountBalance(a.id) - (a.initial_balance || 0); // вплив операцій
+    a.initial_balance = round2(randomBalance(a.currency_code) - effect); // щоб поточний баланс = випадкове число
+  });
+  state.loans.forEach(l => { l.paid = round2(Math.min(l.principal || 0, (l.principal || 0) * Math.random())); });
+  save(); render();
+}
+
 function seed() {
   const cats = [];
   let cid = 1;
@@ -907,6 +922,13 @@ views.dashboard = (app) => {
   if (selected.length === 0) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   app.appendChild(head);
+
+  // кнопка демо-цифр для скріншота
+  const sb = el(`<div style="margin-top:8px"><button class="btn ghost sm" id="randfill" title="Підставити випадкові правдоподібні суми для скріншота">🎲 Цифри для скріна</button></div>`);
+  $('#randfill', sb).onclick = () => {
+    if (confirm('Підставити ВИПАДКОВІ суми всім рахункам і кредитам (для скріншота)?\nПоточні стартові залишки буде підлаштовано — реальні значення втратяться. Зробіть бекап у Налаштуваннях, якщо потрібно.')) randomizeForScreenshot();
+  };
+  app.appendChild(sb);
 
   // рахунки з drag-and-drop
   const sec = el(`<section>
