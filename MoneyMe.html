@@ -98,6 +98,16 @@
   .curchip { border: 1px solid var(--line); background: #fff; color: var(--muted); border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 600; }
   .curchip:hover { background: #f1f5f9; }
   .curchip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .ctxmenu { position: fixed; z-index: 60; min-width: 190px; background: #fff; border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 10px 30px rgba(15,23,42,.18); padding: 6px; }
+  .ctxmenu .ci { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 9px;
+    font-size: 14px; cursor: pointer; }
+  .ctxmenu .ci:hover { background: #f1f5f9; }
+  .ctxmenu .ci .cdot { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center;
+    color: #fff; font-weight: 700; font-size: 15px; line-height: 1; flex: 0 0 auto; }
+  .ctxmenu .chead { padding: 6px 11px 4px; font-size: 12px; color: var(--muted); font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ctxmenu .sep { height: 1px; background: var(--line); margin: 4px 6px; }
 
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
   .swatch { width: 28px; height: 28px; border-radius: 999px; border: 0; }
@@ -358,6 +368,41 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
   return close;
 }
 
+// Контекстне меню біля курсору. items: [{label, icon, color, onClick} | {sep:true}], title — необовʼязковий заголовок.
+function openContextMenu(x, y, items, title) {
+  document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
+  const menu = el(`<div class="ctxmenu"></div>`);
+  if (title) menu.appendChild(el(`<div class="chead">${esc(title)}</div>`));
+  items.forEach(it => {
+    if (it.sep) { menu.appendChild(el(`<div class="sep"></div>`)); return; }
+    const row = el(`<div class="ci">${it.icon?`<span class="cdot" style="background:${it.color||'#64748b'}">${it.icon}</span>`:''}<span>${esc(it.label)}</span></div>`);
+    row.onclick = () => { close(); it.onClick(); };
+    menu.appendChild(row);
+  });
+  document.body.appendChild(menu);
+  // тримаємо меню в межах вікна
+  const r = menu.getBoundingClientRect();
+  const px = Math.min(x, window.innerWidth - r.width - 8);
+  const py = Math.min(y, window.innerHeight - r.height - 8);
+  menu.style.left = Math.max(8, px) + 'px';
+  menu.style.top = Math.max(8, py) + 'px';
+  function close(){ menu.remove(); document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); }
+  function onDown(e){ if (!menu.contains(e.target)) close(); }
+  function onKey(e){ if (e.key === 'Escape') close(); }
+  setTimeout(() => { document.addEventListener('mousedown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
+}
+
+// Вибір рахунку-призначення для переказу, далі — звичайний діалог переказу.
+function openTransferPicker(fromId) {
+  const others = state.accounts.filter(a => a.id !== fromId);
+  if (others.length === 0) { alert('Потрібен щонайменше ще один рахунок.'); return; }
+  const body = el(`<div><label class="lab">На який рахунок переказати?</label>
+    <select id="tp-to">${others.map(a=>`<option value="${a.id}">${esc(a.name)} (${a.currency_code})</option>`).join('')}</select></div>`);
+  openModal('Переказ із «' + accountName(fromId) + '»', body, {
+    saveLabel: 'Далі', onSave: (close) => { const toId = parseInt($('#tp-to', body).value); close(); openTransferDialog(fromId, toId); }
+  });
+}
+
 function swatchPicker(selected, onPick) {
   const wrap = el(`<div class="swatches"></div>`);
   PALETTE.forEach(c => {
@@ -369,11 +414,12 @@ function swatchPicker(selected, onPick) {
 }
 
 //==================== Форма витрати/надходження ====================
-function openEntryForm(kind, existing) {
+function openEntryForm(kind, existing, presetAccountId) {
   if (state.accounts.length === 0) { alert('Спершу додайте хоча б один рахунок.'); navigate('accounts'); return; }
   const isInc = kind === 'INCOME';
   const cats = state.categories.filter(c => c.kind === kind);
   const e = existing || {};
+  if (!existing && presetAccountId) e.account_id = presetAccountId;
   const body = el(`<div>
     <div><label class="lab">Сума</label><input id="f-amt" inputmode="decimal" placeholder="0.00" style="font-size:22px;font-weight:700" value="${e.amount ?? ''}"></div>
     <div><label class="lab">Рахунок</label><select id="f-acc">${state.accounts.map(a=>`<option value="${a.id}" ${e.account_id===a.id?'selected':''}>${esc(a.name)} (${a.currency_code})</option>`).join('')}</select></div>
@@ -703,6 +749,16 @@ views.dashboard = (app) => {
       e.preventDefault(); node.classList.remove('dragover');
       const fromId = parseInt(e.dataTransfer.getData('text/plain'));
       if (fromId && fromId !== a.id) openTransferDialog(fromId, a.id);
+    });
+    // правий клік → вибір операції по цьому рахунку
+    node.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      openContextMenu(e.clientX, e.clientY, [
+        { label: 'Витрата', icon: '−', color: 'var(--red)', onClick: () => openEntryForm('EXPENSE', null, a.id) },
+        { label: 'Надходження', icon: '+', color: 'var(--green)', onClick: () => openEntryForm('INCOME', null, a.id) },
+        { sep: true },
+        { label: 'Переказ із цього рахунку', icon: '⇄', color: '#0ea5e9', onClick: () => openTransferPicker(a.id) },
+      ], a.name);
     });
     grid.appendChild(node);
   });
