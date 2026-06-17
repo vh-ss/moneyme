@@ -706,6 +706,32 @@ function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTM
 window.addEventListener('hashchange', () => { const v = hashView(); if (v && v !== currentView) navigate(v); });
 document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigate(a.dataset.view); }));
 
+// Свайпи вліво/вправо — перехід між вкладками (тач).
+const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','goals','recurring','categories','settings'];
+function swipeNavigate(dir){
+  const i = VIEW_ORDER.indexOf(currentView), ni = i + dir;
+  if (i < 0 || ni < 0 || ni >= VIEW_ORDER.length) return;
+  navigate(VIEW_ORDER[ni]);
+}
+(function setupSwipe(){
+  let sx=0, sy=0, on=false;
+  document.addEventListener('touchstart', e => {
+    on = false;
+    if (e.touches.length !== 1) return;
+    if (document.querySelector('.overlay') || document.querySelector('.ctxmenu')) return;  // не свайпати при відкритому діалозі/меню
+    const x = e.touches[0].clientX;
+    if (x < 24 || x > window.innerWidth - 24) return;   // лишаємо крайові свайпи браузеру (назад/вперед)
+    const t = e.target;
+    if (t.closest && t.closest('input,select,textarea,.nav,.emojigrid,.acc,.draghandle,svg,.modal,.pbar,.bar')) return;
+    sx = x; sy = e.touches[0].clientY; on = true;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!on) return; on = false;
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8) swipeNavigate(dx < 0 ? 1 : -1);
+  }, { passive: true });
+})();
+
 //==================== Модалка ====================
 function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide=false } = {}) {
   const root = $('#modal-root');
