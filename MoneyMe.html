@@ -1483,10 +1483,8 @@ function openAccountForm(existing) {
       <div style="flex:1"><label class="lab">Валюта</label><select id="a-cur">${CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join('')}</select></div>
     </div>
     <div><label class="lab">Іконка</label>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input id="a-icon" maxlength="2" value="${esc(e.icon||'')}" placeholder="🙂" style="width:54px;text-align:center;font-size:18px">
-        <div id="a-icons" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-      </div></div>
+      <input id="a-icon" maxlength="2" value="${esc(e.icon||'')}" placeholder="🙂" style="width:54px;text-align:center;font-size:18px">
+      <div id="a-emoji" style="margin-top:6px"></div></div>
     <div><label class="lab">Банк (необовʼязково)</label><select id="a-bank"><option value="">— без банку —</option>${state.banks.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
     <div><label class="lab">Стартовий залишок</label><input id="a-init" inputmode="decimal" value="${e.initial_balance ?? 0}"></div>
     <div><label class="lab">Колір</label><div id="a-color"></div></div>
@@ -1494,11 +1492,7 @@ function openAccountForm(existing) {
   </div>`);
   $('#a-type', body).value = e.type; $('#a-cur', body).value = e.currency_code;
   $('#a-bank', body).value = e.bank_id ? String(e.bank_id) : '';
-  ['💳','💵','🏦','💰','🪙','💼','📈','🧾','🛒','🎁','🏠','🚗'].forEach(ic => {
-    const b = el(`<button class="curchip" style="padding:4px 8px;font-size:16px">${ic}</button>`);
-    b.onclick = (ev) => { ev.preventDefault(); $('#a-icon', body).value = ic; };
-    $('#a-icons', body).appendChild(b);
-  });
+  $('#a-emoji', body).appendChild(emojiPicker($('#a-icon', body)));
   $('#a-color', body).appendChild(swatchPicker(color, c => color = c));
   openModal(existing?'Редагувати рахунок':'Новий рахунок', body, {
     onSave: (close) => {
