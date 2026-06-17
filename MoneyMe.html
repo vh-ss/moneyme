@@ -223,8 +223,9 @@ function normalize() {
   if (!state.banks) { state.banks = []; changed = true; }
   if (!state.loans) { state.loans = []; changed = true; }
   if (!state.recurring) { state.recurring = []; changed = true; }   // регулярні платежі
-  if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1 }; changed = true; }
-  ['acc','cat','tx','bank','loan','rec'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = 1; changed = true; } });
+  if (!state.goals) { state.goals = []; changed = true; }           // цілі накопичення
+  if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1 }; changed = true; }
+  ['acc','cat','tx','bank','loan','rec','goal'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = 1; changed = true; } });
   (state.categories || []).forEach(c => {
     if (c.budget === undefined && c.kind === 'EXPENSE') { c.budget = 0; changed = true; }
     if (c.kind === 'EXPENSE' && !c.budget_period) { c.budget_period = 'monthly'; changed = true; }
@@ -264,6 +265,22 @@ function downloadBackup(){
   const url = URL.createObjectURL(blob); const a = document.createElement('a');
   a.href = url; a.download = `moneyme-backup-${todayISO()}.json`; a.click(); URL.revokeObjectURL(url);
   localStorage.setItem('moneyme.lastBackup', todayISO());
+}
+// Експорт операцій у CSV (роздільник «;» — зручно для Excel UA).
+function exportCSV(){
+  const q = s => `"${String(s ?? '').replace(/"/g,'""')}"`;
+  const KL = { EXPENSE:'Витрата', INCOME:'Надходження', TRANSFER:'Переказ' };
+  const head = ['Дата','Тип','Сума','Валюта','Рахунок','На рахунок','Категорія','Курс','Сума зарах.','Комісія','Нотатка','Теги'];
+  const rows = [...state.transactions].sort((a,b)=> a.date<b.date?-1 : a.date>b.date?1 : a.id-b.id).map(t => [
+    t.date, KL[t.kind]||t.kind, t.amount, accountCur(t.account_id), accountName(t.account_id),
+    t.kind==='TRANSFER'?accountName(t.to_account_id):'', t.category_id?(categoryById(t.category_id)?.name||''):'',
+    t.kind==='TRANSFER'?(t.exchange_rate||''):'', t.kind==='TRANSFER'?(t.to_amount||''):'', t.fee_amount||0,
+    t.note||'', (t.tags||[]).join(' ')
+  ].map(q).join(';'));
+  const csv = '﻿' + [head.map(q).join(';'), ...rows].join('\r\n');
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  a.href = url; a.download = `moneyme-operations-${todayISO()}.csv`; a.click(); URL.revokeObjectURL(url);
 }
 function restorePoints(){ try { return JSON.parse(localStorage.getItem('moneyme.history') || '[]'); } catch(e){ return []; } }
 // Раз на день зберігаємо знімок стану в браузері (до 7 останніх) — точки відновлення.
@@ -374,7 +391,7 @@ function seed() {
    ['Одяг','#14b8a6','👕'],['Інше','#64748b','📦']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'EXPENSE',color:c,icon:i}));
   [['Зарплата','#16a34a','💼'],['Підробіток','#0ea5e9','💸'],['Подарунки','#eab308','🎁'],
    ['Інше','#64748b','📥']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'INCOME',color:c,icon:i}));
-  return { version: SCHEMA_VERSION, seq: { acc:1, cat:cid, tx:1, bank:1, loan:1, rec:1 }, accounts: [], categories: cats, transactions: [], banks: [], loans: [], recurring: [] };
+  return { version: SCHEMA_VERSION, seq: { acc:1, cat:cid, tx:1, bank:1, loan:1, rec:1, goal:1 }, accounts: [], categories: cats, transactions: [], banks: [], loans: [], recurring: [], goals: [] };
 }
 function nextId(kind){ const v = state.seq[kind]++; save(); return v; }
 
@@ -1799,11 +1816,13 @@ views.settings = (app) => {
     <div class="row" style="flex-wrap:wrap;margin-top:12px">
       <button class="btn primary" id="exp">⬇ Експорт у файл</button>
       <button class="btn" id="imp">⬆ Імпорт із файлу</button>
+      <button class="btn" id="expcsv">⬇ Операції в CSV</button>
       <input type="file" id="impfile" accept="application/json,.json" class="hidden">
     </div>
     <div id="bk-msg" class="small" style="margin-top:10px"></div>
   </section>`);
   $('#exp', backup).onclick = () => { downloadBackup(); render(); };
+  $('#expcsv', backup).onclick = () => exportCSV();
   $('#imp', backup).onclick = () => $('#impfile', backup).click();
   $('#impfile', backup).onchange = async (ev) => {
     const file = ev.target.files[0]; if (!file) return;
@@ -1859,17 +1878,17 @@ views.settings = (app) => {
 function recalcSeq(data){
   const mx = (arr)=>arr.reduce((m,x)=>Math.max(m,x.id||0),0);
   return { acc: mx(data.accounts||[])+1, cat: mx(data.categories||[])+1, tx: mx(data.transactions||[])+1,
-           bank: mx(data.banks||[])+1, loan: mx(data.loans||[])+1, rec: mx(data.recurring||[])+1 };
+           bank: mx(data.banks||[])+1, loan: mx(data.loans||[])+1, rec: mx(data.recurring||[])+1, goal: mx(data.goals||[])+1 };
 }
 // Привести будь-який бекап (старий v1 чи новий v2) до поточної схеми.
 function migrateBackup(raw){
   let d = (raw && raw.data && Array.isArray(raw.data.accounts)) ? raw.data : raw;
   d = JSON.parse(JSON.stringify(d || {}));
   d.accounts = d.accounts || []; d.categories = d.categories || []; d.transactions = d.transactions || [];
-  d.banks = d.banks || []; d.loans = d.loans || []; d.recurring = d.recurring || [];
+  d.banks = d.banks || []; d.loans = d.loans || []; d.recurring = d.recurring || []; d.goals = d.goals || [];
   const rs = recalcSeq(d);
   d.seq = d.seq || {};
-  ['acc','cat','tx','bank','loan','rec'].forEach(k => { if (d.seq[k] == null) d.seq[k] = rs[k]; });
+  ['acc','cat','tx','bank','loan','rec','goal'].forEach(k => { if (d.seq[k] == null) d.seq[k] = rs[k]; });
   d.version = SCHEMA_VERSION;
   return d;
 }
