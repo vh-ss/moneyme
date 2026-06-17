@@ -485,6 +485,16 @@ function loanActive(l){ return loanOutstanding(l) > 0.005; }
 function bankOutstanding(bankId){ return round2(state.loans.filter(l=>l.bank_id===bankId).reduce((s,l)=>s+loanOutstanding(l),0)); }
 function bankAvailable(bank){ return round2((bank.limit || 0) - bankOutstanding(bank.id)); }
 function bankMonthlyBurden(bankId){ return round2(state.loans.filter(l=>l.bank_id===bankId && loanActive(l)).reduce((s,l)=>s+loanMonthly(l),0)); }
+// Чи внесено платіж по кредиту в поточному циклі (за ~місяць до дати списання).
+function loanPaidThisCycle(l){
+  if (!l.due_date) return false;
+  const cycleStart = addMonthsISO(l.due_date, -1);
+  return state.transactions.some(t => t.loan_id === l.id && t.kind === 'EXPENSE' && t.date >= cycleStart && t.date <= todayISO());
+}
+// Кредит «очікує платіж»: активний, термін у межах 3 днів/прострочено, і платіж цього циклу ще не внесено.
+function loanPending(l){
+  return loanActive(l) && !!l.due_date && l.due_date <= addDaysISO(todayISO(), 3) && !loanPaidThisCycle(l);
+}
 
 //==================== Навігація (через хеш URL — зберігається при перезавантаженні) ====================
 const views = {};
@@ -1030,12 +1040,17 @@ views.dashboard = (app) => {
     n.appendChild(b); app.appendChild(n);
   }
 
-  // нагадування про платежі за кредитами (термін у межах 3 днів або прострочено)
-  const loanDue = state.loans.filter(l => loanActive(l) && l.due_date && l.due_date <= addDaysISO(todayISO(), 3));
+  // нагадування про платежі за кредитами (очікують і ще не сплачені цього циклу)
+  const loanDue = state.loans.filter(loanPending);
   if (loanDue.length) {
-    const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>💳 Платежі за кредитами: ${loanDue.map(l=>esc(l.name||'Кредит')+' до '+fmtDate(l.due_date)).join('; ')}</span></div>`);
+    const today = todayISO();
+    const items = loanDue.map(l => `${esc(l.name||'Кредит')} — ${l.due_date < today ? 'прострочено з '+fmtDate(l.due_date) : 'до '+fmtDate(l.due_date)}`).join('; ');
+    const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>💳 Платежі за кредитами: ${items}</span><span class="row" style="gap:6px"></span></div>`);
+    const acts = n.lastElementChild;
+    const done = el(`<button class="btn sm" title="Платежі вже зроблено — перенести на наступний цикл">Сплачено ✓</button>`);
+    done.onclick = () => { loanDue.forEach(l => { l.due_date = addMonthsISO(l.due_date, 1); }); save(); render(); };
     const b = el(`<button class="btn sm">До кредитів</button>`); b.onclick = () => navigate('credits');
-    n.appendChild(b); app.appendChild(n);
+    acts.appendChild(done); acts.appendChild(b); app.appendChild(n);
   }
 
   // рахунки з drag-and-drop
