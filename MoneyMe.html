@@ -143,7 +143,8 @@
   .legend { list-style: none; margin: 0; padding: 0; font-size: 14px; }
   .legend li { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
   .legend .ld { width: 12px; height: 12px; border-radius: 999px; flex: 0 0 auto; }
-  .legend .ln { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend .ln { flex: 1; }
+  .ln { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hidden { display: none; }
 
   /* тости (скасування) */
@@ -486,18 +487,16 @@ function budgetsCard(opts){
   if (!cats.length) return null;
   const rows = cats.map(c => { const r = budgetRange(c); return { c, spent: categorySpent(c.id, r.from, r.to), label: r.label }; })
     .sort((a,b)=> (b.spent/b.c.budget) - (a.spent/a.c.budget));
-  const card = el(`<section class="card" style="padding:16px"><h2 style="margin-bottom:2px">${esc(title)}</h2></section>`);
+  const card = el(`<section class="card" style="padding:14px 16px"><h2 style="margin-bottom:8px">${esc(title)}</h2></section>`);
   rows.forEach(({c, spent, label}) => {
     const pct = Math.min(100, Math.round(spent / c.budget * 100));
     const real = Math.round(spent / c.budget * 100);
     const over = spent > c.budget;
     const color = over ? 'var(--red)' : (spent >= c.budget*0.8 ? 'var(--amber)' : 'var(--green)');
-    card.appendChild(el(`<div style="margin:9px 0 0">
-      <div style="display:flex;justify-content:space-between;font-size:14px;gap:8px">
-        <span class="ln">${c.icon?c.icon+' ':''}${esc(c.name)} <span class="muted small">/ ${label}</span></span>
-        <span class="small tabnum" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(c.budget)} · ${real}%${over?' ⛔':''}</span>
-      </div>
-      <div class="pbar" style="margin-top:4px"><i style="width:${pct}%;background:${color}"></i></div>
+    card.appendChild(el(`<div style="display:flex;align-items:center;gap:10px;margin-top:7px;font-size:13px">
+      <span class="ln" style="flex:0 0 34%;min-width:0">${c.icon?c.icon+' ':''}${esc(c.name)} <span class="muted" style="font-size:11px">/ ${label}</span></span>
+      <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${color}"></i></div>
+      <span class="tabnum" style="flex:0 0 auto;white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(c.budget)} · ${real}%${over?' ⛔':''}</span>
     </div>`));
   });
   return card;
