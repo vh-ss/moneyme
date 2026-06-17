@@ -1136,14 +1136,67 @@ views.transactions = (app) => {
   renderList();
 };
 
+//==================== Аналітика: службові функції ====================
+function isoOf(d){ const tz = d.getTimezoneOffset()*60000; return new Date(d.getTime()-tz).toISOString().slice(0,10); }
+function ymd(y,m,d){ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+function presetRange(name){
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+  if (name==='month') return { from: ymd(y,m+1,1), to: todayISO() };
+  if (name==='lastmonth'){ const pm = new Date(y,m-1,1); const ly=pm.getFullYear(), lmo=pm.getMonth(); return { from: ymd(ly,lmo+1,1), to: ymd(ly,lmo+1,new Date(ly,lmo+1,0).getDate()) }; }
+  if (name==='year') return { from: ymd(y,1,1), to: todayISO() };
+  if (name==='all') return { from:'', to: todayISO() };
+  return { from: monthStartISO(), to: todayISO() };
+}
+function prevRange(from, to){
+  if (!from || !to) return null;
+  const f = Date.parse(from), t = Date.parse(to); const len = t - f;
+  return { from: isoOf(new Date(f-len-86400000)), to: isoOf(new Date(f-86400000)) };
+}
+function pctDelta(cur, prev){ if (!prev) return null; return Math.round((cur-prev)/Math.abs(prev)*100); }
+// Чисті активи (UAH-екв за поточним курсом) станом на дату.
+function netWorthAt(dateISO){
+  let total = 0;
+  state.accounts.forEach(a => {
+    let bal = a.initial_balance || 0;
+    state.transactions.forEach(t => { if (t.date > dateISO) return;
+      if (t.kind==='INCOME' && t.account_id===a.id) bal += t.amount;
+      else if (t.kind==='EXPENSE' && t.account_id===a.id) bal -= t.amount;
+      else if (t.kind==='TRANSFER'){ if(t.account_id===a.id) bal -= (t.amount+(t.fee_amount||0)); if(t.to_account_id===a.id) bal += (t.to_amount||0); } });
+    const u = toUAH(bal, a.currency_code); total += (u==null ? bal : u);
+  });
+  return round2(total);
+}
+function lastMonthEnds(n){ const arr=[]; const now=new Date(); for(let i=n-1;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i+1, 0); arr.push({ iso: isoOf(d), label: ymd(d.getFullYear(), d.getMonth()+1, 1).slice(2,7) }); } return arr; }
+function netWorthSVG(points){
+  const H=150, W=100; const vals=points.map(p=>p.value);
+  const min=Math.min(0,...vals), max=Math.max(1,...vals); const range=(max-min)||1;
+  const x=i=> points.length<=1?W/2 : (i/(points.length-1))*W;
+  const y=v=> H-16 - ((v-min)/range)*(H-26);
+  const line = points.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
+  const area = `M0 ${H-16} ` + points.map((p,i)=>`L${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ') + ` L${W} ${H-16} Z`;
+  const step = Math.max(1, Math.ceil(points.length/6));
+  let labels=''; points.forEach((p,i)=>{ if(i%step===0||i===points.length-1) labels+=`<text x="${x(i).toFixed(1)}" y="${H-3}" font-size="3.6" fill="#94a3b8" text-anchor="middle">${p.label}</text>`; });
+  return el(`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="overflow:visible">
+    <path d="${area}" fill="var(--accent)" opacity="0.13"/>
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.1"/>${labels}</svg>`);
+}
+
 //==================== Вигляд: Аналітика ====================
-let anFilter = { from: monthStartISO(), to: todayISO() };
+let anFilter = { from: monthStartISO(), to: todayISO(), preset: 'month' };
 views.analytics = (app) => {
-  const top = el(`<div class="row" style="justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">
-    <h1 style="margin:0">Аналітика</h1>
-    <div class="row"><div><label class="lab">Від</label><input id="an-from" type="date" value="${anFilter.from}"></div>
-    <div><label class="lab">До</label><input id="an-to" type="date" value="${anFilter.to}"></div></div></div>`);
-  top.addEventListener('change', () => { anFilter = { from:$('#an-from',top).value, to:$('#an-to',top).value }; render(); });
+  const presets = [['month','Цей місяць'],['lastmonth','Минулий'],['year','Рік'],['all','Усе']];
+  const top = el(`<div>
+    <div class="row" style="justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">
+      <h1 style="margin:0">Аналітика</h1>
+      <div class="row"><div><label class="lab">Від</label><input id="an-from" type="date" value="${anFilter.from}"></div>
+      <div><label class="lab">До</label><input id="an-to" type="date" value="${anFilter.to}"></div></div>
+    </div>
+    <div class="pill" style="margin-top:10px;flex-wrap:wrap">${presets.map(([k,l])=>`<button data-p="${k}">${l}</button>`).join('')}</div>
+  </div>`);
+  $('#an-from',top).addEventListener('change', () => { anFilter = { from:$('#an-from',top).value, to:$('#an-to',top).value, preset:'custom' }; render(); });
+  $('#an-to',top).addEventListener('change', () => { anFilter = { from:$('#an-from',top).value, to:$('#an-to',top).value, preset:'custom' }; render(); });
+  top.querySelectorAll('.pill button').forEach(b => { b.classList.toggle('on', b.dataset.p===anFilter.preset);
+    b.onclick = () => { const r = presetRange(b.dataset.p); anFilter = { ...r, preset: b.dataset.p }; render(); }; });
   app.appendChild(top);
 
   const inR = (t) => inRange(t, anFilter.from, anFilter.to);
@@ -1152,12 +1205,28 @@ views.analytics = (app) => {
     if(t.kind==='INCOME')inc+=t.amount; else if(t.kind==='EXPENSE')exp+=t.amount; else if(t.kind==='TRANSFER')fees+=(t.fee_amount||0); });
   const net = inc - exp - fees;
 
+  // порівняння з попереднім періодом
+  const pr = prevRange(anFilter.from, anFilter.to);
+  let pInc=0, pExp=0;
+  if (pr) state.transactions.forEach(t => { if(!inRange(t,pr.from,pr.to))return; if(t.kind==='INCOME')pInc+=t.amount; else if(t.kind==='EXPENSE')pExp+=t.amount; });
+  const dInc = pctDelta(inc,pInc), dExp = pctDelta(exp,pExp);
+  const deltaTag = (d, goodIfNeg) => d==null ? '' : `<div class="k" style="font-size:11px;color:${(goodIfNeg? d<=0 : d>=0)?'var(--green)':'var(--red)'}">${d>0?'+':''}${d}% vs попередній</div>`;
+
   const sum = el(`<div class="sumcards" style="margin-top:14px">
-    ${[['Надходження',inc,'var(--green)',''],['Витрати',exp,'var(--red)',''],
-       ['Комісії',fees,'var(--amber)','окремо від витрат'],['Чистий потік',net,net>=0?'var(--green)':'var(--red)','']]
-      .map(([k,v,c,h])=>`<div class="card sumcard"><div class="k">${k}</div><div class="v tabnum" style="color:${c}">${money(v)}</div>${h?`<div class="k" style="font-size:10px">${h}</div>`:''}</div>`).join('')}
+    <div class="card sumcard"><div class="k">Надходження</div><div class="v tabnum" style="color:var(--green)">${money(inc)}</div>${deltaTag(dInc,false)}</div>
+    <div class="card sumcard"><div class="k">Витрати</div><div class="v tabnum" style="color:var(--red)">${money(exp)}</div>${deltaTag(dExp,true)}</div>
+    <div class="card sumcard"><div class="k">Комісії</div><div class="v tabnum" style="color:var(--amber)">${money(fees)}</div><div class="k" style="font-size:10px">окремо від витрат</div></div>
+    <div class="card sumcard"><div class="k">Чистий потік</div><div class="v tabnum" style="color:${net>=0?'var(--green)':'var(--red)'}">${money(net)}</div></div>
   </div>`);
   app.appendChild(sum);
+
+  // графік чистих активів (останні 12 місяців)
+  const nwPoints = lastMonthEnds(12).map(m => ({ label: m.label, value: netWorthAt(m.iso) }));
+  const nw = el(`<div class="card" style="padding:14px;margin-top:14px">
+    <div class="row" style="justify-content:space-between;align-items:baseline"><h2>Чисті активи (₴-екв)</h2>
+      <b class="tabnum">${money(nwPoints[nwPoints.length-1].value)}</b></div></div>`);
+  nw.appendChild(netWorthSVG(nwPoints));
+  app.appendChild(nw);
 
   // за категоріями
   function catData(kind) {
@@ -1187,6 +1256,34 @@ views.analytics = (app) => {
     grid.appendChild(cardEl);
   });
   app.appendChild(grid);
+
+  // витрати по рахунках і по банках
+  function spendBy(keyFn) {
+    const map = {};
+    state.transactions.forEach(t => { if (t.kind!=='EXPENSE' || !inR(t)) return; const k = keyFn(t); if (k==null) return; map[k]=(map[k]||0)+t.amount; });
+    return map;
+  }
+  const byAcc = spendBy(t => t.account_id);
+  const accRows = Object.entries(byAcc).map(([id,v]) => ({ a: state.accounts.find(x=>x.id==id), total:v })).filter(x=>x.a).sort((a,b)=>b.total-a.total);
+  const byBank = {};
+  accRows.forEach(r => { const bid = r.a.bank_id || 0; byBank[bid] = (byBank[bid]||0) + r.total; });
+  const bankRows = Object.entries(byBank).map(([bid,v]) => ({ name: bid=='0' ? 'Без банку' : (bankById(parseInt(bid))?.name || '—'), color: '#64748b', total:v })).sort((a,b)=>b.total-a.total);
+
+  const breakdown = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:14px"></div>`);
+  const mkList = (title, rows, colorOf) => {
+    const total = rows.reduce((s,r)=>s+r.total,0);
+    const card = el(`<div class="card" style="padding:14px"><h2 style="margin-bottom:10px">${title}</h2></div>`);
+    if (!rows.length) { card.appendChild(el(`<div class="empty">Немає даних</div>`)); return card; }
+    const ul = el(`<div></div>`);
+    rows.forEach(r => { const c = colorOf(r); const pct = total?Math.round(r.total/total*100):0;
+      ul.appendChild(el(`<div style="margin:8px 0">
+        <div style="display:flex;justify-content:space-between;font-size:14px"><span class="ln">${esc(r.name||(r.a&&r.a.name)||'')}</span><b class="tabnum">${money(r.total)}</b></div>
+        <div class="pbar" style="margin-top:4px"><i style="width:${pct}%;background:${c}"></i></div></div>`)); });
+    card.appendChild(ul); return card;
+  };
+  breakdown.appendChild(mkList('Витрати по рахунках', accRows, r => r.a.color || 'var(--accent)'));
+  breakdown.appendChild(mkList('Витрати по банках', bankRows, () => 'var(--accent)'));
+  app.appendChild(breakdown);
 
   // помісячна динаміка
   const mMap = {};
