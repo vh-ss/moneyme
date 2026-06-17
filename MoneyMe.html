@@ -893,7 +893,25 @@ function txRow(t, { onEdit, onDelete, onDup } = {}) {
   const color = isT ? '#0ea5e9' : isInc ? 'var(--green)' : (cat?.color || 'var(--red)');
   const cur = accountCur(t.account_id);
   const title = isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : (cat?.name || 'Без категорії');
-  const sub = isT ? (t.fee_amount>0 ? `Комісія ${money(t.fee_amount,cur)}` : 'Переказ') : accountName(t.account_id);
+  let sub;
+  if (isT) {
+    const T = accountCur(t.to_account_id);
+    const cross = cur !== T && t.to_amount != null;
+    const parts = [];
+    if (cross) {
+      const ori = rateOrientation(cur, T);
+      const mult = (t.exchange_rate && t.exchange_rate > 0) ? t.exchange_rate : (t.amount ? t.to_amount / t.amount : 1);
+      const X = +multiplierToX(cur, T, mult).toFixed(4);
+      parts.push(`1 ${curSym(ori.strong)} = ${X} ${curSym(ori.weak)}`);
+      parts.push(`→ ${money(t.to_amount, T)}`);
+    } else {
+      parts.push('Переказ');
+    }
+    if (t.fee_amount > 0) parts.push(`комісія ${money(t.fee_amount, cur)}`);
+    sub = parts.join(' · ');
+  } else {
+    sub = accountName(t.account_id);
+  }
   const amtHtml = isT
     ? `<span class="txamt muted">${money(t.amount,cur)}</span>`
     : `<span class="txamt" style="color:${isInc?'var(--green)':'var(--red)'}">${isInc?'+':'−'}${money(t.amount,cur)}</span>`;
