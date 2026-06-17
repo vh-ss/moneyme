@@ -1267,6 +1267,7 @@ function barsSVG(months) {
 
 //==================== Вигляд: Огляд ====================
 let dashCurSet = new Set();   // порожньо = всі валюти
+let showZeroAccounts = false; // показувати рахунки з нульовим балансом на «Огляді»
 views.dashboard = (app) => {
   // баланси за валютами
   const byCur = {};
@@ -1357,9 +1358,12 @@ views.dashboard = (app) => {
       <h2>Рахунки</h2><span class="muted small">Перетягніть на іншу — переказ · тап — меню</span></div>
     <div class="accgrid" id="accgrid"></div></section>`);
   const grid = $('#accgrid', sec);
-  const accs = state.accounts.filter(a => !a.archived && selected.includes(a.currency_code));
+  const allAccs = state.accounts.filter(a => !a.archived && selected.includes(a.currency_code));
+  const zeroAccs = allAccs.filter(a => accountBalance(a.id) === 0);
+  const accs = showZeroAccounts ? allAccs : allAccs.filter(a => accountBalance(a.id) !== 0);
   if (state.accounts.length === 0) grid.appendChild(el(`<div class="muted small">Ще немає рахунків. Додайте у вкладці «Рахунки».</div>`));
-  else if (accs.length === 0) grid.appendChild(el(`<div class="muted small">Немає рахунків за обраними валютами.</div>`));
+  else if (allAccs.length === 0) grid.appendChild(el(`<div class="muted small">Немає рахунків за обраними валютами.</div>`));
+  else if (accs.length === 0) grid.appendChild(el(`<div class="muted small">Усі рахунки з нульовим балансом.</div>`));
   accs.forEach(a => {
     const bnk = a.bank_id ? bankById(a.bank_id) : null;
     const node = el(`<div class="acc" data-acc="${a.id}" style="border-top-color:${a.color}" title="Перетягніть на інший рахунок — переказ. Тап/клік — меню дій.">
@@ -1370,6 +1374,11 @@ views.dashboard = (app) => {
     node.addEventListener('contextmenu', e => { e.preventDefault(); accountActionMenu(a, e.clientX, e.clientY); });
     grid.appendChild(node);
   });
+  if (zeroAccs.length) {
+    const t = el(`<div style="margin-top:8px"><button class="btn ghost sm">${showZeroAccounts ? `Сховати нульові (${zeroAccs.length})` : `Показати нульові (${zeroAccs.length})`}</button></div>`);
+    t.firstElementChild.onclick = () => { showZeroAccounts = !showZeroAccounts; render(); };
+    sec.appendChild(t);
+  }
   app.appendChild(sec);
 
   // останні операції (з урахуванням фільтра валют)
