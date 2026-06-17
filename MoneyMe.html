@@ -39,6 +39,9 @@
   .nav a.active { background: var(--accent); color: #fff; }
   .nav a:hover:not(.active) { background: var(--hover); }
   .nav a .ni { font-size: 15px; line-height: 1; }
+  .navlang { margin-left: auto; border: 1px solid var(--line); background: transparent; color: var(--muted);
+    border-radius: 8px; padding: 5px 9px; font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; flex: 0 0 auto; }
+  .navlang:hover { background: var(--hover); }
 
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
   h1 { font-size: 22px; margin: 22px 0 14px; }
@@ -216,6 +219,7 @@
     <a data-view="recurring"><span class="ni">🔁</span><span class="nt">Регулярні</span></a>
     <a data-view="categories"><span class="ni">🏷️</span><span class="nt">Категорії</span></a>
     <a data-view="settings"><span class="ni">⚙️</span><span class="nt">Налаштування</span></a>
+    <button class="navlang" id="langbtn" title="Мова / Language">EN</button>
   </div>
 </header>
 <div class="wrap" id="app"></div>
@@ -260,12 +264,48 @@ function applyTheme() { document.documentElement.setAttribute('data-theme', them
 function toggleTheme() { theme = theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('moneyme.theme', theme); applyTheme(); render(); }
 applyTheme();
 
+//==================== Мова (UK / EN) ====================
+let lang = localStorage.getItem('moneyme.lang') || 'uk';
+function setLang(l){ lang = (l === 'en') ? 'en' : 'uk'; localStorage.setItem('moneyme.lang', lang); render(); }
+// Переклад уже відрендереного DOM: UK (джерело) -> EN за словником.
+const I18N_EN = {
+  'Огляд':'Overview','Операції':'Transactions','Аналітика':'Analytics','Рахунки':'Accounts','Кредити':'Credits','Цілі':'Goals','Регулярні':'Recurring','Категорії':'Categories','Налаштування':'Settings',
+  'Загальний баланс':'Total balance','Разом ≈':'Total ≈','Останні операції':'Recent transactions','Операцій ще немає':'No transactions yet','Немає рахунків за обраними валютами':'No accounts for selected currencies','Усі рахунки з нульовим балансом':'All accounts have zero balance','Бюджети':'Budgets','Додайте рахунок, щоб почати':'Add an account to start','Всі':'All','Курси:':'Rates:',
+  'Надходження (міс.):':'Income (mo.):','Витрати (міс.):':'Expenses (mo.):','Комісії (міс.):':'Fees (mo.):','Кредити/міс:':'Credits/mo:',
+  'Витрата':'Expense','Надходження':'Income','Переказ':'Transfer','Витрати':'Expenses',
+  'Зберегти':'Save','Скасувати':'Cancel','Далі':'Next','Видалити':'Delete','Змінити':'Edit','Внести':'Deposit','Зняти':'Withdraw','Платіж':'Payment','Достроково':'Payoff','Підтвердити платіж':'Confirm payment','Переказати':'Transfer','Внести зараз':'Add now','Внести всі':'Add all','Пауза':'Pause','Увімкнути':'Enable','Переглянути':'View','До кредитів':'To credits','Закрити кредит повністю':'Pay off in full','Показати':'Show','Сховати':'Hide','Відновити':'Restore','Імпорт із файлу':'Import from file','Експорт у файл':'Export to file','Операції в CSV':'Transactions to CSV','Скинути все':'Reset all',
+  'Сума':'Amount','Рахунок':'Account','Категорія':'Category','Дата':'Date','Нотатка':'Note','Теги (через кому)':'Tags (comma separated)','Назва':'Name','Тип':'Type','Валюта':'Currency','Колір':'Color','Іконка':'Icon','Емодзі':'Emoji','Період':'Period','На місяць':'Monthly','На рік':'Yearly','Без категорії':'No category','Стартовий залишок':'Starting balance','Готівка':'Cash','Картка':'Card','Банк. рахунок':'Bank account','Комісія':'Fee','Без комісії':'No fee','Відсоток %':'Percent %','Фіксована':'Fixed','Сума комісії':'Fee amount','Курс':'Rate','Опис':'Description','Періодичність':'Frequency','Щомісяця':'Monthly','Щотижня':'Weekly','Наступна дата':'Next date','Банк':'Bank','Кількість місяців':'Number of months','Відсотки':'Interest','Без відсотків':'No interest','З відсотками':'With interest','Ставка, % річних':'Rate, % p.a.','Дата списання':'Charge date','Вже виплачено':'Already paid','Кредитний ліміт (максимум)':'Credit limit (max)','Назва банку':'Bank name','Ціль (сума)':'Goal (amount)','Накопичено':'Saved','Дедлайн (необовʼязково)':'Deadline (optional)','Банк (необовʼязково)':'Bank (optional)',
+  'Новий рахунок':'New account','Редагувати рахунок':'Edit account','Нова категорія':'New category','Редагувати категорію':'Edit category','Новий банк':'New bank','Редагувати банк':'Edit bank','Новий кредит':'New credit','Редагувати кредит':'Edit credit','Нова ціль':'New goal','Редагувати ціль':'Edit goal','Новий регулярний':'New recurring','Редагувати регулярний':'Edit recurring','Переказ між рахунками':'Transfer between accounts','Редагувати переказ':'Edit transfer','витрату':'expense','надходження':'income','Редагувати ':'Edit ',
+  'Резервне копіювання':'Backup','Точки відновлення':'Restore points','Вигляд і приватність':'Appearance & privacy','Тема оформлення':'Theme','Очистити дані':'Clear data','Про застосунок':'About','Вигляд':'Appearance',
+  'Всього (ліміт)':'Total (limit)','Використано':'Used','Доступно':'Available','Навантаження/міс':'Burden/mo','Ліміт':'Limit','Залишок боргу':'Debt left','Платіж за місяць':'Monthly payment','Чисті активи (₴-екв)':'Net worth (₴-eq)','приблизно, за поточним курсом валют':'approximate, at current rates','Чистий потік':'Net flow','Комісії':'Fees',
+  'Усі':'All','Тег':'Tag','За датою':'By date','Вручну':'Manual','Період витрат':'Spending period',
+  'Цей місяць':'This month','Минулий':'Last','Рік':'Year','Усе':'All time',
+  'Динаміка по місяцях':'Monthly dynamics','Витрати за статтями':'Expenses by category','Надходження за статтями':'Income by category','Витрати по рахунках':'Expenses by account','Витрати по банках':'Expenses by bank','Немає даних':'No data','Немає даних за період':'No data for period',
+  'Експортуйте всі дані у файл JSON (його можна зберегти будь-де, зокрема на Google Drive) і відновіть за потреби.':'Export all data to a JSON file (store it anywhere, e.g. Google Drive) and restore when needed.',
+  'Нічого не знайдено':'Nothing found','Категорій немає.':'No categories.','Ще немає рахунків.':'No accounts yet.','Цілей немає.':'No goals.','Регулярних платежів немає.':'No recurring payments.','Кредитів немає.':'No credits.',
+  '+ Додати':'+ Add','+ Додати рахунок':'+ Add account','+ Банк':'+ Bank','+ Кредит':'+ Credit','+ Ціль':'+ Goal','+ Внести':'+ Deposit','− Зняти':'− Withdraw',
+  'Мова':'Language','Світла':'Light','Темна':'Dark','Показано':'Shown','Приховано':'Hidden',
+};
+function translateTree(root){
+  if (!root || lang !== 'en') return;
+  const D = I18N_EN;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = []; let n; while (n = w.nextNode()) nodes.push(n);
+  nodes.forEach(t => { const k = t.nodeValue.trim(); if (k && D[k] !== undefined) t.nodeValue = t.nodeValue.replace(k, D[k]); });
+  root.querySelectorAll('[placeholder]').forEach(e => { const k = (e.getAttribute('placeholder')||'').trim(); if (D[k] !== undefined) e.setAttribute('placeholder', D[k]); });
+  root.querySelectorAll('option').forEach(o => { const k = o.textContent.trim(); if (D[k] !== undefined) o.textContent = D[k]; });
+}
+const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
+function setNavLabels(){ document.querySelectorAll('.nav a').forEach(a => { const m = NAV_LABELS[a.dataset.view]; const nt = a.querySelector('.nt'); if (m && nt) nt.textContent = (lang === 'en') ? m[1] : m[0]; }); }
+// #app перебудовується щоразу з українського джерела, тож переклад у EN ставимо поверх; назад у UK — просто не перекладаємо.
+function applyLang(){ setNavLabels(); if (lang === 'en') translateTree(document.getElementById('app')); }
+
 //==================== Тости + скасування видалення ====================
 function showToast(message, actionLabel, onAction, ms = 6000) {
   const root = document.getElementById('toasts');
   const t = el(`<div class="toast"><span>${esc(message)}</span></div>`);
   if (actionLabel) { const b = el(`<button>${esc(actionLabel)}</button>`); b.onclick = () => { clearTimeout(timer); t.remove(); onAction && onAction(); }; t.appendChild(b); }
-  root.appendChild(t);
+  root.appendChild(t); translateTree(t);
   const timer = setTimeout(() => t.remove(), ms);
 }
 function snapshotState() { return JSON.parse(JSON.stringify(state)); }
@@ -701,10 +741,12 @@ function navigate(v){
   if (changed) window.scrollTo(0, 0);   // при зміні вкладки — на початок
 }
 // Перемальовує поточну вкладку, зберігаючи позицію прокрутки (щоб зміни оновлювались «на місці»).
-function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTML = ''; views[currentView](app); window.scrollTo(0, y); }
+function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTML = ''; views[currentView](app); applyLang(); window.scrollTo(0, y); }
 
 window.addEventListener('hashchange', () => { const v = hashView(); if (v && v !== currentView) navigate(v); });
 document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigate(a.dataset.view); }));
+function updateLangBtn(){ const b = document.getElementById('langbtn'); if (b) b.textContent = lang === 'uk' ? 'EN' : 'UA'; }
+(function(){ const b = document.getElementById('langbtn'); if (b) b.onclick = () => { setLang(lang === 'uk' ? 'en' : 'uk'); updateLangBtn(); }; updateLangBtn(); })();
 
 // Свайпи вліво/вправо — перехід між вкладками (тач).
 const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','goals','recurring','categories','settings'];
@@ -749,6 +791,7 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
     foot.appendChild(cancel); foot.appendChild(ok); modal.appendChild(foot);
   }
   overlay.appendChild(modal); root.appendChild(overlay);
+  translateTree(modal);
   function close(){ overlay.remove(); }
   overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(); });
   head.querySelector('.x').onclick = close;
@@ -770,6 +813,7 @@ function openContextMenu(x, y, items, title) {
     menu.appendChild(row);
   });
   document.body.appendChild(menu);
+  translateTree(menu);
   // тримаємо меню в межах вікна
   const r = menu.getBoundingClientRect();
   const px = Math.min(x, window.innerWidth - r.width - 8);
