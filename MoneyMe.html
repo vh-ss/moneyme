@@ -528,22 +528,29 @@ function categorySpent(catId, from, to){
 }
 // Період витрат категорії за її типом бюджету (місяць/рік), станом на сьогодні.
 function budgetRange(c){ return c.budget_period === 'yearly' ? { from: yearStartISO(), to: todayISO(), label: 'рік' } : { from: monthStartISO(), to: todayISO(), label: 'міс.' }; }
+// Діапазон попереднього місяця (для перенесення невитраченого бюджету).
+function prevMonthRange(){ const n=new Date(); const d=new Date(n.getFullYear(), n.getMonth()-1, 1); const y=d.getFullYear(), m=d.getMonth(); return { from: ymd(y,m+1,1), to: ymd(y,m+1,new Date(y,m+1,0).getDate()) }; }
+// Невитрачений залишок минулого місяця (для категорій з rollover).
+function budgetRollover(c){ if (!(c.budget>0) || c.budget_period==='yearly' || !c.rollover) return 0; const pr=prevMonthRange(); return round2(Math.max(0, c.budget - categorySpent(c.id, pr.from, pr.to))); }
+// Ефективний ліміт = бюджет + перенесене.
+function effectiveBudget(c){ return round2((c.budget||0) + budgetRollover(c)); }
 // Картка «Бюджети»: категорії витрат з лімітом; кожна — у своєму циклі (місяць/рік).
 function budgetsCard(opts){
   const title = (opts&&opts.title) || 'Бюджети';
   const cats = state.categories.filter(c => c.kind==='EXPENSE' && (c.budget||0) > 0);
   if (!cats.length) return null;
-  const rows = cats.map(c => { const r = budgetRange(c); return { c, spent: categorySpent(c.id, r.from, r.to), label: r.label }; })
-    .sort((a,b)=> (b.spent/b.c.budget) - (a.spent/a.c.budget));
+  const rows = cats.map(c => { const r = budgetRange(c); const eb = effectiveBudget(c); return { c, eb, roll: budgetRollover(c), spent: categorySpent(c.id, r.from, r.to), label: r.label }; })
+    .sort((a,b)=> (b.spent/b.eb) - (a.spent/a.eb));
   const card = el(`<section class="card" style="padding:14px 16px"><h2 style="margin-bottom:8px">${esc(title)}</h2><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:7px 18px"></div></section>`);
   const grid = card.lastElementChild;
-  rows.forEach(({c, spent, label}) => {
-    const pct = Math.min(100, Math.round(spent / c.budget * 100));
-    const real = Math.round(spent / c.budget * 100);
-    const over = spent > c.budget;
-    const color = over ? 'var(--red)' : (spent >= c.budget*0.8 ? 'var(--amber)' : 'var(--green)');
-    grid.appendChild(el(`<div title="${esc(c.name)} / ${label}: ${money(spent)} з ${money(c.budget)} (${real}%)" style="display:flex;align-items:center;gap:8px;font-size:13px">
-      <span class="ln" style="flex:0 0 46%">${c.icon?c.icon+' ':''}${esc(c.name)}</span>
+  rows.forEach(({c, eb, roll, spent, label}) => {
+    const pct = Math.min(100, Math.round(spent / eb * 100));
+    const real = Math.round(spent / eb * 100);
+    const over = spent > eb;
+    const color = over ? 'var(--red)' : (spent >= eb*0.8 ? 'var(--amber)' : 'var(--green)');
+    const tip = `${c.name} / ${label}: ${money(spent)} з ${money(eb)} (${real}%)` + (roll>0?` · перенесено ${money(roll)}`:'');
+    grid.appendChild(el(`<div title="${esc(tip)}" style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <span class="ln" style="flex:0 0 46%">${c.icon?c.icon+' ':''}${esc(c.name)}${roll>0?' <span class="muted" style="font-size:10px">↻</span>':''}</span>
       <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${color}"></i></div>
       <span class="tabnum" style="flex:0 0 auto;width:34px;text-align:right;color:${over?'var(--red)':'var(--muted)'}">${real}%</span>
     </div>`));
@@ -1615,21 +1622,22 @@ views.categories = (app) => {
   if (list.length === 0) grid.appendChild(el(`<div class="muted">Категорій немає.</div>`));
   const mFrom = monthStartISO(), mTo = todayISO();
   list.forEach((c, i) => {
-    const budget = c.budget || 0;
-    const hasB = c.kind === 'EXPENSE' && budget > 0;
+    const hasB = c.kind === 'EXPENSE' && (c.budget || 0) > 0;
     const r = hasB ? budgetRange(c) : null;
+    const eb = hasB ? effectiveBudget(c) : 0;
+    const roll = hasB ? budgetRollover(c) : 0;
     const spent = hasB ? categorySpent(c.id, r.from, r.to) : 0;
-    const pct = hasB ? Math.min(100, Math.round(spent / budget * 100)) : 0;
-    const over = hasB && spent > budget;
-    const barColor = over ? 'var(--red)' : (spent >= budget * 0.8 ? 'var(--amber)' : 'var(--green)');
+    const pct = hasB ? Math.min(100, Math.round(spent / eb * 100)) : 0;
+    const over = hasB && spent > eb;
+    const barColor = over ? 'var(--red)' : (spent >= eb * 0.8 ? 'var(--amber)' : 'var(--green)');
     const node = el(`<div class="card" style="padding:9px 11px;display:flex;align-items:center;gap:8px">
       <span class="grip" title="Перетягніть, щоб змінити порядок">⠿</span>
       <span class="txicon" style="background:${c.color}22;color:${c.color}">${c.icon||'•'}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600">${esc(c.name)}${hasB?` <span class="muted small">/ ${r.label}</span>`:''}</div>
+        <div style="font-weight:600">${esc(c.name)}${hasB?` <span class="muted small">/ ${r.label}${roll>0?' ↻':''}</span>`:''}</div>
         ${hasB?`<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
           <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${barColor}"></i></div>
-          <span class="small" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(budget)}</span>
+          <span class="small" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(eb)}${roll>0?` <span class="muted">(+${money(roll)})</span>`:''}</span>
         </div>`:''}
       </div></div>`);
     makeReorderable(node, 'cat', c.id, reorderCategory);
@@ -1673,7 +1681,8 @@ function openCategoryForm(existing) {
     ${catKind==='EXPENSE' ? `<div class="row">
       <div style="flex:1"><label class="lab">Бюджет (0 — без ліміту)</label><input id="c-budget" inputmode="decimal" value="${e.budget||0}"></div>
       <div style="flex:0 0 130px"><label class="lab">Період</label><select id="c-budperiod"><option value="monthly">На місяць</option><option value="yearly">На рік</option></select></div>
-    </div>` : ''}
+    </div>
+    <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="c-rollover" style="width:auto" ${e.rollover?'checked':''}> Переносити невитрачене на наступний місяць</label>` : ''}
     <div><label class="lab">Колір</label><div id="c-color"></div></div>
     <div class="err hidden" id="c-err"></div></div>`);
   $('#c-emoji', body).appendChild(emojiPicker($('#c-icon', body)));
@@ -1685,7 +1694,7 @@ function openCategoryForm(existing) {
       const err = $('#c-err', body);
       if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
       const rec = { name, kind: catKind, color, icon: $('#c-icon',body).value.trim() || null };
-      if (catKind === 'EXPENSE') { rec.budget = round2(num(($('#c-budget',body)||{}).value || 0)); rec.budget_period = ($('#c-budperiod',body)||{}).value || 'monthly'; }
+      if (catKind === 'EXPENSE') { rec.budget = round2(num(($('#c-budget',body)||{}).value || 0)); rec.budget_period = ($('#c-budperiod',body)||{}).value || 'monthly'; rec.rollover = !!($('#c-rollover',body)||{}).checked; }
       if (existing) Object.assign(existing, rec);
       else { rec.id = nextId('cat'); state.categories.push(rec); }
       save(); close(); render();
