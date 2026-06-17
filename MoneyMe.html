@@ -285,14 +285,62 @@ const I18N_EN = {
   'Нічого не знайдено':'Nothing found','Категорій немає.':'No categories.','Ще немає рахунків.':'No accounts yet.','Цілей немає.':'No goals.','Регулярних платежів немає.':'No recurring payments.','Кредитів немає.':'No credits.',
   '+ Додати':'+ Add','+ Додати рахунок':'+ Add account','+ Банк':'+ Bank','+ Кредит':'+ Credit','+ Ціль':'+ Goal','+ Внести':'+ Deposit','− Зняти':'− Withdraw',
   'Мова':'Language','Світла':'Light','Темна':'Dark','Показано':'Shown','Приховано':'Hidden',
+  'Пошук (нотатка, категорія, рахунок, сума)':'Search (note, category, account, amount)','Без банку':'No bank','Усі (по банках)':'All (by bank)','Усі':'All',
+  'Основний рахунок (для платежів за кредитами)':'Main account (for credit payments)','Кредитний ліміт (максимум)':'Credit limit (max)','Платіж за місяць (авто)':'Monthly payment (auto)','Поточний залишок':'Current balance','Залишок після платежу':'Balance after payment','Сума платежу':'Payment amount','Списати з рахунку (як «витрату»)':'Charge to account (as expense)','Сума повернення':'Refund amount','Куди повернули':'Returned to','Категорія':'Category',
+  'Спишеться':'Debited','Зарахується':'Credited','Дострокове погашення':'Early payoff','Платежів лишилось':'Payments left','Ще сплатите за графіком':'Remaining to pay','з них відсотки':'of which interest','Економія відсотків':'Interest saved','Новий залишок':'New balance','Термін скоротиться на':'Term shortens by','Або разовий додатковий платіж':'Or one-time extra payment',
+  'Тип':'Type','Періодичність':'Frequency','Наступна дата':'Next date','Ціль (сума)':'Goal (amount)','Накопичено':'Saved','без дедлайну':'no deadline',
+  'Резервне копіювання':'Backup','Точки відновлення':'Restore points','Поки що немає.':'None yet.','Очистити дані':'Clear data','Скинути все':'Reset all','Про застосунок':'About','Вигляд і приватність':'Appearance & privacy','Тема оформлення':'Theme','Автоматичне завантаження бекап-файлу раз на день':'Auto-download backup file once a day','Місячний бюджет (0 — без ліміту)':'Monthly budget (0 — no limit)','Бюджет (0 — без ліміту)':'Budget (0 — no limit)',
+  'Категорій немає.':'No categories.','Ще немає рахунків.':'No accounts yet.','Немає рахунків у цій групі.':'No accounts in this group.','Кредитів немає.':'No credits.','Регулярних платежів немає.':'No recurring payments.','Цілей немає.':'No goals.','Немає активних кредитів':'No active credits',
+  'Витрати':'Expenses','Надходження':'Income','Перекази':'Transfers','Від':'From','До':'To','Тег':'Tag','За датою':'By date','Вручну':'Manual',
+  'Загальне навантаження за місяць':'Total monthly burden','Всього (ліміт)':'Total (limit)','Використано':'Used','Доступно':'Available','Навантаження/міс':'Burden/mo','Ліміт':'Limit',
+  'Введіть назву':'Enter a name','Введіть суму цілі':'Enter goal amount','Оберіть рахунки':'Select accounts','Внести зараз':'Add now','Внести всі':'Add all','Сплачено ✓':'Paid ✓','Переглянути':'View','До кредитів':'To credits',
+  'Курс':'Rate','Сума зарах.':'Credited amount',
 };
+// Підрядкові заміни — для складених рядків (текст склеєний із числами/назвами).
+const I18N_PARTIAL = [
+  ['Перетягніть на іншу — переказ · тап — меню','Drag onto another — transfer · tap — menu'],
+  ['Перетягуйте за ручку ⠿ або кнопками ↑ / ↓, щоб змінити порядок — він застосується і у списках вибору категорії.','Drag by the ⠿ handle or use ↑ / ↓ to reorder — also applies in category pickers.'],
+  ['Перетягуйте рядки, щоб змінити їхній порядок у списку.','Drag rows to reorder the list.'],
+  ['Перетягуйте картки, щоб змінити порядок (застосується і на «Огляді»).','Drag cards to reorder (also on Overview).'],
+  ['Перетягуйте картки, щоб змінити порядок відображення рахунків (він застосується і на «Огляді»).','Drag cards to reorder accounts (also on Overview).'],
+  ['Накопичення під мету (відпустка, техніка, подушка). Вносьте суми кнопками «Внести/Зняти» — це окремий облік, не повʼязаний з рахунками.','Save toward a goal (vacation, gadget, safety net). Use Deposit/Withdraw — a separate ledger, not linked to accounts.'],
+  ['Видалити всі рахунки, операції та категорії й почати з нуля.','Delete all accounts, transactions and categories and start fresh.'],
+  ['Щодня застосунок зберігає знімок даних у браузері (до 7 останніх). Можна відкотитися, якщо щось пішло не так.','The app saves a daily snapshot in the browser (up to 7). You can roll back if something went wrong.'],
+  ['Витрата запишеться на вашу частку, а повернення — переказом на обраний рахунок.','The expense is recorded as your share; the refund as a transfer to the selected account.'],
+  ['Ваша частка (витрата): ','Your share (expense): '],
+  ['повернення оформиться переказом ','refund will be a transfer '],
+  ['Частину повернули мені (оплатив за когось)','Part was returned to me (paid for someone)'],
+  ['Це початкове значення. Подальші платежі вносьте кнопкою «Платіж» — тоді створюється операція й оновлюється баланс.','This is the starting value. Make further payments via the “Payment” button — it creates a transaction and updates the balance.'],
+  ['Якщо обрано рахунок — створиться операція «витрата» на суму платежу.','If an account is selected — an expense is created for the payment amount.'],
+  ['Якщо погасити зараз увесь залишок — зекономите ≈ ','Paying off the full balance now saves ≈ '],
+  ['Кнопками ↑ / ↓','Use ↑ / ↓'],
+  ['Надходження (міс.): ','Income (mo.): '],['Витрати (міс.): ','Expenses (mo.): '],['Комісії (міс.): ','Fees (mo.): '],['Кредити/міс: ','Credits/mo: '],
+  ['Разом ≈ ','Total ≈ '],['курс НБУ на ','NBU rate on '],['курси недоступні','rates unavailable'],['завантаження курсів…','loading rates…'],['деякі валюти без курсу','some currencies have no rate'],['Курси: ','Rates: '],
+  ['Платежі за кредитами: ','Credit payments: '],['Регулярних платежів до внесення: ','Recurring payments to add: '],['Очікують внесення: ','Pending: '],['прострочено з ','overdue since '],['далі ','next '],['списання ','charge '],
+  ['Показати нульові','Show zero'],['Сховати нульові','Hide zero'],['Показати банки без ліміту','Show banks without limit'],['Сховати банки без ліміту','Hide banks without limit'],['Архівні рахунки','Archived accounts'],['Показати банки без ліміту','Show banks without limit'],
+  ['Загальний баланс','Total balance'],['Останні операції','Recent transactions'],['Операцій ще немає','No transactions yet'],['Немає операцій за обраними валютами','No transactions for selected currencies'],['Немає рахунків за обраними валютами','No accounts for selected currencies'],['Усі рахунки з нульовим балансом','All accounts have zero balance'],['Нічого не знайдено','Nothing found'],['Немає даних за період','No data for period'],['Немає даних','No data'],['Бюджети','Budgets'],
+  ['Виплачено ',' Paid '],['залишок ','left '],['Комісія ','Fee '],['Переказ','Transfer'],['старт: ','start: '],['без відсотків','no interest'],['% річних','% p.a.'],[' міс·',' mo·'],[' міс ',' mo '],['/міс','/mo'],['Повернення','Refund'],
+  ['щомісяця','monthly'],['щотижня','weekly'],['Готівка','Cash'],['Картка','Card'],['Банк. рахунок','Bank account'],['рік','year'],['міс.','mo.'],
+  ['Останній бекап: сьогодні.','Last backup: today.'],['Останній бекап: ','Last backup: '],['дн. тому','days ago'],['Бекап ще не робився.','No backup yet.'],
+  ['треба ','need '],['Витрати по рахунках','Expenses by account'],['Витрати по банках','Expenses by bank'],['Витрати за статтями','Expenses by category'],['Надходження за статтями','Income by category'],['Динаміка по місяцях','Monthly dynamics'],['Чисті активи','Net worth'],['приблизно, за поточним курсом валют','approximate, at current rates'],['Чистий потік','Net flow'],['Комісії','Fees'],['vs попередній','vs previous'],
+  ['Бюджети майже вичерпано:','Budgets almost used up:'],['перенесено ','carried over '],['Бюджет (місяць)','Budget (month)'],
+  ['Дані успішно відновлено.','Data restored successfully.'],['Помилка імпорту: ','Import error: '],
+];
 function translateTree(root){
   if (!root || lang !== 'en') return;
   const D = I18N_EN;
   const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = []; let n; while (n = w.nextNode()) nodes.push(n);
-  nodes.forEach(t => { const k = t.nodeValue.trim(); if (k && D[k] !== undefined) t.nodeValue = t.nodeValue.replace(k, D[k]); });
+  nodes.forEach(t => {
+    const k = t.nodeValue.trim();
+    if (!k) return;
+    if (D[k] !== undefined) { t.nodeValue = t.nodeValue.replace(k, D[k]); return; }
+    let v = t.nodeValue;
+    for (const [u, en] of I18N_PARTIAL) if (v.indexOf(u) >= 0) v = v.split(u).join(en);
+    if (v !== t.nodeValue) t.nodeValue = v;
+  });
   root.querySelectorAll('[placeholder]').forEach(e => { const k = (e.getAttribute('placeholder')||'').trim(); if (D[k] !== undefined) e.setAttribute('placeholder', D[k]); });
+  root.querySelectorAll('[title]').forEach(e => { const k = (e.getAttribute('title')||'').trim(); if (D[k] !== undefined) e.setAttribute('title', D[k]); });
   root.querySelectorAll('option').forEach(o => { const k = o.textContent.trim(); if (D[k] !== undefined) o.textContent = D[k]; });
 }
 const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
