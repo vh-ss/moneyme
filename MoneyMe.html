@@ -461,6 +461,10 @@ function feeSourceAmount(type, val, feeCur, srcCur, amount, mult) {
 function accountName(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.name : '—'; }
 function accountCur(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.currency_code : 'UAH'; }
 function categoryById(id){ return state.categories.find(c=>c.id===id); }
+// Витрачено за категорією у періоді (для бюджетів).
+function categorySpent(catId, from, to){
+  return round2(state.transactions.filter(t => t.kind==='EXPENSE' && t.category_id===catId && inRange(t, from, to)).reduce((s,t)=>s+t.amount,0));
+}
 
 function inRange(t, from, to){ return (!from || t.date >= from) && (!to || t.date <= to); }
 
@@ -996,6 +1000,16 @@ views.dashboard = (app) => {
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   app.appendChild(head);
 
+  // попередження про перевищені/майже вичерпані бюджети (поточний місяць)
+  const overBudget = state.categories
+    .filter(c => c.kind === 'EXPENSE' && (c.budget||0) > 0)
+    .map(c => ({ c, spent: categorySpent(c.id, monthStartISO(), todayISO()) }))
+    .filter(x => x.spent >= x.c.budget * 0.9);
+  if (overBudget.length) {
+    const items = overBudget.map(x => `${x.c.icon?x.c.icon+' ':''}${esc(x.c.name)} — ${money(x.spent)}/${money(x.c.budget)}${x.spent>x.c.budget?' ⛔':''}`).join('; ');
+    app.appendChild(el(`<div class="notice" style="margin-top:10px">📊 Бюджети майже вичерпано: ${items}</div>`));
+  }
+
   // рахунки з drag-and-drop
   const sec = el(`<section>
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1290,11 +1304,24 @@ views.categories = (app) => {
   const grid = el(`<div class="grid" style="grid-template-columns:1fr;max-width:520px;margin-top:8px"></div>`);
   const list = state.categories.filter(c => c.kind === catKind);
   if (list.length === 0) grid.appendChild(el(`<div class="muted">Категорій немає.</div>`));
+  const mFrom = monthStartISO(), mTo = todayISO();
   list.forEach((c, i) => {
+    const budget = c.budget || 0;
+    const hasB = c.kind === 'EXPENSE' && budget > 0;
+    const spent = hasB ? categorySpent(c.id, mFrom, mTo) : 0;
+    const pct = hasB ? Math.min(100, Math.round(spent / budget * 100)) : 0;
+    const over = hasB && spent > budget;
+    const barColor = over ? 'var(--red)' : (spent >= budget * 0.8 ? 'var(--amber)' : 'var(--green)');
     const node = el(`<div class="card" style="padding:9px 11px;display:flex;align-items:center;gap:8px">
       <span class="grip" title="Перетягніть, щоб змінити порядок">⠿</span>
       <span class="txicon" style="background:${c.color}22;color:${c.color}">${c.icon||'•'}</span>
-      <span style="flex:1;font-weight:600">${esc(c.name)}</span></div>`);
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">${esc(c.name)}</div>
+        ${hasB?`<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
+          <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${barColor}"></i></div>
+          <span class="small" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(budget)}</span>
+        </div>`:''}
+      </div></div>`);
     makeReorderable(node, 'cat', c.id, reorderCategory);
     const up = el(`<button class="btn ghost sm" title="Перемістити вище">↑</button>`);
     const down = el(`<button class="btn ghost sm" title="Перемістити нижче">↓</button>`);
@@ -1331,6 +1358,7 @@ function openCategoryForm(existing) {
   const body = el(`<div>
     <div class="row"><div style="flex:0 0 70px"><label class="lab">Емодзі</label><input id="c-icon" maxlength="2" value="${esc(e.icon||'')}" placeholder="🙂" style="text-align:center;font-size:18px"></div>
     <div style="flex:1"><label class="lab">Назва</label><input id="c-name" value="${esc(e.name||'')}"></div></div>
+    ${catKind==='EXPENSE' ? `<div><label class="lab">Місячний бюджет (0 — без ліміту)</label><input id="c-budget" inputmode="decimal" value="${e.budget||0}"></div>` : ''}
     <div><label class="lab">Колір</label><div id="c-color"></div></div>
     <div class="err hidden" id="c-err"></div></div>`);
   $('#c-color', body).appendChild(swatchPicker(color, c => color = c));
@@ -1340,6 +1368,7 @@ function openCategoryForm(existing) {
       const err = $('#c-err', body);
       if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
       const rec = { name, kind: catKind, color, icon: $('#c-icon',body).value.trim() || null };
+      if (catKind === 'EXPENSE') rec.budget = round2(num(($('#c-budget',body)||{}).value || 0));
       if (existing) Object.assign(existing, rec);
       else { rec.id = nextId('cat'); state.categories.push(rec); }
       save(); close(); render();
