@@ -160,6 +160,13 @@
   .pbar { height: 8px; background: var(--chip); border-radius: 999px; overflow: hidden; }
   .pbar > i { display: block; height: 100%; border-radius: 999px; }
 
+  /* вибір емодзі */
+  .emojigrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; max-height: 150px;
+    overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--input); }
+  .emojigrid button { border: 0; background: transparent; font-size: 20px; padding: 4px 0; border-radius: 8px; cursor: pointer; line-height: 1.2; }
+  .emojigrid button:hover { background: var(--hover); }
+  .emojigrid button.sel { background: var(--accent); }
+
   /* адаптив під телефон */
   @media (max-width: 560px) {
     body { font-size: 14px; }
@@ -584,6 +591,21 @@ function swatchPicker(selected, onPick) {
     wrap.appendChild(b);
   });
   return wrap;
+}
+
+const EMOJI_SET = ['🛒','🍽️','🍔','🍕','☕','🍺','🍷','🥦','🍎','🍞','🧀','🥩','🍰','🍫','🚕','🚗','⛽','🚌','🚆','✈️','🛴','🅿️','🏠','🏡','🔌','💡','💧','🔥','📱','💻','🛜','📶','📺','🎬','🎮','🎵','🎤','🎁','🎉','🎂','👕','👟','👜','👗','💄','💅','💊','🏥','🦷','💉','🩺','🏋️','⚽','🚴','📚','🎓','✏️','🐶','🐱','🐾','🏖️','🏨','🧳','💼','💸','💰','🏦','🪙','📈','🧾','🏧','🔧','🧹','🧴','🧺','🚬','🎫','❤️','🎈','🌳','☂️'];
+// Панель вибору емодзі: оновлює переданий input при кліку.
+function emojiPicker(inputEl) {
+  const grid = el(`<div class="emojigrid"></div>`);
+  const mark = () => grid.querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.textContent === inputEl.value));
+  EMOJI_SET.forEach(em => {
+    const b = el(`<button type="button">${em}</button>`);
+    b.onclick = (e) => { e.preventDefault(); inputEl.value = em; mark(); };
+    grid.appendChild(b);
+  });
+  inputEl.addEventListener('input', mark);
+  mark();
+  return grid;
 }
 
 //==================== Форма витрати/надходження ====================
@@ -1565,9 +1587,11 @@ function openCategoryForm(existing) {
   const body = el(`<div>
     <div class="row"><div style="flex:0 0 70px"><label class="lab">Емодзі</label><input id="c-icon" maxlength="2" value="${esc(e.icon||'')}" placeholder="🙂" style="text-align:center;font-size:18px"></div>
     <div style="flex:1"><label class="lab">Назва</label><input id="c-name" value="${esc(e.name||'')}"></div></div>
+    <div id="c-emoji"></div>
     ${catKind==='EXPENSE' ? `<div><label class="lab">Місячний бюджет (0 — без ліміту)</label><input id="c-budget" inputmode="decimal" value="${e.budget||0}"></div>` : ''}
     <div><label class="lab">Колір</label><div id="c-color"></div></div>
     <div class="err hidden" id="c-err"></div></div>`);
+  $('#c-emoji', body).appendChild(emojiPicker($('#c-icon', body)));
   $('#c-color', body).appendChild(swatchPicker(color, c => color = c));
   openModal(existing?'Редагувати категорію':'Нова категорія', body, {
     onSave: (close) => {
