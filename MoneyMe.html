@@ -985,11 +985,7 @@ views.dashboard = (app) => {
   const head = el(`<section class="card" style="padding:18px">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
       <div class="muted small">Загальний баланс</div>
-      <div class="row" style="align-items:center;gap:8px">
-        <div class="row" id="curfilter" style="flex-wrap:wrap;gap:4px"></div>
-        <button class="btn ${screenshotMode?'primary':'ghost'} sm" id="randfill" title="Цифри для скріна (лише візуально, реальні дані не змінюються)">🎲</button>
-        <button class="btn ghost sm" id="togglehide" title="${hideBalances?'Показати баланси':'Приховати баланси'}">${hideBalances?'🙈':'👁️'}</button>
-      </div>
+      <div class="row" id="curfilter" style="flex-wrap:wrap;gap:4px"></div>
     </div>
     <div class="row" style="flex-wrap:wrap;gap:6px 28px;margin-top:8px" id="bc"></div>
     <div style="margin-top:10px">
@@ -1013,8 +1009,6 @@ views.dashboard = (app) => {
     allCurs.forEach(c => cf.appendChild(mkChip(curSym(c), dashCurSet.has(c), () => { dashCurSet.has(c)?dashCurSet.delete(c):dashCurSet.add(c); render(); })));
   }
   $('#rrefresh', head).onclick = () => ensureRatesFresh(true);
-  $('#togglehide', head).onclick = () => setHideBalances(!hideBalances);
-  $('#randfill', head).onclick = () => toggleScreenshot();
 
   const bc = $('#bc', head);
   if (selected.length === 0) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
@@ -1673,14 +1667,24 @@ function lastBackupNote() {
 views.settings = (app) => {
   app.appendChild(el(`<h1>Налаштування</h1>`));
 
-  // вигляд (тема)
+  // вигляд (тема, приватність, демо-цифри)
   const appearance = el(`<section class="card" style="padding:18px">
-    <h2>Вигляд</h2>
+    <h2>Вигляд і приватність</h2>
     <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px">
       <span class="muted small">Тема оформлення</span>
       <button class="btn" id="themebtn">${theme==='dark'?'🌙 Темна':'☀️ Світла'}</button>
+    </div>
+    <div class="row" style="align-items:center;justify-content:space-between;margin-top:12px">
+      <span class="muted small">Приховати баланси (••••)</span>
+      <button class="btn ${hideBalances?'primary':''}" id="hidebtn">${hideBalances?'🙈 Приховано':'👁️ Показано'}</button>
+    </div>
+    <div class="row" style="align-items:center;justify-content:space-between;margin-top:12px">
+      <span class="muted small">Цифри для скріна (демо-суми, реальні дані не змінюються)</span>
+      <button class="btn ${screenshotMode?'primary':''}" id="randbtn">${screenshotMode?'🎲 Увімкнено':'🎲 Вимкнено'}</button>
     </div></section>`);
   $('#themebtn', appearance).onclick = () => toggleTheme();
+  $('#hidebtn', appearance).onclick = () => setHideBalances(!hideBalances);
+  $('#randbtn', appearance).onclick = () => toggleScreenshot();
   app.appendChild(appearance);
 
   const overdue = (() => { const d = localStorage.getItem('moneyme.lastBackup'); if (!d) return true; return (Date.parse(todayISO()) - Date.parse(d)) / 86400000 >= 14; })();
