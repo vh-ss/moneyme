@@ -186,6 +186,7 @@
     <a data-view="analytics">Аналітика</a>
     <a data-view="accounts">Рахунки</a>
     <a data-view="credits">Кредити</a>
+    <a data-view="recurring">Регулярні</a>
     <a data-view="categories">Категорії</a>
     <a data-view="settings">Налаштування</a>
   </div>
@@ -1021,6 +1022,22 @@ views.dashboard = (app) => {
     app.appendChild(el(`<div class="notice" style="margin-top:10px">📊 Бюджети майже вичерпано: ${items}</div>`));
   }
 
+  // нагадування про регулярні платежі
+  const due = dueRecurring();
+  if (due.length) {
+    const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>⏰ Регулярних платежів до внесення: ${due.length}</span></div>`);
+    const b = el(`<button class="btn sm">Переглянути</button>`); b.onclick = () => navigate('recurring');
+    n.appendChild(b); app.appendChild(n);
+  }
+
+  // нагадування про платежі за кредитами (термін у межах 3 днів або прострочено)
+  const loanDue = state.loans.filter(l => loanActive(l) && l.due_date && l.due_date <= addDaysISO(todayISO(), 3));
+  if (loanDue.length) {
+    const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>💳 Платежі за кредитами: ${loanDue.map(l=>esc(l.name||'Кредит')+' до '+fmtDate(l.due_date)).join('; ')}</span></div>`);
+    const b = el(`<button class="btn sm">До кредитів</button>`); b.onclick = () => navigate('credits');
+    n.appendChild(b); app.appendChild(n);
+  }
+
   // рахунки з drag-and-drop
   const sec = el(`<section>
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1136,8 +1153,12 @@ views.transactions = (app) => {
   renderList();
 };
 
-//==================== Аналітика: службові функції ====================
+//==================== Дати / аналітика: службові функції ====================
 function isoOf(d){ const tz = d.getTimezoneOffset()*60000; return new Date(d.getTime()-tz).toISOString().slice(0,10); }
+function addMonthsISO(iso, n){ const [y,m,d] = iso.split('-').map(Number); return isoOf(new Date(y, m-1+n, d)); }
+function addDaysISO(iso, n){ return isoOf(new Date(Date.parse(iso) + n*86400000)); }
+function nextRecurDate(iso, freq){ return freq==='weekly' ? addDaysISO(iso, 7) : addMonthsISO(iso, 1); }
+const FREQ_LABEL = { monthly:'щомісяця', weekly:'щотижня' };
 function ymd(y,m,d){ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 function presetRange(name){
   const now = new Date(), y = now.getFullYear(), m = now.getMonth();
@@ -1530,6 +1551,98 @@ function openCategoryForm(existing) {
   });
 }
 
+//==================== Регулярні платежі ====================
+function dueRecurring(){ const t = todayISO(); return state.recurring.filter(r => r.active !== false && r.next_date && r.next_date <= t); }
+function recordRecurring(r){
+  state.transactions.push({ id: nextId('tx'), ord: nextOrd(), kind: r.kind, date: r.next_date,
+    note: r.note || r.name || null, account_id: r.account_id, category_id: r.category_id || null,
+    amount: round2(r.amount), recurring_id: r.id });
+  r.next_date = nextRecurDate(r.next_date, r.freq);
+  save(); render();
+}
+
+views.recurring = (app) => {
+  const head = el(`<div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Регулярні</h1></div>`);
+  const add = el(`<button class="btn primary">+ Додати</button>`); add.onclick = () => openRecurringForm();
+  head.appendChild(add); app.appendChild(head);
+  app.appendChild(el(`<div class="muted small" style="margin-top:8px">Шаблони підписок, оренди, комуналки тощо. Коли надходить термін — натисніть «Внести», і операція створиться, а дата зсунеться на наступний період.</div>`));
+
+  const due = dueRecurring();
+  if (due.length) {
+    const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>⏰ Очікують внесення: ${due.length}</span></div>`);
+    const b = el(`<button class="btn sm">Внести всі</button>`); b.onclick = () => { due.forEach(r => recordRecurring(r)); };
+    n.appendChild(b); app.appendChild(n);
+  }
+
+  const list = el(`<div class="grid" style="grid-template-columns:1fr;margin-top:12px;max-width:620px"></div>`);
+  if (state.recurring.length === 0) list.appendChild(el(`<div class="muted">Регулярних платежів немає.</div>`));
+  state.recurring.forEach(r => {
+    const acc = state.accounts.find(a => a.id === r.account_id);
+    const cat = r.category_id ? categoryById(r.category_id) : null;
+    const isDue = r.active !== false && r.next_date && r.next_date <= todayISO();
+    const card = el(`<div class="card" style="padding:12px;${r.active===false?'opacity:.55':''}">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="min-width:0">
+          <div style="font-weight:600">${cat?.icon?cat.icon+' ':''}${esc(r.name||'Платіж')} <span class="muted small">${r.kind==='INCOME'?'надходження':'витрата'}</span></div>
+          <div class="muted small">${FREQ_LABEL[r.freq]||''} · ${acc?esc(acc.name):'—'}${cat?' · '+esc(cat.name):''} · далі ${r.next_date?fmtDate(r.next_date):'—'}${isDue?' · <b style="color:var(--amber)">термін</b>':''}</div>
+        </div>
+        <div class="tabnum" style="font-weight:700;color:${r.kind==='INCOME'?'var(--green)':'var(--red)'}">${r.kind==='INCOME'?'+':'−'}${money(r.amount, acc?acc.currency_code:'UAH')}</div>
+      </div>
+      <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"></div></div>`);
+    const acts = card.lastElementChild;
+    const rec = el(`<button class="btn sm ${isDue?'primary':''}">Внести зараз</button>`); rec.onclick = () => recordRecurring(r);
+    const tog = el(`<button class="btn ghost sm">${r.active===false?'Увімкнути':'Пауза'}</button>`); tog.onclick = () => { r.active = r.active===false; save(); render(); };
+    const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openRecurringForm(r);
+    const del = el(`<button class="btn danger sm">✕</button>`); del.onclick = () => deleteWithUndo('Регулярний платіж видалено', () => { state.recurring = state.recurring.filter(x=>x.id!==r.id); });
+    acts.appendChild(rec); acts.appendChild(tog); acts.appendChild(ed); acts.appendChild(del);
+    list.appendChild(card);
+  });
+  app.appendChild(list);
+};
+
+function openRecurringForm(existing){
+  if (state.accounts.length === 0) { alert('Спершу додайте рахунок.'); navigate('accounts'); return; }
+  const e = existing || { kind:'EXPENSE', freq:'monthly', next_date: todayISO(), active:true };
+  const cats = state.categories.filter(c => c.kind === (e.kind||'EXPENSE'));
+  const body = el(`<div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Тип</label><select id="r-kind"><option value="EXPENSE">Витрата</option><option value="INCOME">Надходження</option></select></div>
+      <div style="flex:1"><label class="lab">Періодичність</label><select id="r-freq"><option value="monthly">Щомісяця</option><option value="weekly">Щотижня</option></select></div>
+    </div>
+    <div><label class="lab">Назва</label><input id="r-name" value="${esc(e.name||'')}" placeholder="напр. Netflix, оренда"></div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Сума</label><input id="r-amt" inputmode="decimal" value="${e.amount ?? ''}"></div>
+      <div style="flex:1"><label class="lab">Наступна дата</label><input id="r-date" type="date" value="${e.next_date||todayISO()}"></div>
+    </div>
+    <div><label class="lab">Рахунок</label><select id="r-acc">${state.accounts.map(a=>`<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select></div>
+    <div><label class="lab">Категорія</label><select id="r-cat"><option value="">Без категорії</option></select></div>
+    <div class="err hidden" id="r-err"></div>
+  </div>`);
+  const $$ = s => $(s, body);
+  $$('#r-kind').value = e.kind || 'EXPENSE';
+  $$('#r-freq').value = e.freq || 'monthly';
+  if (e.account_id) $$('#r-acc').value = String(e.account_id);
+  function fillCats(){
+    const k = $$('#r-kind').value;
+    const cs = state.categories.filter(c => c.kind === k);
+    $$('#r-cat').innerHTML = `<option value="">Без категорії</option>` + cs.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('');
+    if (e.category_id) $$('#r-cat').value = String(e.category_id);
+  }
+  $$('#r-kind').addEventListener('change', fillCats); fillCats();
+  openModal(existing?'Редагувати регулярний':'Новий регулярний', body, { onSave: (close) => {
+    const err = $$('#r-err');
+    const amt = round2(num($$('#r-amt').value));
+    if (amt <= 0) { err.textContent='Введіть суму'; err.classList.remove('hidden'); return; }
+    const rec = { kind:$$('#r-kind').value, freq:$$('#r-freq').value, name:$$('#r-name').value.trim()||null,
+      amount: amt, next_date: $$('#r-date').value || todayISO(),
+      account_id: parseInt($$('#r-acc').value), category_id: $$('#r-cat').value ? parseInt($$('#r-cat').value) : null,
+      active: existing ? e.active !== false : true };
+    if (existing) Object.assign(existing, rec);
+    else { rec.id = nextId('rec'); state.recurring.push(rec); }
+    save(); close(); render();
+  }});
+}
+
 //==================== Вигляд: Налаштування ====================
 function lastBackupNote() {
   const d = localStorage.getItem('moneyme.lastBackup');
@@ -1788,6 +1901,7 @@ function openLoanPayment(l, bank) {
     amount = Math.min(round2(amount), loanOutstanding(l));
     if (amount <= 0) return;
     l.paid = round2(Math.min(l.principal, (l.paid || 0) + amount));
+    if (l.due_date && loanActive(l)) l.due_date = addMonthsISO(l.due_date, 1);   // наступне списання — за місяць
     const accId = $$('#pp-acc').value ? parseInt($$('#pp-acc').value) : null;
     if (accId) {
       const catId = $$('#pp-cat').value ? parseInt($$('#pp-cat').value) : null;
