@@ -890,8 +890,18 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       <div style="flex:1"><label class="lab">Нотатка</label><input id="f-note" value="${esc(e.note||'')}" placeholder="—"></div>
     </div>
     <div><label class="lab">Теги (через кому)</label><input id="f-tags" value="${esc((e.tags||[]).join(', '))}" placeholder="напр. відпустка, робота"></div>
+    ${(kind==='EXPENSE' && !existing) ? `
+    <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:2px"><input type="checkbox" id="f-rfon" style="width:auto"> Частину повернули мені (напр. оплатив за когось)</label>
+    <div class="row hidden" id="f-rfbox">
+      <div style="flex:1"><label class="lab">Сума повернення</label><input id="f-rfamt" inputmode="decimal" placeholder="0.00"></div>
+      <div style="flex:1"><label class="lab">Куди повернули</label><select id="f-rfacc">${state.accounts.map(a=>`<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select></div>
+    </div>` : ''}
     <div class="err hidden" id="f-err"></div>
   </div>`);
+  const rfon = $('#f-rfon', body);
+  if (rfon) {
+    rfon.onchange = () => { $('#f-rfbox', body).classList.toggle('hidden', !rfon.checked); if (rfon.checked) $('#f-rfacc', body).value = $('#f-acc', body).value; };
+  }
   openModal((existing?'Редагувати ':'') + (isInc?'надходження':'витрату'), body, {
     saveLabel: 'Зберегти',
     onSave: (close) => {
@@ -917,7 +927,23 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
         }
         Object.assign(existing, rec);
       }
-      else { rec.id = nextId('tx'); rec.ord = nextOrd(); state.transactions.push(rec); }
+      else {
+        rec.id = nextId('tx'); rec.ord = nextOrd(); state.transactions.push(rec);
+        // повернення частини коштів — окрема операція «надходження» на обраний рахунок
+        const rf = $('#f-rfon', body);
+        if (rf && rf.checked) {
+          const rfamt = round2(num($('#f-rfamt', body).value));
+          if (rfamt > 0) {
+            const catName = rec.category_id ? (categoryById(rec.category_id)?.name || '') : '';
+            state.transactions.push({
+              id: nextId('tx'), ord: nextOrd(), kind: 'INCOME', date: rec.date,
+              account_id: parseInt($('#f-rfacc', body).value), category_id: null, amount: rfamt,
+              note: 'Повернення' + (rec.note ? ': ' + rec.note : (catName ? ': ' + catName : '')),
+              tags: ['повернення'],
+            });
+          }
+        }
+      }
       save(); close(); render();
     }
   });
