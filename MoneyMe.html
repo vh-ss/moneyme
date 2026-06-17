@@ -194,6 +194,7 @@
     <a data-view="analytics">Аналітика</a>
     <a data-view="accounts">Рахунки</a>
     <a data-view="credits">Кредити</a>
+    <a data-view="goals">Цілі</a>
     <a data-view="recurring">Регулярні</a>
     <a data-view="categories">Категорії</a>
     <a data-view="settings">Налаштування</a>
@@ -1700,6 +1701,86 @@ function openCategoryForm(existing) {
       save(); close(); render();
     }
   });
+}
+
+//==================== Цілі накопичення ====================
+function goalMonthsLeft(g){ if (!g.deadline) return null; const now=new Date(); const d=new Date(g.deadline); return Math.max(0, (d.getFullYear()-now.getFullYear())*12 + (d.getMonth()-now.getMonth())); }
+function goalNeedPerMonth(g){ const ml=goalMonthsLeft(g); if (ml==null) return null; const rem=Math.max(0,(g.target||0)-(g.saved||0)); return ml>0 ? round2(rem/ml) : rem; }
+
+views.goals = (app) => {
+  const head = el(`<div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Цілі</h1></div>`);
+  const add = el(`<button class="btn primary">+ Ціль</button>`); add.onclick = () => openGoalForm();
+  head.appendChild(add); app.appendChild(head);
+  app.appendChild(el(`<div class="muted small" style="margin-top:8px">Накопичення під мету (відпустка, техніка, подушка). Вносьте суми кнопками «Внести/Зняти» — це окремий облік, не пов'язаний з рахунками.</div>`));
+
+  const grid = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:12px"></div>`);
+  if (state.goals.length === 0) grid.appendChild(el(`<div class="muted">Цілей немає.</div>`));
+  state.goals.forEach(g => {
+    const target = g.target || 0, saved = g.saved || 0;
+    const pct = target > 0 ? Math.min(100, Math.round(saved / target * 100)) : 0;
+    const done = saved >= target && target > 0;
+    const need = goalNeedPerMonth(g), ml = goalMonthsLeft(g);
+    const card = el(`<section class="card" style="padding:14px;border-top:4px solid ${g.color||'var(--accent)'}">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="min-width:0"><div style="font-weight:600">${g.icon?g.icon+' ':''}${esc(g.name||'Ціль')}${done?' ✅':''}</div>
+          <div class="muted small">${g.deadline?'до '+fmtDate(g.deadline)+(ml!=null?` · ${ml} міс`:''):'без дедлайну'}</div></div>
+        <div class="tabnum" style="font-weight:800;font-size:18px">${pct}%</div>
+      </div>
+      <div class="pbar" style="margin-top:10px"><i style="width:${pct}%;background:${done?'var(--green)':'var(--accent)'}"></i></div>
+      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="muted small tabnum">${money(saved,g.currency)} з ${money(target,g.currency)}</span>${(need&&!done)?`<span class="small" style="color:var(--amber)">треба ${money(need,g.currency)}/міс</span>`:''}</div>
+      <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap"></div></section>`);
+    const acts = card.lastElementChild;
+    const inB = el(`<button class="btn sm">+ Внести</button>`); inB.onclick = () => openGoalContribute(g, 1);
+    const outB = el(`<button class="btn ghost sm">− Зняти</button>`); outB.onclick = () => openGoalContribute(g, -1);
+    const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openGoalForm(g);
+    const del = el(`<button class="btn danger sm">✕</button>`); del.onclick = () => deleteWithUndo('Ціль видалено', () => { state.goals = state.goals.filter(x=>x.id!==g.id); });
+    acts.appendChild(inB); acts.appendChild(outB); acts.appendChild(ed); acts.appendChild(del);
+    grid.appendChild(card);
+  });
+  app.appendChild(grid);
+};
+
+function openGoalContribute(g, sign){
+  const body = el(`<div><label class="lab">Сума (${curSym(g.currency)})</label><input id="g-amt" inputmode="decimal" placeholder="0.00" style="font-size:22px;font-weight:700"></div>`);
+  openModal((sign>0?'Внести до':'Зняти з') + ' «' + (g.name||'Ціль') + '»', body, { saveLabel: sign>0?'Внести':'Зняти', onSave:(close)=>{
+    const a = round2(num($('#g-amt', body).value)); if (a <= 0) return;
+    g.saved = round2(Math.max(0, (g.saved||0) + sign*a));
+    save(); close(); render();
+  }});
+}
+
+function openGoalForm(existing){
+  const e = existing || { currency:'UAH', color: PALETTE[0], saved:0 };
+  let color = e.color || PALETTE[0];
+  const body = el(`<div>
+    <div class="row"><div style="flex:0 0 70px"><label class="lab">Іконка</label><input id="g-icon" maxlength="2" value="${esc(e.icon||'')}" placeholder="🎯" style="text-align:center;font-size:18px"></div>
+    <div style="flex:1"><label class="lab">Назва</label><input id="g-name" value="${esc(e.name||'')}" placeholder="напр. Відпустка"></div></div>
+    <div id="g-emoji"></div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Ціль (сума)</label><input id="g-target" inputmode="decimal" value="${e.target ?? ''}"></div>
+      <div style="flex:1"><label class="lab">Накопичено</label><input id="g-saved" inputmode="decimal" value="${e.saved ?? 0}"></div>
+    </div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Валюта</label><select id="g-cur">${CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join('')}</select></div>
+      <div style="flex:1"><label class="lab">Дедлайн (необовʼязково)</label><input id="g-deadline" type="date" value="${e.deadline||''}"></div>
+    </div>
+    <div><label class="lab">Колір</label><div id="g-color"></div></div>
+    <div class="err hidden" id="g-err"></div>
+  </div>`);
+  $('#g-cur', body).value = e.currency || 'UAH';
+  $('#g-emoji', body).appendChild(emojiPicker($('#g-icon', body)));
+  $('#g-color', body).appendChild(swatchPicker(color, c => color = c));
+  openModal(existing?'Редагувати ціль':'Нова ціль', body, { onSave:(close)=>{
+    const name = $('#g-name', body).value.trim(); const err = $('#g-err', body);
+    if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
+    const target = round2(num($('#g-target', body).value));
+    if (target <= 0) { err.textContent='Введіть суму цілі'; err.classList.remove('hidden'); return; }
+    const rec = { name, target, saved: round2(Math.max(0, num($('#g-saved', body).value))), currency: $('#g-cur',body).value,
+      deadline: $('#g-deadline', body).value || null, color, icon: $('#g-icon',body).value.trim() || null };
+    if (existing) Object.assign(existing, rec);
+    else { rec.id = nextId('goal'); state.goals.push(rec); }
+    save(); close(); render();
+  }});
 }
 
 //==================== Регулярні платежі ====================
