@@ -8,6 +8,16 @@
   :root {
     --bg: #f1f5f9; --card: #fff; --ink: #1e293b; --muted: #64748b; --line: #e2e8f0;
     --ink2: #0f172a; --green: #16a34a; --red: #dc2626; --amber: #d97706; --accent: #0f172a;
+    --hover: #f1f5f9; --chip: #e2e8f0; --chiphover: #cbd5e1; --accenthover: #334155;
+    --input: #fff; --inputline: #cbd5e1; --headbg: rgba(255,255,255,.85);
+    --softline: #f1f5f9; --dangerbg: #fee2e2; --tip: #eff6ff;
+  }
+  html[data-theme="dark"] {
+    --bg: #0b1220; --card: #131c2e; --ink: #e5e9f0; --muted: #94a3b8; --line: #273043;
+    --ink2: #f1f5f9; --green: #34d399; --red: #f87171; --amber: #fbbf24; --accent: #6366f1;
+    --hover: #1e2a3f; --chip: #1e2a3f; --chiphover: #273043; --accenthover: #4f46e5;
+    --input: #0f1726; --inputline: #334155; --headbg: rgba(13,20,34,.88);
+    --softline: #1b2436; --dangerbg: #3b1d1d; --tip: #16233b;
   }
   * { box-sizing: border-box; }
   body {
@@ -18,7 +28,7 @@
   .wrap { max-width: 920px; margin: 0 auto; padding: 0 16px 60px; }
 
   header {
-    position: sticky; top: 0; z-index: 30; background: rgba(255,255,255,.85);
+    position: sticky; top: 0; z-index: 30; background: var(--headbg);
     backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
   }
   .nav { max-width: 920px; margin: 0 auto; display: flex; align-items: center; gap: 4px;
@@ -27,7 +37,7 @@
   .brand .logo { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: var(--accent); color: #fff; }
   .nav a { padding: 7px 13px; border-radius: 10px; color: var(--muted); text-decoration: none; font-weight: 500; white-space: nowrap; font-size: 14px; }
   .nav a.active { background: var(--accent); color: #fff; }
-  .nav a:hover:not(.active) { background: #e2e8f0; }
+  .nav a:hover:not(.active) { background: var(--hover); }
 
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
   h1 { font-size: 22px; margin: 22px 0 14px; }
@@ -39,19 +49,21 @@
   .tabnum { font-variant-numeric: tabular-nums; }
 
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-    border: 0; border-radius: 11px; padding: 9px 15px; font-size: 14px; font-weight: 600; background: #e2e8f0; color: var(--ink); }
-  .btn:hover { background: #cbd5e1; }
+    border: 0; border-radius: 11px; padding: 9px 15px; font-size: 14px; font-weight: 600; background: var(--chip); color: var(--ink); }
+  .btn:hover { background: var(--chiphover); }
   .btn.primary { background: var(--accent); color: #fff; }
-  .btn.primary:hover { background: #334155; }
+  .btn.primary:hover { background: var(--accenthover); }
   .btn.ghost { background: transparent; color: var(--muted); }
-  .btn.ghost:hover { background: #e2e8f0; }
+  .btn.ghost:hover { background: var(--hover); }
   .btn.danger { background: transparent; color: var(--red); }
-  .btn.danger:hover { background: #fee2e2; }
+  .btn.danger:hover { background: var(--dangerbg); }
   .btn.sm { padding: 5px 9px; font-size: 13px; border-radius: 8px; }
 
   label.lab { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
-  input, select { width: 100%; border: 1px solid #cbd5e1; border-radius: 11px; padding: 9px 11px; font-size: 14px; font-family: inherit; outline: none; background: #fff; }
+  input, select { width: 100%; border: 1px solid var(--inputline); border-radius: 11px; padding: 9px 11px; font-size: 14px; font-family: inherit; outline: none; background: var(--input); color: var(--ink); }
   input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  input[type=date]::-webkit-calendar-picker-indicator { filter: var(--cal-filter, none); }
+  html[data-theme="dark"] { --cal-filter: invert(1) brightness(1.4); }
 
   .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
   .quick button { display: flex; align-items: center; justify-content: center; gap: 12px; border: 0; border-radius: 18px; padding: 18px; font-size: 16px; font-weight: 700; }
@@ -61,7 +73,7 @@
   .quick .exp .dot { background: var(--red); } .quick .inc .dot { background: var(--green); }
 
   .accgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-  .acc { border-top: 4px solid #999; padding: 14px; border-radius: 16px; background: #fff; border: 1px solid var(--line); cursor: grab; user-select: none; }
+  .acc { border-top: 4px solid #999; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); cursor: grab; user-select: none; }
   .acc:active { cursor: grabbing; }
   .acc.dragover { box-shadow: 0 0 0 2px var(--accent); }
   .acc.dragging { opacity: .4; }
@@ -70,7 +82,7 @@
   .acc .type { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
   .acc .bal { margin-top: 10px; font-size: 22px; font-weight: 800; }
 
-  .txrow { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid #f1f5f9; }
+  .txrow { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--softline); }
   .txrow:last-child { border-bottom: 0; }
   .txicon { width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; font-size: 15px; flex: 0 0 auto; }
   .txmain { flex: 1; min-width: 0; }
@@ -78,9 +90,9 @@
   .txsub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .txamt { font-weight: 700; font-size: 14px; }
 
-  .pill { display: inline-flex; background: #e2e8f0; border-radius: 11px; padding: 3px; gap: 3px; }
+  .pill { display: inline-flex; background: var(--chip); border-radius: 11px; padding: 3px; gap: 3px; }
   .pill button { border: 0; background: transparent; padding: 6px 14px; border-radius: 9px; font-weight: 600; font-size: 14px; color: var(--muted); }
-  .pill button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .pill button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 
   .sumcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap: 12px; }
   .sumcard { padding: 14px; }
@@ -91,19 +103,20 @@
   .draggable:active { cursor: grabbing; }
   .dragging { opacity: .4; }
   .card.dragover { box-shadow: 0 0 0 2px var(--accent); }
-  .txrow.dragover { background: #eff6ff; border-radius: 8px; }
-  .grip { color: #cbd5e1; font-size: 16px; cursor: grab; flex: 0 0 auto; }
-  .bar { height: 7px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+  .txrow.dragover { background: var(--tip); border-radius: 8px; }
+  .grip { color: var(--inputline); font-size: 16px; cursor: grab; flex: 0 0 auto; }
+  .bar { height: 7px; background: var(--chip); border-radius: 999px; overflow: hidden; }
   .bar > i { display: block; height: 100%; background: var(--accent); }
-  .curchip { border: 1px solid var(--line); background: #fff; color: var(--muted); border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 600; }
-  .curchip:hover { background: #f1f5f9; }
+  .curchip { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 600; }
+  .curchip:hover { background: var(--hover); }
   .curchip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
   .notice { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 12px; padding: 10px 12px; font-size: 13px; }
-  .ctxmenu { position: fixed; z-index: 60; min-width: 190px; background: #fff; border: 1px solid var(--line);
-    border-radius: 12px; box-shadow: 0 10px 30px rgba(15,23,42,.18); padding: 6px; }
+  html[data-theme="dark"] .notice { background: #2a230d; border-color: #5b4a13; color: #fcd34d; }
+  .ctxmenu { position: fixed; z-index: 60; min-width: 190px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.28); padding: 6px; }
   .ctxmenu .ci { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 9px;
     font-size: 14px; cursor: pointer; }
-  .ctxmenu .ci:hover { background: #f1f5f9; }
+  .ctxmenu .ci:hover { background: var(--hover); }
   .ctxmenu .ci .cdot { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center;
     color: #fff; font-weight: 700; font-size: 15px; line-height: 1; flex: 0 0 auto; }
   .ctxmenu .chead { padding: 6px 11px 4px; font-size: 12px; color: var(--muted); font-weight: 600;
@@ -112,7 +125,7 @@
 
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
   .swatch { width: 28px; height: 28px; border-radius: 999px; border: 0; }
-  .swatch.sel { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--accent); }
+  .swatch.sel { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
 
   /* modal */
   .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: grid; place-items: center; padding: 16px; z-index: 50; }
@@ -132,6 +145,36 @@
   .legend .ld { width: 12px; height: 12px; border-radius: 999px; flex: 0 0 auto; }
   .legend .ln { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hidden { display: none; }
+
+  /* тости (скасування) */
+  #toasts { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 80;
+    display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+  .toast { pointer-events: auto; display: flex; align-items: center; gap: 14px; background: var(--ink2);
+    color: #fff; border-radius: 12px; padding: 10px 14px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+    animation: toastIn .18s ease; max-width: 92vw; }
+  html[data-theme="dark"] .toast { background: #25324a; }
+  .toast button { border: 0; background: transparent; color: #7dd3fc; font-weight: 700; cursor: pointer; font-size: 14px; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* міні прогрес-бар бюджету (кольоровий) */
+  .pbar { height: 8px; background: var(--chip); border-radius: 999px; overflow: hidden; }
+  .pbar > i { display: block; height: 100%; border-radius: 999px; }
+
+  /* адаптив під телефон */
+  @media (max-width: 560px) {
+    body { font-size: 14px; }
+    .wrap { padding: 0 10px 70px; }
+    .nav { padding: 8px 10px; gap: 2px; }
+    .brand { font-size: 16px; margin-right: 8px; }
+    .nav a { padding: 6px 10px; font-size: 13px; }
+    h1 { font-size: 20px; margin: 16px 0 12px; }
+    .card { border-radius: 14px; }
+    .acc .bal { font-size: 19px; }
+    .row.wrapsm { flex-wrap: wrap; }
+    .modal { max-width: 100%; padding: 16px; border-radius: 16px; }
+    .overlay { padding: 8px; align-items: flex-end; }
+    .accgrid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  }
 </style>
 </head>
 <body>
@@ -149,10 +192,12 @@
 </header>
 <div class="wrap" id="app"></div>
 <div id="modal-root"></div>
+<div id="toasts"></div>
 
 <script>
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
+const SCHEMA_VERSION = 2;
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -162,17 +207,43 @@ const TYPE_LABEL = { CASH:'Готівка', CARD:'Картка', BANK:'Банк.
 let state = load();
 normalize();
 
-// Гарантуємо, що кожна операція має поле ручного порядку `ord` (для drag-перетягування).
+// Гарантуємо наявність усіх полів (міграція старих даних до поточної схеми).
 function normalize() {
   let changed = false;
   (state.transactions || []).forEach(t => { if (typeof t.ord !== 'number') { t.ord = t.id; changed = true; } });
   if (!state.banks) { state.banks = []; changed = true; }
   if (!state.loans) { state.loans = []; changed = true; }
-  if (state.seq.bank == null) { state.seq.bank = 1; changed = true; }
-  if (state.seq.loan == null) { state.seq.loan = 1; changed = true; }
+  if (!state.recurring) { state.recurring = []; changed = true; }   // регулярні платежі
+  if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1 }; changed = true; }
+  ['acc','cat','tx','bank','loan','rec'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = 1; changed = true; } });
+  (state.categories || []).forEach(c => { if (c.budget === undefined && c.kind === 'EXPENSE') { c.budget = 0; changed = true; } });
+  if (state.version !== SCHEMA_VERSION) { state.version = SCHEMA_VERSION; changed = true; }
   if (changed) save();
 }
 function nextOrd() { return state.transactions.reduce((m, t) => Math.max(m, t.ord || 0), 0) + 1; }
+
+//==================== Тема ====================
+let theme = localStorage.getItem('moneyme.theme') || 'light';
+function applyTheme() { document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light'); }
+function toggleTheme() { theme = theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('moneyme.theme', theme); applyTheme(); render(); }
+applyTheme();
+
+//==================== Тости + скасування видалення ====================
+function showToast(message, actionLabel, onAction, ms = 6000) {
+  const root = document.getElementById('toasts');
+  const t = el(`<div class="toast"><span>${esc(message)}</span></div>`);
+  if (actionLabel) { const b = el(`<button>${esc(actionLabel)}</button>`); b.onclick = () => { clearTimeout(timer); t.remove(); onAction && onAction(); }; t.appendChild(b); }
+  root.appendChild(t);
+  const timer = setTimeout(() => t.remove(), ms);
+}
+function snapshotState() { return JSON.parse(JSON.stringify(state)); }
+// Виконати видалення зі збереженням знімка та тостом «Скасувати».
+function deleteWithUndo(label, mutate) {
+  const snap = snapshotState();
+  mutate();
+  save(); render();
+  showToast(label, 'Скасувати', () => { state = snap; save(); render(); });
+}
 
 //==================== Курси валют (НБУ, раз на день) ====================
 const RATES_KEY = 'moneyme.rates';
@@ -265,7 +336,7 @@ function seed() {
    ['Одяг','#14b8a6','👕'],['Інше','#64748b','📦']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'EXPENSE',color:c,icon:i}));
   [['Зарплата','#16a34a','💼'],['Підробіток','#0ea5e9','💸'],['Подарунки','#eab308','🎁'],
    ['Інше','#64748b','📥']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'INCOME',color:c,icon:i}));
-  return { seq: { acc:1, cat:cid, tx:1, bank:1, loan:1 }, accounts: [], categories: cats, transactions: [], banks: [], loans: [] };
+  return { version: SCHEMA_VERSION, seq: { acc:1, cat:cid, tx:1, bank:1, loan:1, rec:1 }, accounts: [], categories: cats, transactions: [], banks: [], loans: [], recurring: [] };
 }
 function nextId(kind){ const v = state.seq[kind]++; save(); return v; }
 
@@ -329,12 +400,13 @@ function reorderBank(srcId, dstId) {
 
 // Видалення операції. Якщо це платіж за кредитом (loan_id) — повертаємо суму у виплачене.
 function deleteTx(tx) {
-  if (tx.loan_id) {
-    const loan = state.loans.find(l => l.id === tx.loan_id);
-    if (loan) loan.paid = round2(Math.max(0, (loan.paid || 0) - (tx.amount || 0)));
-  }
-  state.transactions = state.transactions.filter(x => x.id !== tx.id);
-  save(); render();
+  deleteWithUndo(tx.kind === 'TRANSFER' ? 'Переказ видалено' : 'Операцію видалено', () => {
+    if (tx.loan_id) {
+      const loan = state.loans.find(l => l.id === tx.loan_id);
+      if (loan) loan.paid = round2(Math.max(0, (loan.paid || 0) - (tx.amount || 0)));
+    }
+    state.transactions = state.transactions.filter(x => x.id !== tx.id);
+  });
 }
 
 //==================== Утиліти ====================
@@ -974,7 +1046,7 @@ views.dashboard = (app) => {
   if (recent.length === 0) rl.appendChild(el(`<div class="empty">${dashCurSet.size ? 'Немає операцій за обраними валютами' : 'Операцій ще немає'}</div>`));
   recent.forEach(t => rl.appendChild(txRow(t, {
     onEdit: (tx) => tx.kind === 'TRANSFER' ? openTransferEdit(tx) : openEntryForm(tx.kind, tx),
-    onDelete: (tx) => { if(confirm(tx.loan_id ? 'Видалити цей платіж? Сума повернеться до залишку кредиту.' : 'Видалити операцію?')) deleteTx(tx); }
+    onDelete: (tx) => deleteTx(tx)
   })));
   app.appendChild(list);
 };
@@ -1009,7 +1081,7 @@ views.transactions = (app) => {
   rows.forEach(t => {
     const row = txRow(t, {
       onEdit: (tx) => tx.kind === 'TRANSFER' ? openTransferEdit(tx) : openEntryForm(tx.kind, tx),
-      onDelete: (tx) => { if(confirm(tx.loan_id ? 'Видалити цей платіж? Сума повернеться до залишку кредиту.' : 'Видалити операцію?')) deleteTx(tx); }
+      onDelete: (tx) => deleteTx(tx)
     });
     makeReorderable(row, 'tx', t.id, reorderTx);
     ll.appendChild(row);
@@ -1124,7 +1196,7 @@ views.accounts = (app) => {
     const actions = c.lastElementChild;
     const ed = el(`<button class="btn ghost sm">Змінити</button>`); ed.onclick=()=>openAccountForm(a);
     const del = el(`<button class="btn danger sm">Видалити</button>`);
-    del.onclick=()=>{ if(confirm(`Видалити «${a.name}»? Усі його операції також буде видалено.`)){
+    del.onclick=()=>deleteWithUndo(`Рахунок «${a.name}» видалено`, () => {
       // повертаємо суми кредитів за платежами, що видаляються разом з рахунком
       state.transactions.forEach(t => {
         if ((t.account_id===a.id || t.to_account_id===a.id) && t.loan_id) {
@@ -1134,7 +1206,7 @@ views.accounts = (app) => {
       });
       state.accounts = state.accounts.filter(x=>x.id!==a.id);
       state.transactions = state.transactions.filter(t=>t.account_id!==a.id && t.to_account_id!==a.id);
-      save(); render(); } };
+    });
     actions.appendChild(ed); actions.appendChild(del);
     makeReorderable(c, 'acc', a.id, reorderAccount);
     return c;
@@ -1232,10 +1304,10 @@ views.categories = (app) => {
     down.onclick = () => moveCategory(c, 1);
     const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick=()=>openCategoryForm(c);
     const del = el(`<button class="btn danger sm">✕</button>`);
-    del.onclick=()=>{ if(confirm(`Видалити «${c.name}»? В операціях стане «Без категорії».`)){
+    del.onclick=()=>deleteWithUndo(`Категорію «${c.name}» видалено`, () => {
       state.categories = state.categories.filter(x=>x.id!==c.id);
       state.transactions.forEach(t=>{ if(t.category_id===c.id)t.category_id=null; });
-      save(); render(); } };
+    });
     node.appendChild(up); node.appendChild(down); node.appendChild(ed); node.appendChild(del);
     grid.appendChild(node);
   });
@@ -1276,11 +1348,30 @@ function openCategoryForm(existing) {
 }
 
 //==================== Вигляд: Налаштування ====================
+function lastBackupNote() {
+  const d = localStorage.getItem('moneyme.lastBackup');
+  if (!d) return 'Бекап ще не робився.';
+  const days = Math.round((Date.parse(todayISO()) - Date.parse(d)) / 86400000);
+  return days <= 0 ? 'Останній бекап: сьогодні.' : `Останній бекап: ${fmtDate(d)} (${days} дн. тому).`;
+}
 views.settings = (app) => {
   app.appendChild(el(`<h1>Налаштування</h1>`));
-  const backup = el(`<section class="card" style="padding:18px">
+
+  // вигляд (тема)
+  const appearance = el(`<section class="card" style="padding:18px">
+    <h2>Вигляд</h2>
+    <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px">
+      <span class="muted small">Тема оформлення</span>
+      <button class="btn" id="themebtn">${theme==='dark'?'🌙 Темна':'☀️ Світла'}</button>
+    </div></section>`);
+  $('#themebtn', appearance).onclick = () => toggleTheme();
+  app.appendChild(appearance);
+
+  const overdue = (() => { const d = localStorage.getItem('moneyme.lastBackup'); if (!d) return true; return (Date.parse(todayISO()) - Date.parse(d)) / 86400000 >= 14; })();
+  const backup = el(`<section class="card" style="padding:18px;margin-top:16px">
     <h2>Резервне копіювання</h2>
     <p class="muted small">Експортуйте всі дані у файл JSON (його можна зберегти будь-де, зокрема на Google Drive) і відновіть за потреби.</p>
+    <div class="small" style="margin-top:6px;color:${overdue?'var(--amber)':'var(--muted)'}">${overdue?'⚠️ ':''}${esc(lastBackupNote())}</div>
     <div class="row" style="flex-wrap:wrap;margin-top:12px">
       <button class="btn primary" id="exp">⬇ Експорт у файл</button>
       <button class="btn" id="imp">⬆ Імпорт із файлу</button>
@@ -1289,19 +1380,23 @@ views.settings = (app) => {
     <div id="bk-msg" class="small" style="margin-top:10px"></div>
   </section>`);
   $('#exp', backup).onclick = () => {
-    const blob = new Blob([JSON.stringify({ app:'MoneyMe', version:1, exported_at:new Date().toISOString(), ...state }, null, 2)], {type:'application/json'});
+    const payload = { app:'MoneyMe', version: SCHEMA_VERSION, exported_at: new Date().toISOString(), data: state };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
-    a.href = url; a.download = 'moneyme-backup.json'; a.click(); URL.revokeObjectURL(url);
+    a.href = url; a.download = `moneyme-backup-${todayISO()}.json`; a.click(); URL.revokeObjectURL(url);
+    localStorage.setItem('moneyme.lastBackup', todayISO());
+    render();
   };
   $('#imp', backup).onclick = () => $('#impfile', backup).click();
   $('#impfile', backup).onchange = async (ev) => {
     const file = ev.target.files[0]; if (!file) return;
     const msg = $('#bk-msg', backup);
     try {
-      const data = JSON.parse(await file.text());
+      const raw = JSON.parse(await file.text());
+      const data = migrateBackup(raw);   // підтримка старих і нових форматів
       if (!Array.isArray(data.accounts) || !Array.isArray(data.transactions)) throw new Error('Файл не схожий на бекап MoneyMe');
       if (!confirm('Імпорт ЗАМІНИТЬ усі поточні дані. Продовжити?')) return;
-      state = { seq: data.seq || recalcSeq(data), accounts:data.accounts, categories:data.categories||[], transactions:data.transactions, banks:data.banks||[], loans:data.loans||[] };
+      state = data;
       normalize();
       save(); msg.style.color='var(--green)'; msg.textContent='Дані успішно відновлено.'; render();
     } catch (e) { msg.style.color='var(--red)'; msg.textContent='Помилка імпорту: '+e.message; }
@@ -1321,7 +1416,19 @@ views.settings = (app) => {
 function recalcSeq(data){
   const mx = (arr)=>arr.reduce((m,x)=>Math.max(m,x.id||0),0);
   return { acc: mx(data.accounts||[])+1, cat: mx(data.categories||[])+1, tx: mx(data.transactions||[])+1,
-           bank: mx(data.banks||[])+1, loan: mx(data.loans||[])+1 };
+           bank: mx(data.banks||[])+1, loan: mx(data.loans||[])+1, rec: mx(data.recurring||[])+1 };
+}
+// Привести будь-який бекап (старий v1 чи новий v2) до поточної схеми.
+function migrateBackup(raw){
+  let d = (raw && raw.data && Array.isArray(raw.data.accounts)) ? raw.data : raw;
+  d = JSON.parse(JSON.stringify(d || {}));
+  d.accounts = d.accounts || []; d.categories = d.categories || []; d.transactions = d.transactions || [];
+  d.banks = d.banks || []; d.loans = d.loans || []; d.recurring = d.recurring || [];
+  const rs = recalcSeq(d);
+  d.seq = d.seq || {};
+  ['acc','cat','tx','bank','loan','rec'].forEach(k => { if (d.seq[k] == null) d.seq[k] = rs[k]; });
+  d.version = SCHEMA_VERSION;
+  return d;
 }
 
 //==================== Вигляд: Кредити ====================
@@ -1392,11 +1499,11 @@ views.credits = (app) => {
     const addLoan = el(`<button class="btn sm">+ Кредит</button>`); addLoan.onclick = () => openLoanForm(null, bank.id);
     const edB = el(`<button class="btn ghost sm" title="Редагувати банк">✎</button>`); edB.onclick = () => openBankForm(bank);
     const delB = el(`<button class="btn danger sm" title="Видалити банк">✕</button>`);
-    delB.onclick = () => { if (confirm(`Видалити банк «${bank.name}» разом з його кредитами? Рахунки лишаться, але без привʼязки до банку.`)) {
+    delB.onclick = () => deleteWithUndo(`Банк «${bank.name}» видалено`, () => {
       state.banks = state.banks.filter(x=>x.id!==bank.id);
       state.loans = state.loans.filter(l=>l.bank_id!==bank.id);
       state.accounts.forEach(a => { if (a.bank_id === bank.id) a.bank_id = null; });
-      save(); render(); } };
+    });
     acts.appendChild(addLoan); acts.appendChild(edB); acts.appendChild(delB);
 
     const box = $('.loansbox', card);
@@ -1438,7 +1545,7 @@ function loanRow(l, bank) {
   }
   const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openLoanForm(l);
   const del = el(`<button class="btn danger sm">✕</button>`);
-  del.onclick = () => { if (confirm('Видалити цей кредит?')) { state.loans = state.loans.filter(x=>x.id!==l.id); save(); render(); } };
+  del.onclick = () => deleteWithUndo('Кредит видалено', () => { state.loans = state.loans.filter(x=>x.id!==l.id); });
   acts.appendChild(ed); acts.appendChild(del);
   return node;
 }
