@@ -1924,11 +1924,14 @@ function openGoalForm(existing){
 //==================== Регулярні платежі ====================
 function dueRecurring(){ const t = todayISO(); return state.recurring.filter(r => r.active !== false && r.next_date && r.next_date <= t); }
 function recordRecurring(r){
-  state.transactions.push({ id: nextId('tx'), ord: nextOrd(), kind: r.kind, date: r.next_date,
+  // операцію датуємо днем запису (а прострочену — її запланованою датою), щоб вона була видима «зараз»
+  const txDate = (r.next_date && r.next_date <= todayISO()) ? r.next_date : todayISO();
+  state.transactions.push({ id: nextId('tx'), ord: nextOrd(), kind: r.kind, date: txDate,
     note: r.note || r.name || null, account_id: r.account_id, category_id: r.category_id || null,
     amount: round2(r.amount), recurring_id: r.id });
-  r.next_date = nextRecurDate(r.next_date, r.freq);
+  r.next_date = nextRecurDate(r.next_date || txDate, r.freq);
   save(); render();
+  showToast('Операцію створено', null, null, 2500);
 }
 
 views.recurring = (app) => {
