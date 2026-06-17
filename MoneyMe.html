@@ -2121,6 +2121,7 @@ function openLoanForm(existing, presetBankId) {
       <div style="flex:1"><label class="lab">Дата списання</label><input id="l-due" type="date" value="${e.due_date || todayISO()}"></div>
       <div style="flex:1"><label class="lab">Вже виплачено</label><input id="l-paid" inputmode="decimal" value="${e.paid ?? 0}"></div>
     </div>
+    <div class="muted small" style="margin-top:-4px">Це початкове значення. Подальші платежі вносьте кнопкою «Платіж» — тоді створюється операція й оновлюється баланс.</div>
     <div class="preview">
       <div class="pl"><span class="muted">Платіж за місяць</span><b style="color:var(--amber)" id="l-monthly">—</b></div>
       <div class="pl"><span class="muted">Залишок боргу</span><b id="l-out">—</b></div>
