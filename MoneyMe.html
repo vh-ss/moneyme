@@ -587,11 +587,11 @@ function swatchPicker(selected, onPick) {
 }
 
 //==================== Форма витрати/надходження ====================
-function openEntryForm(kind, existing, presetAccountId) {
+function openEntryForm(kind, existing, presetAccountId, prefill) {
   if (state.accounts.length === 0) { alert('Спершу додайте хоча б один рахунок.'); navigate('accounts'); return; }
   const isInc = kind === 'INCOME';
   const cats = state.categories.filter(c => c.kind === kind);
-  const e = existing || {};
+  const e = existing || prefill || {};   // prefill — нова операція з підставленими даними (напр. дублювання)
   if (!existing && presetAccountId) e.account_id = presetAccountId;
   const body = el(`<div>
     <div><label class="lab">Сума</label><input id="f-amt" inputmode="decimal" placeholder="0.00" style="font-size:22px;font-weight:700" value="${e.amount ?? ''}"></div>
@@ -927,14 +927,14 @@ function txRow(t, { onEdit, onDelete, onDup } = {}) {
   return row;
 }
 
-// Дублювати операцію (одним кліком, з датою сьогодні).
+// Дублювати операцію: відкриваємо форму з підставленими даними (можна змінити суму), дата — сьогодні.
 function duplicateTx(tx) {
-  const copy = JSON.parse(JSON.stringify(tx));
-  copy.id = nextId('tx'); copy.ord = nextOrd(); copy.date = todayISO();
-  delete copy.loan_id;   // дубль — звичайна операція, без звʼязку з кредитом
-  state.transactions.push(copy);
-  save(); render();
-  showToast('Операцію скопійовано', null, null, 3000);
+  if (tx.kind === 'TRANSFER') {
+    if (tx.account_id && tx.to_account_id && state.accounts.find(a=>a.id===tx.account_id) && state.accounts.find(a=>a.id===tx.to_account_id))
+      openTransferDialog(tx.account_id, tx.to_account_id);
+    return;
+  }
+  openEntryForm(tx.kind, null, null, { amount: tx.amount, account_id: tx.account_id, category_id: tx.category_id, note: tx.note });
 }
 
 //==================== SVG-діаграми ====================
