@@ -295,6 +295,8 @@ const I18N_EN = {
   'Загальне навантаження за місяць':'Total monthly burden','Всього (ліміт)':'Total (limit)','Використано':'Used','Доступно':'Available','Навантаження/міс':'Burden/mo','Ліміт':'Limit',
   'Введіть назву':'Enter a name','Введіть суму цілі':'Enter goal amount','Оберіть рахунки':'Select accounts','Внести зараз':'Add now','Внести всі':'Add all','Сплачено ✓':'Paid ✓','Переглянути':'View','До кредитів':'To credits',
   'Курс':'Rate','Сума зарах.':'Credited amount',
+  '— не вказано —':'— not set —','— без банку —':'— no bank —','— не створювати операцію —':"— don't create a transaction —",
+  'Стартовий залишок':'Starting balance','Банк (необовʼязково)':'Bank (optional)','Дедлайн (необовʼязково)':'Deadline (optional)','Місячний бюджет':'Monthly budget','Переносити невитрачене на наступний місяць':'Carry over unspent to next month',
 };
 // Підрядкові заміни — для складених рядків (текст склеєний із числами/назвами).
 const I18N_PARTIAL = [
@@ -325,23 +327,33 @@ const I18N_PARTIAL = [
   ['треба ','need '],['Витрати по рахунках','Expenses by account'],['Витрати по банках','Expenses by bank'],['Витрати за статтями','Expenses by category'],['Надходження за статтями','Income by category'],['Динаміка по місяцях','Monthly dynamics'],['Чисті активи','Net worth'],['приблизно, за поточним курсом валют','approximate, at current rates'],['Чистий потік','Net flow'],['Комісії','Fees'],['vs попередній','vs previous'],
   ['Бюджети майже вичерпано:','Budgets almost used up:'],['перенесено ','carried over '],['Бюджет (місяць)','Budget (month)'],
   ['Дані успішно відновлено.','Data restored successfully.'],['Помилка імпорту: ','Import error: '],
+  ['Шаблони підписок, оренди, комуналки тощо. Коли надходить термін — натисніть «Внести», і операція створиться, а дата зсунеться на наступний період.','Templates for subscriptions, rent, utilities, etc. When due — press “Add”, a transaction is created and the date moves to the next period.'],
+  ['комісія ','fee '],['шукати','search'],["напр. ","e.g. "],['Без категорії','No category'],
+  ['Спишеться з «','Debited from “'],['Зарахується на «','Credited to “'],['Спишеться','Debited'],['Зарахується','Credited'],
+  ['Відпустка','Vacation'],['відпустка','vacation'],['робота','work'],['оренда','rent'],
+  ['Виплачено','Paid'],[' з ',' of '],
 ];
+// Нормалізація апострофів (ʼ ’ ‘ → '), щоб збіги не залежали від варіанту символу.
+const APO = /[ʼ’‘′]/g;
+const I18N_EN_N = {}; for (const k in I18N_EN) I18N_EN_N[k.replace(APO, "'")] = I18N_EN[k];
+const I18N_PARTIAL_N = I18N_PARTIAL.map(([u, e]) => [u.replace(APO, "'"), e]);
+function tStr(s){ // переклад рядка (точний збіг або підрядкові заміни)
+  if (s == null) return s;
+  const norm = s.replace(APO, "'");
+  const trimmed = norm.trim();
+  if (I18N_EN_N[trimmed] !== undefined) return s.replace(s.trim(), I18N_EN_N[trimmed]);
+  let v = norm, changed = false;
+  for (const [u, en] of I18N_PARTIAL_N) if (v.indexOf(u) >= 0) { v = v.split(u).join(en); changed = true; }
+  return changed ? v : s;
+}
 function translateTree(root){
   if (!root || lang !== 'en') return;
-  const D = I18N_EN;
   const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = []; let n; while (n = w.nextNode()) nodes.push(n);
-  nodes.forEach(t => {
-    const k = t.nodeValue.trim();
-    if (!k) return;
-    if (D[k] !== undefined) { t.nodeValue = t.nodeValue.replace(k, D[k]); return; }
-    let v = t.nodeValue;
-    for (const [u, en] of I18N_PARTIAL) if (v.indexOf(u) >= 0) v = v.split(u).join(en);
-    if (v !== t.nodeValue) t.nodeValue = v;
-  });
-  root.querySelectorAll('[placeholder]').forEach(e => { const k = (e.getAttribute('placeholder')||'').trim(); if (D[k] !== undefined) e.setAttribute('placeholder', D[k]); });
-  root.querySelectorAll('[title]').forEach(e => { const k = (e.getAttribute('title')||'').trim(); if (D[k] !== undefined) e.setAttribute('title', D[k]); });
-  root.querySelectorAll('option').forEach(o => { const k = o.textContent.trim(); if (D[k] !== undefined) o.textContent = D[k]; });
+  nodes.forEach(t => { if (t.nodeValue.trim()) { const r = tStr(t.nodeValue); if (r !== t.nodeValue) t.nodeValue = r; } });
+  root.querySelectorAll('[placeholder]').forEach(e => { const r = tStr(e.getAttribute('placeholder')); if (r !== e.getAttribute('placeholder')) e.setAttribute('placeholder', r); });
+  root.querySelectorAll('[title]').forEach(e => { const r = tStr(e.getAttribute('title')); if (r !== e.getAttribute('title')) e.setAttribute('title', r); });
+  root.querySelectorAll('option').forEach(o => { const r = tStr(o.textContent); if (r !== o.textContent) o.textContent = r; });
 }
 const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
 function setNavLabels(){ document.querySelectorAll('.nav a').forEach(a => { const m = NAV_LABELS[a.dataset.view]; const nt = a.querySelector('.nt'); if (m && nt) nt.textContent = (lang === 'en') ? m[1] : m[0]; }); }
