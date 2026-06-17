@@ -257,6 +257,32 @@ function deleteWithUndo(label, mutate) {
   showToast(label, 'Скасувати', () => { state = snap; save(); render(); });
 }
 
+//==================== Бекап: завантаження файлу, точки відновлення, автозавантаження ====================
+function downloadBackup(){
+  const payload = { app:'MoneyMe', version: SCHEMA_VERSION, exported_at: new Date().toISOString(), data: state };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob); const a = document.createElement('a');
+  a.href = url; a.download = `moneyme-backup-${todayISO()}.json`; a.click(); URL.revokeObjectURL(url);
+  localStorage.setItem('moneyme.lastBackup', todayISO());
+}
+function restorePoints(){ try { return JSON.parse(localStorage.getItem('moneyme.history') || '[]'); } catch(e){ return []; } }
+// Раз на день зберігаємо знімок стану в браузері (до 7 останніх) — точки відновлення.
+function ensureDailySnapshot(){
+  try {
+    let hist = restorePoints();
+    if (!hist.some(h => h.date === todayISO())) {
+      hist.push({ date: todayISO(), at: new Date().toISOString(), data: state });
+      localStorage.setItem('moneyme.history', JSON.stringify(hist.slice(-7)));
+    }
+  } catch(e){}
+}
+// Опційне автозавантаження бекап-файлу раз на день.
+function maybeAutoBackup(){
+  if (localStorage.getItem('moneyme.autodl') !== '1') return;
+  if (localStorage.getItem('moneyme.lastAutoDl') === todayISO()) return;
+  try { downloadBackup(); localStorage.setItem('moneyme.lastAutoDl', todayISO()); } catch(e){}
+}
+
 //==================== Курси валют (НБУ, раз на день) ====================
 const RATES_KEY = 'moneyme.rates';
 let ratesCache = loadRates();
@@ -1777,14 +1803,7 @@ views.settings = (app) => {
     </div>
     <div id="bk-msg" class="small" style="margin-top:10px"></div>
   </section>`);
-  $('#exp', backup).onclick = () => {
-    const payload = { app:'MoneyMe', version: SCHEMA_VERSION, exported_at: new Date().toISOString(), data: state };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob); const a = document.createElement('a');
-    a.href = url; a.download = `moneyme-backup-${todayISO()}.json`; a.click(); URL.revokeObjectURL(url);
-    localStorage.setItem('moneyme.lastBackup', todayISO());
-    render();
-  };
+  $('#exp', backup).onclick = () => { downloadBackup(); render(); };
   $('#imp', backup).onclick = () => $('#impfile', backup).click();
   $('#impfile', backup).onchange = async (ev) => {
     const file = ev.target.files[0]; if (!file) return;
@@ -1800,7 +1819,33 @@ views.settings = (app) => {
     } catch (e) { msg.style.color='var(--red)'; msg.textContent='Помилка імпорту: '+e.message; }
     ev.target.value='';
   };
+  // автозавантаження бекапу раз на день
+  const autodl = localStorage.getItem('moneyme.autodl') === '1';
+  const autoBox = el(`<div class="row" style="align-items:center;justify-content:space-between;margin-top:12px;gap:8px;flex-wrap:wrap">
+    <span class="muted small">Автозавантаження бекап-файлу раз на день</span>
+    <button class="btn ${autodl?'primary':''}" id="autodlbtn">${autodl?'Увімкнено':'Вимкнено'}</button></div>`);
+  $('#autodlbtn', autoBox).onclick = () => { localStorage.setItem('moneyme.autodl', autodl?'0':'1'); render(); };
+  backup.appendChild(autoBox);
   app.appendChild(backup);
+
+  // точки відновлення (щоденні знімки в браузері)
+  const points = restorePoints().slice().reverse();
+  const rp = el(`<section class="card" style="padding:18px;margin-top:16px">
+    <h2>Точки відновлення</h2>
+    <p class="muted small">Щодня застосунок зберігає знімок даних у браузері (до 7 останніх). Можна відкотитися, якщо щось пішло не так.</p>
+    <div id="rp-list" style="margin-top:8px"></div></section>`);
+  const rpList = $('#rp-list', rp);
+  if (points.length === 0) rpList.appendChild(el(`<div class="muted small">Поки що немає.</div>`));
+  points.forEach(p => {
+    const row = el(`<div class="row" style="align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--softline)">
+      <span class="small">${fmtDate(p.date)}${p.date===todayISO()?' (сьогодні)':''}</span><span></span></div>`);
+    const b = el(`<button class="btn ghost sm">Відновити</button>`);
+    b.onclick = () => { if (confirm(`Відновити дані станом на ${fmtDate(p.date)}? Поточні буде замінено (з можливістю скасувати).`)) {
+      deleteWithUndo(`Відновлено стан на ${fmtDate(p.date)}`, () => { state = migrateBackup({ data: p.data }); normalize(); });
+    }};
+    row.lastElementChild.appendChild(b); rpList.appendChild(row);
+  });
+  app.appendChild(rp);
 
   const danger = el(`<section class="card" style="padding:18px;margin-top:16px">
     <h2>Очистити дані</h2><p class="muted small">Видалити всі рахунки, операції та категорії й почати з нуля.</p>
@@ -2118,6 +2163,8 @@ function openLoanForm(existing, presetBankId) {
 //==================== Старт ====================
 navigate(hashView() || 'dashboard');   // відкриваємо вкладку з URL (зберігається при F5)
 ensureRatesFresh();
+ensureDailySnapshot();   // точка відновлення на сьогодні
+maybeAutoBackup();       // опційне автозавантаження бекапу
 </script>
 </body>
 </html>
