@@ -587,6 +587,57 @@ function loanPaidThisCycle(l){
 function loanPending(l){
   return loanActive(l) && !!l.due_date && l.due_date <= addDaysISO(todayISO(), 3) && !loanPaidThisCycle(l);
 }
+// Скільки платежів лишилось при поточному платежі M, залишку O і місячній ставці i.
+function remainingMonths(O, M, i){
+  if (O <= 0 || M <= 0) return 0;
+  if (!(i > 0)) { const n = O / M; const r = Math.round(n); return Math.abs(n-r) < 0.1 ? r : Math.ceil(n); }
+  if (M <= O * i) return Infinity;   // платіж не покриває навіть відсотки
+  const n = -Math.log(1 - i*O/M) / Math.log(1+i);
+  const r = Math.round(n);
+  return Math.abs(n - r) < 0.1 ? r : Math.ceil(n);   // приліплюємо до цілого (нівелюємо округлення платежу)
+}
+function loanMonthlyRate(l){ return (l.has_interest && l.rate > 0) ? (l.rate/100/12) : 0; }
+
+// Калькулятор дострокового погашення кредиту.
+function openPayoff(l, bank){
+  const cur = bank.currency, M = loanMonthly(l), O = loanOutstanding(l), i = loanMonthlyRate(l);
+  const nRem = remainingMonths(O, M, i);
+  const totalRem = nRem === Infinity ? Infinity : round2(M * nRem);
+  const interestRem = totalRem === Infinity ? Infinity : round2(Math.max(0, totalRem - O));
+  const fmtN = v => v === Infinity ? '∞' : v;
+  const body = el(`<div>
+    <div class="preview">
+      <div class="pl"><span class="muted">Залишок боргу</span><b class="tabnum">${money(O,cur)}</b></div>
+      <div class="pl"><span class="muted">Платежів лишилось</span><b class="tabnum">${fmtN(nRem)}</b></div>
+      <div class="pl"><span class="muted">Ще сплатите за графіком</span><b class="tabnum">${interestRem===Infinity?'∞':money(totalRem,cur)}</b></div>
+      <div class="pl"><span class="muted">з них відсотки</span><b class="tabnum" style="color:var(--amber)">${interestRem===Infinity?'∞':money(interestRem,cur)}</b></div>
+    </div>
+    <div class="small" style="margin-top:8px;color:var(--green)">Якщо погасити зараз увесь залишок — зекономите ≈ ${interestRem===Infinity?'∞':money(interestRem,cur)} відсотків.</div>
+    <div style="margin-top:10px"><label class="lab">Або разовий додатковий платіж (${curSym(cur)})</label><input id="po-extra" inputmode="decimal" placeholder="0.00"></div>
+    <div class="preview" id="po-result" style="display:none">
+      <div class="pl"><span class="muted">Новий залишок</span><b class="tabnum" id="po-newo">—</b></div>
+      <div class="pl"><span class="muted">Термін скоротиться на</span><b class="tabnum" id="po-saved">—</b></div>
+      <div class="pl"><span class="muted">Економія відсотків</span><b class="tabnum" id="po-isave" style="color:var(--green)">—</b></div>
+    </div>
+  </div>`);
+  const $$ = s => $(s, body);
+  $$('#po-extra').addEventListener('input', () => {
+    const X = round2(num($$('#po-extra').value));
+    const res = $$('#po-result');
+    if (X <= 0) { res.style.display = 'none'; return; }
+    const newO = round2(Math.max(0, O - X));
+    const nRem2 = remainingMonths(newO, M, i);
+    const totalRem2 = nRem2 === Infinity ? Infinity : round2(M * nRem2);
+    const interestRem2 = totalRem2 === Infinity ? Infinity : round2(Math.max(0, totalRem2 - newO));
+    const monthsSaved = (nRem===Infinity||nRem2===Infinity) ? '∞' : Math.max(0, nRem - nRem2);
+    const isave = (interestRem===Infinity||interestRem2===Infinity) ? '∞' : money(round2(Math.max(0, interestRem - interestRem2)), cur);
+    res.style.display = '';
+    $$('#po-newo').textContent = money(newO, cur);
+    $$('#po-saved').textContent = monthsSaved + ' міс';
+    $$('#po-isave').textContent = isave;
+  });
+  openModal('Дострокове погашення — ' + (l.name||'Кредит'), body, {});
+}
 
 //==================== Навігація (через хеш URL — зберігається при перезавантаженні) ====================
 const views = {};
@@ -2101,6 +2152,7 @@ function loanRow(l, bank) {
     const pay = el(`<button class="btn sm" title="Внести платіж за місяць">Платіж</button>`);
     pay.onclick = () => openLoanPayment(l, bank);
     acts.appendChild(pay);
+    if (l.has_interest && l.rate > 0) { const po = el(`<button class="btn ghost sm" title="Калькулятор дострокового погашення">Достроково</button>`); po.onclick = () => openPayoff(l, bank); acts.appendChild(po); }
   }
   const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openLoanForm(l);
   const del = el(`<button class="btn danger sm">✕</button>`);
