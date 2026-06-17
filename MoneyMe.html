@@ -473,10 +473,13 @@ function feeSourceAmount(type, val, feeCur, srcCur, amount, mult) {
 }
 function accountName(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.name : '—'; }
 function accountCur(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.currency_code : 'UAH'; }
+// Сума операції / комісії у гривні (для коректного зведення мультивалютних показників).
+function txUAH(t){ const u = toUAH(t.amount||0, accountCur(t.account_id)); return u==null ? (t.amount||0) : u; }
+function feeUAH(t){ const u = toUAH(t.fee_amount||0, accountCur(t.account_id)); return u==null ? (t.fee_amount||0) : u; }
 function categoryById(id){ return state.categories.find(c=>c.id===id); }
 // Витрачено за категорією у періоді (для бюджетів).
 function categorySpent(catId, from, to){
-  return round2(state.transactions.filter(t => t.kind==='EXPENSE' && t.category_id===catId && inRange(t, from, to)).reduce((s,t)=>s+t.amount,0));
+  return round2(state.transactions.filter(t => t.kind==='EXPENSE' && t.category_id===catId && inRange(t, from, to)).reduce((s,t)=>s+txUAH(t),0));
 }
 // Період витрат категорії за її типом бюджету (місяць/рік), станом на сьогодні.
 function budgetRange(c){ return c.budget_period === 'yearly' ? { from: yearStartISO(), to: todayISO(), label: 'рік' } : { from: monthStartISO(), to: todayISO(), label: 'міс.' }; }
@@ -1039,7 +1042,7 @@ views.dashboard = (app) => {
   const from = monthStartISO(), to = todayISO();
   let inc=0, exp=0, fees=0;
   state.transactions.forEach(t => { if(!inRange(t,from,to))return;
-    if(t.kind==='INCOME')inc+=t.amount; else if(t.kind==='EXPENSE')exp+=t.amount; else if(t.kind==='TRANSFER')fees+=(t.fee_amount||0); });
+    if(t.kind==='INCOME')inc+=txUAH(t); else if(t.kind==='EXPENSE')exp+=txUAH(t); else if(t.kind==='TRANSFER')fees+=feeUAH(t); });
   // кредитне навантаження за місяць (за валютами)
   const burden = {};
   state.loans.filter(loanActive).forEach(l => { const b = bankById(l.bank_id); const c = b?b.currency:'UAH'; burden[c] = (burden[c]||0) + loanMonthly(l); });
@@ -1301,13 +1304,13 @@ views.analytics = (app) => {
   const inR = (t) => inRange(t, anFilter.from, anFilter.to);
   let inc=0, exp=0, fees=0;
   state.transactions.forEach(t => { if(!inR(t))return;
-    if(t.kind==='INCOME')inc+=t.amount; else if(t.kind==='EXPENSE')exp+=t.amount; else if(t.kind==='TRANSFER')fees+=(t.fee_amount||0); });
+    if(t.kind==='INCOME')inc+=txUAH(t); else if(t.kind==='EXPENSE')exp+=txUAH(t); else if(t.kind==='TRANSFER')fees+=feeUAH(t); });
   const net = inc - exp - fees;
 
   // порівняння з попереднім періодом
   const pr = prevRange(anFilter.from, anFilter.to);
   let pInc=0, pExp=0;
-  if (pr) state.transactions.forEach(t => { if(!inRange(t,pr.from,pr.to))return; if(t.kind==='INCOME')pInc+=t.amount; else if(t.kind==='EXPENSE')pExp+=t.amount; });
+  if (pr) state.transactions.forEach(t => { if(!inRange(t,pr.from,pr.to))return; if(t.kind==='INCOME')pInc+=txUAH(t); else if(t.kind==='EXPENSE')pExp+=txUAH(t); });
   const dInc = pctDelta(inc,pInc), dExp = pctDelta(exp,pExp);
   const deltaTag = (d, goodIfNeg) => d==null ? '' : `<div class="k" style="font-size:11px;color:${(goodIfNeg? d<=0 : d>=0)?'var(--green)':'var(--red)'}">${d>0?'+':''}${d}% vs попередній</div>`;
 
@@ -1327,7 +1330,8 @@ views.analytics = (app) => {
   const nwPoints = lastMonthEnds(12).map(m => ({ label: m.label, value: netWorthAt(m.iso) }));
   const nw = el(`<div class="card" style="padding:14px;margin-top:14px">
     <div class="row" style="justify-content:space-between;align-items:baseline"><h2>Чисті активи (₴-екв)</h2>
-      <b class="tabnum">${money(nwPoints[nwPoints.length-1].value)}</b></div></div>`);
+      <b class="tabnum">${money(nwPoints[nwPoints.length-1].value)}</b></div>
+    <div class="muted small" style="margin-top:2px">приблизно, за поточним курсом валют</div></div>`);
   nw.appendChild(netWorthSVG(nwPoints));
   nw.appendChild(chartLabels(nwPoints.map(p=>p.label)));
   app.appendChild(nw);
@@ -1339,7 +1343,7 @@ views.analytics = (app) => {
       const c = t.category_id ? categoryById(t.category_id) : null;
       const key = c ? c.id : 0;
       if (!map[key]) map[key] = { name: c?c.name:'Без категорії', color: c?c.color:'#94a3b8', icon: c?c.icon:'', total:0 };
-      map[key].total += t.amount; });
+      map[key].total += txUAH(t); });
     return Object.values(map).sort((a,b)=>b.total-a.total);
   }
   const grid = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:14px"></div>`);
@@ -1364,7 +1368,7 @@ views.analytics = (app) => {
   // витрати по рахунках і по банках
   function spendBy(keyFn) {
     const map = {};
-    state.transactions.forEach(t => { if (t.kind!=='EXPENSE' || !inR(t)) return; const k = keyFn(t); if (k==null) return; map[k]=(map[k]||0)+t.amount; });
+    state.transactions.forEach(t => { if (t.kind!=='EXPENSE' || !inR(t)) return; const k = keyFn(t); if (k==null) return; map[k]=(map[k]||0)+txUAH(t); });
     return map;
   }
   const byAcc = spendBy(t => t.account_id);
@@ -1393,7 +1397,7 @@ views.analytics = (app) => {
   const mMap = {};
   state.transactions.forEach(t => { if(!inR(t))return; const m = t.date.slice(0,7);
     if(!mMap[m]) mMap[m] = { month:m, income:0, expense:0, fees:0 };
-    if(t.kind==='INCOME')mMap[m].income+=t.amount; else if(t.kind==='EXPENSE')mMap[m].expense+=t.amount; else if(t.kind==='TRANSFER')mMap[m].fees+=(t.fee_amount||0); });
+    if(t.kind==='INCOME')mMap[m].income+=txUAH(t); else if(t.kind==='EXPENSE')mMap[m].expense+=txUAH(t); else if(t.kind==='TRANSFER')mMap[m].fees+=feeUAH(t); });
   const months = Object.values(mMap).sort((a,b)=>a.month<b.month?-1:1);
   const dyn = el(`<div class="card" style="padding:14px;margin-top:14px"><h2 style="margin-bottom:10px">Динаміка по місяцях</h2></div>`);
   if (months.length === 0) dyn.appendChild(el(`<div class="empty">Немає даних за період</div>`));
@@ -1457,6 +1461,8 @@ views.accounts = (app) => {
       });
       state.accounts = state.accounts.filter(x=>x.id!==a.id);
       state.transactions = state.transactions.filter(t=>t.account_id!==a.id && t.to_account_id!==a.id);
+      state.recurring = state.recurring.filter(r=>r.account_id!==a.id);            // регулярні без рахунку — видаляємо
+      state.banks.forEach(b=>{ if(b.primary_account_id===a.id) b.primary_account_id=null; }); // скидаємо «основний рахунок»
     });
     actions.appendChild(ed); actions.appendChild(arch); actions.appendChild(del);
     makeReorderable(c, 'acc', a.id, reorderAccount);
@@ -1588,6 +1594,7 @@ views.categories = (app) => {
     del.onclick=()=>deleteWithUndo(`Категорію «${c.name}» видалено`, () => {
       state.categories = state.categories.filter(x=>x.id!==c.id);
       state.transactions.forEach(t=>{ if(t.category_id===c.id)t.category_id=null; });
+      state.recurring.forEach(r=>{ if(r.category_id===c.id)r.category_id=null; });
     });
     node.appendChild(up); node.appendChild(down); node.appendChild(ed); node.appendChild(del);
     grid.appendChild(node);
