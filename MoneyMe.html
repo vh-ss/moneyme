@@ -31,7 +31,7 @@
     position: sticky; top: 0; z-index: 30; background: var(--headbg);
     backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
   }
-  .nav { max-width: 920px; margin: 0 auto; display: flex; align-items: center; gap: 4px;
+  .nav { max-width: 1180px; margin: 0 auto; display: flex; align-items: center; gap: 3px;
     padding: 10px 16px; overflow-x: auto; }
   .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 18px; margin-right: 14px; white-space: nowrap; }
   .brand .logo { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: var(--accent); color: #fff; }
@@ -175,16 +175,24 @@
   .emojigrid button:hover { background: var(--hover); }
   .emojigrid button.sel { background: var(--accent); }
 
+  /* меню без прокрутки: щойно бракує місця — лише іконки */
+  @media (max-width: 1140px) {
+    .nav a .nt { display: none; }
+    .brand .bt { display: none; }
+    .nav a { padding: 7px 10px; }
+    .nav a .ni { font-size: 18px; }
+  }
+
   /* адаптив під телефон */
   @media (max-width: 560px) {
     body { font-size: 14px; }
     .wrap { padding: 0 10px 70px; }
-    .nav { padding: 8px 10px; gap: 2px; }
-    .brand { font-size: 16px; margin-right: 8px; }
+    .nav { padding: 8px 6px; gap: 1px; }
+    .brand { font-size: 16px; margin-right: 4px; }
     .brand .bt { display: none; }
-    .nav a { padding: 7px 9px; font-size: 13px; }
+    .nav a { padding: 6px 7px; font-size: 13px; }
     .nav a .nt { display: none; }
-    .nav a .ni { font-size: 18px; }
+    .nav a .ni { font-size: 17px; }
     h1 { font-size: 20px; margin: 16px 0 12px; }
     .card { border-radius: 14px; }
     .acc .bal { font-size: 19px; }
