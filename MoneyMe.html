@@ -35,9 +35,10 @@
     padding: 10px 16px; overflow-x: auto; }
   .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 18px; margin-right: 14px; white-space: nowrap; }
   .brand .logo { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: var(--accent); color: #fff; }
-  .nav a { padding: 7px 13px; border-radius: 10px; color: var(--muted); text-decoration: none; font-weight: 500; white-space: nowrap; font-size: 14px; }
+  .nav a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; color: var(--muted); text-decoration: none; font-weight: 500; white-space: nowrap; font-size: 14px; }
   .nav a.active { background: var(--accent); color: #fff; }
   .nav a:hover:not(.active) { background: var(--hover); }
+  .nav a .ni { font-size: 15px; line-height: 1; }
 
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
   h1 { font-size: 22px; margin: 22px 0 14px; }
@@ -178,7 +179,10 @@
     .wrap { padding: 0 10px 70px; }
     .nav { padding: 8px 10px; gap: 2px; }
     .brand { font-size: 16px; margin-right: 8px; }
-    .nav a { padding: 6px 10px; font-size: 13px; }
+    .brand .bt { display: none; }
+    .nav a { padding: 7px 9px; font-size: 13px; }
+    .nav a .nt { display: none; }
+    .nav a .ni { font-size: 18px; }
     h1 { font-size: 20px; margin: 16px 0 12px; }
     .card { border-radius: 14px; }
     .acc .bal { font-size: 19px; }
@@ -192,16 +196,16 @@
 <body>
 <header>
   <div class="nav">
-    <div class="brand"><span class="logo">₴</span> MoneyMe</div>
-    <a data-view="dashboard">Огляд</a>
-    <a data-view="transactions">Операції</a>
-    <a data-view="analytics">Аналітика</a>
-    <a data-view="accounts">Рахунки</a>
-    <a data-view="credits">Кредити</a>
-    <a data-view="goals">Цілі</a>
-    <a data-view="recurring">Регулярні</a>
-    <a data-view="categories">Категорії</a>
-    <a data-view="settings">Налаштування</a>
+    <div class="brand"><span class="logo">₴</span><span class="bt">MoneyMe</span></div>
+    <a data-view="dashboard"><span class="ni">🏠</span><span class="nt">Огляд</span></a>
+    <a data-view="transactions"><span class="ni">🧾</span><span class="nt">Операції</span></a>
+    <a data-view="analytics"><span class="ni">📊</span><span class="nt">Аналітика</span></a>
+    <a data-view="accounts"><span class="ni">💳</span><span class="nt">Рахунки</span></a>
+    <a data-view="credits"><span class="ni">🏦</span><span class="nt">Кредити</span></a>
+    <a data-view="goals"><span class="ni">🎯</span><span class="nt">Цілі</span></a>
+    <a data-view="recurring"><span class="ni">🔁</span><span class="nt">Регулярні</span></a>
+    <a data-view="categories"><span class="ni">🏷️</span><span class="nt">Категорії</span></a>
+    <a data-view="settings"><span class="ni">⚙️</span><span class="nt">Налаштування</span></a>
   </div>
 </header>
 <div class="wrap" id="app"></div>
