@@ -950,12 +950,11 @@ function barsSVG(months) {
     const bw = w*0.22, gap = w*0.06, base = i*w + w*0.12;
     const vals = [[m.income,'#16a34a'],[m.expense,'#ef4444'],[m.fees,'#f59e0b']];
     vals.forEach(([v,c],j) => {
-      const h = (v/max)*(H-26);
-      bars += `<rect x="${base + j*(bw+gap)}" y="${H-h-18}" width="${bw}" height="${h}" rx="0.6" fill="${c}"/>`;
+      const h = (v/max)*(H-6);
+      bars += `<rect x="${(base + j*(bw+gap)).toFixed(2)}" y="${(H-h).toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}" rx="0.6" fill="${c}"/>`;
     });
-    bars += `<text x="${i*w + w/2}" y="${H-4}" font-size="4.5" fill="#94a3b8" text-anchor="middle">${m.month.slice(5)}</text>`;
   });
-  return el(`<svg width="100%" height="${H}" viewBox="0 0 100 ${H}" preserveAspectRatio="none" style="overflow:visible">${bars}</svg>`);
+  return el(`<svg width="100%" height="${H}" viewBox="0 0 100 ${H}" preserveAspectRatio="none" style="overflow:visible;display:block">${bars}</svg>`);
 }
 
 //==================== Вигляд: Огляд ====================
@@ -1204,17 +1203,21 @@ function netWorthAt(dateISO){
 }
 function lastMonthEnds(n){ const arr=[]; const now=new Date(); for(let i=n-1;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i+1, 0); arr.push({ iso: isoOf(d), label: ymd(d.getFullYear(), d.getMonth()+1, 1).slice(2,7) }); } return arr; }
 function netWorthSVG(points){
-  const H=150, W=100; const vals=points.map(p=>p.value);
+  const H=130, W=100; const vals=points.map(p=>p.value);
   const min=Math.min(0,...vals), max=Math.max(1,...vals); const range=(max-min)||1;
   const x=i=> points.length<=1?W/2 : (i/(points.length-1))*W;
-  const y=v=> H-16 - ((v-min)/range)*(H-26);
+  const y=v=> H-6 - ((v-min)/range)*(H-12);
   const line = points.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
-  const area = `M0 ${H-16} ` + points.map((p,i)=>`L${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ') + ` L${W} ${H-16} Z`;
-  const step = Math.max(1, Math.ceil(points.length/6));
-  let labels=''; points.forEach((p,i)=>{ if(i%step===0||i===points.length-1) labels+=`<text x="${x(i).toFixed(1)}" y="${H-3}" font-size="3.6" fill="#94a3b8" text-anchor="middle">${p.label}</text>`; });
-  return el(`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="overflow:visible">
+  const area = `M0 ${H-6} ` + points.map((p,i)=>`L${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ') + ` L${W} ${H-6} Z`;
+  return el(`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="overflow:visible;display:block">
     <path d="${area}" fill="var(--accent)" opacity="0.13"/>
-    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.1"/>${labels}</svg>`);
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.1" vector-effect="non-scaling-stroke"/></svg>`);
+}
+// Рядок підписів під графіком (звичайний HTML — без спотворення).
+function chartLabels(labels){
+  const n = labels.length, step = Math.max(1, Math.ceil(n/6));
+  const shown = labels.map((l,i)=> (i%step===0 || i===n-1) ? l : '');
+  return el(`<div style="display:flex;justify-content:space-between;margin-top:4px">${shown.map(l=>`<span class="muted" style="font-size:11px;white-space:nowrap">${esc(l)}</span>`).join('')}</div>`);
 }
 
 //==================== Вигляд: Аналітика ====================
@@ -1262,6 +1265,7 @@ views.analytics = (app) => {
     <div class="row" style="justify-content:space-between;align-items:baseline"><h2>Чисті активи (₴-екв)</h2>
       <b class="tabnum">${money(nwPoints[nwPoints.length-1].value)}</b></div></div>`);
   nw.appendChild(netWorthSVG(nwPoints));
+  nw.appendChild(chartLabels(nwPoints.map(p=>p.label)));
   app.appendChild(nw);
 
   // за категоріями
@@ -1331,6 +1335,7 @@ views.analytics = (app) => {
   if (months.length === 0) dyn.appendChild(el(`<div class="empty">Немає даних за період</div>`));
   else {
     dyn.appendChild(barsSVG(months));
+    dyn.appendChild(chartLabels(months.map(m=>m.month.slice(2))));
     dyn.appendChild(el(`<div class="row small muted" style="gap:16px;margin-top:8px">
       <span><span style="color:#16a34a">■</span> Надходження</span>
       <span><span style="color:#ef4444">■</span> Витрати</span>
