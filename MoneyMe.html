@@ -497,6 +497,10 @@ function deleteTx(tx) {
       const loan = state.loans.find(l => l.id === tx.loan_id);
       if (loan) loan.paid = round2(Math.max(0, (loan.paid || 0) - (tx.amount || 0)));
     }
+    if (tx.recurring_id) {   // це регулярний платіж — відкочуємо дату наступного списання на цикл назад
+      const r = state.recurring.find(x => x.id === tx.recurring_id);
+      if (r && r.next_date) r.next_date = prevRecurDate(r.next_date, r.freq);
+    }
     state.transactions = state.transactions.filter(x => x.id !== tx.id);
   });
 }
@@ -1430,6 +1434,7 @@ function isoOf(d){ const tz = d.getTimezoneOffset()*60000; return new Date(d.get
 function addMonthsISO(iso, n){ const [y,m,d] = iso.split('-').map(Number); return isoOf(new Date(y, m-1+n, d)); }
 function addDaysISO(iso, n){ return isoOf(new Date(Date.parse(iso) + n*86400000)); }
 function nextRecurDate(iso, freq){ return freq==='weekly' ? addDaysISO(iso, 7) : addMonthsISO(iso, 1); }
+function prevRecurDate(iso, freq){ return freq==='weekly' ? addDaysISO(iso, -7) : addMonthsISO(iso, -1); }
 const FREQ_LABEL = { monthly:'щомісяця', weekly:'щотижня' };
 function ymd(y,m,d){ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 function presetRange(name){
