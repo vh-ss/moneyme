@@ -473,6 +473,30 @@ function categoryById(id){ return state.categories.find(c=>c.id===id); }
 function categorySpent(catId, from, to){
   return round2(state.transactions.filter(t => t.kind==='EXPENSE' && t.category_id===catId && inRange(t, from, to)).reduce((s,t)=>s+t.amount,0));
 }
+// Картка «Бюджети»: категорії витрат з лімітом і поточним станом за період (за замовч. — поточний місяць).
+function budgetsCard(opts){
+  const from = (opts&&opts.from) || monthStartISO(), to = (opts&&opts.to) || todayISO();
+  const title = (opts&&opts.title) || 'Бюджети (місяць)';
+  const cats = state.categories.filter(c => c.kind==='EXPENSE' && (c.budget||0) > 0);
+  if (!cats.length) return null;
+  const rows = cats.map(c => ({ c, spent: categorySpent(c.id, from, to) })).sort((a,b)=> (b.spent/b.c.budget) - (a.spent/a.c.budget));
+  const totSpent = rows.reduce((s,r)=>s+r.spent,0), totBudget = rows.reduce((s,r)=>s+r.c.budget,0);
+  const card = el(`<section class="card" style="padding:16px"><div class="row" style="justify-content:space-between;align-items:baseline"><h2>${esc(title)}</h2><span class="muted small tabnum">${money(totSpent)} / ${money(totBudget)}</span></div></section>`);
+  rows.forEach(({c, spent}) => {
+    const pct = Math.min(100, Math.round(spent / c.budget * 100));
+    const real = Math.round(spent / c.budget * 100);
+    const over = spent > c.budget;
+    const color = over ? 'var(--red)' : (spent >= c.budget*0.8 ? 'var(--amber)' : 'var(--green)');
+    card.appendChild(el(`<div style="margin:9px 0 0">
+      <div style="display:flex;justify-content:space-between;font-size:14px;gap:8px">
+        <span class="ln">${c.icon?c.icon+' ':''}${esc(c.name)}</span>
+        <span class="small tabnum" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(c.budget)} · ${real}%${over?' ⛔':''}</span>
+      </div>
+      <div class="pbar" style="margin-top:4px"><i style="width:${pct}%;background:${color}"></i></div>
+    </div>`));
+  });
+  return card;
+}
 
 function inRange(t, from, to){ return (!from || t.date >= from) && (!to || t.date <= to); }
 
@@ -1055,15 +1079,9 @@ views.dashboard = (app) => {
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   app.appendChild(head);
 
-  // попередження про перевищені/майже вичерпані бюджети (поточний місяць)
-  const overBudget = state.categories
-    .filter(c => c.kind === 'EXPENSE' && (c.budget||0) > 0)
-    .map(c => ({ c, spent: categorySpent(c.id, monthStartISO(), todayISO()) }))
-    .filter(x => x.spent >= x.c.budget * 0.9);
-  if (overBudget.length) {
-    const items = overBudget.map(x => `${x.c.icon?x.c.icon+' ':''}${esc(x.c.name)} — ${money(x.spent)}/${money(x.c.budget)}${x.spent>x.c.budget?' ⛔':''}`).join('; ');
-    app.appendChild(el(`<div class="notice" style="margin-top:10px">📊 Бюджети майже вичерпано: ${items}</div>`));
-  }
+  // бюджети категорій з лімітом (поточний місяць)
+  const bcard = budgetsCard();
+  if (bcard) { bcard.style.marginTop = '14px'; app.appendChild(bcard); }
 
   // нагадування про регулярні платежі
   const due = dueRecurring();
@@ -1292,6 +1310,10 @@ views.analytics = (app) => {
     <div class="card sumcard"><div class="k">Чистий потік</div><div class="v tabnum" style="color:${net>=0?'var(--green)':'var(--red)'}">${money(net)}</div></div>
   </div>`);
   app.appendChild(sum);
+
+  // бюджети за обраний період
+  const bcard = budgetsCard({ from: anFilter.from, to: anFilter.to, title: 'Бюджети за період' });
+  if (bcard) { bcard.style.marginTop = '14px'; app.appendChild(bcard); }
 
   // графік чистих активів (останні 12 місяців)
   const nwPoints = lastMonthEnds(12).map(m => ({ label: m.label, value: netWorthAt(m.iso) }));
