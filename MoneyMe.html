@@ -517,6 +517,8 @@ function feeSourceAmount(type, val, feeCur, srcCur, amount, mult) {
 function accountName(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.name : '—'; }
 function accountCur(id){ const a = state.accounts.find(x=>x.id===id); return a ? a.currency_code : 'UAH'; }
 // Сума операції / комісії у гривні (для коректного зведення мультивалютних показників).
+function parseTags(str){ return [...new Set((str||'').split(/[,\n]+/).map(s=>s.trim().replace(/^#/,'')).filter(Boolean))]; }
+function allTags(){ const s = new Set(); state.transactions.forEach(t => (t.tags||[]).forEach(x => s.add(x))); return [...s].sort((a,b)=>a.localeCompare(b,'uk')); }
 function txUAH(t){ const u = toUAH(t.amount||0, accountCur(t.account_id)); return u==null ? (t.amount||0) : u; }
 function feeUAH(t){ const u = toUAH(t.fee_amount||0, accountCur(t.account_id)); return u==null ? (t.fee_amount||0) : u; }
 function categoryById(id){ return state.categories.find(c=>c.id===id); }
@@ -698,6 +700,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       <div style="flex:1"><label class="lab">Дата</label><input id="f-date" type="date" value="${e.date || todayISO()}"></div>
       <div style="flex:1"><label class="lab">Нотатка</label><input id="f-note" value="${esc(e.note||'')}" placeholder="—"></div>
     </div>
+    <div><label class="lab">Теги (через кому)</label><input id="f-tags" value="${esc((e.tags||[]).join(', '))}" placeholder="напр. відпустка, робота"></div>
     <div class="err hidden" id="f-err"></div>
   </div>`);
   openModal((existing?'Редагувати ':'') + (isInc?'надходження':'витрату'), body, {
@@ -712,6 +715,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
         category_id: $('#f-cat', body).value ? parseInt($('#f-cat', body).value) : null,
         date: $('#f-date', body).value || todayISO(),
         note: $('#f-note', body).value.trim() || null,
+        tags: parseTags($('#f-tags', body).value),
       };
       if (existing) {
         // якщо це платіж за кредитом — синхронізуємо виплачене на різницю суми
@@ -1015,7 +1019,7 @@ function txRow(t, { onEdit, onDelete, onDup } = {}) {
   const row = el(`<div class="txrow">
     <span class="txicon" style="background:${color}22;color:${color}">${icon}</span>
     <div class="txmain"><div class="txtitle">${esc(title)}</div>
-      <div class="txsub">${fmtDate(t.date)} · ${esc(sub)}${t.note?' · '+esc(t.note):''}</div></div>
+      <div class="txsub">${fmtDate(t.date)} · ${esc(sub)}${t.note?' · '+esc(t.note):''}${(t.tags&&t.tags.length)?' · '+t.tags.map(x=>'#'+esc(x)).join(' '):''}</div></div>
     <div style="text-align:right">${amtHtml}</div>
   </div>`);
   if (onDup) { const b = el(`<button class="btn ghost sm" title="Дублювати">⧉</button>`); b.onclick=()=>onDup(t); row.appendChild(b); }
@@ -1031,7 +1035,7 @@ function duplicateTx(tx) {
       openTransferDialog(tx.account_id, tx.to_account_id);
     return;
   }
-  openEntryForm(tx.kind, null, null, { amount: tx.amount, account_id: tx.account_id, category_id: tx.category_id, note: tx.note });
+  openEntryForm(tx.kind, null, null, { amount: tx.amount, account_id: tx.account_id, category_id: tx.category_id, note: tx.note, tags: tx.tags });
 }
 
 //==================== SVG-діаграми ====================
@@ -1214,7 +1218,7 @@ views.dashboard = (app) => {
 };
 
 //==================== Вигляд: Операції ====================
-let txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date' };
+let txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'' };
 views.transactions = (app) => {
   app.appendChild(el(`<h1>Операції</h1>`));
   const f = el(`<div class="card" style="padding:14px">
@@ -1225,6 +1229,7 @@ views.transactions = (app) => {
         <option value="">Усі</option><option value="EXPENSE">Витрати</option><option value="INCOME">Надходження</option><option value="TRANSFER">Перекази</option></select></div>
       <div><label class="lab">Від</label><input id="ff-from" type="date" value="${txFilter.from}"></div>
       <div><label class="lab">До</label><input id="ff-to" type="date" value="${txFilter.to}"></div>
+      ${allTags().length ? `<div><label class="lab">Тег</label><select id="ff-tag"><option value="">Усі</option>${allTags().map(tg=>`<option value="${esc(tg)}">#${esc(tg)}</option>`).join('')}</select></div>` : ''}
     </div>
     <div class="row" style="align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px">
       <div class="pill"><button data-s="date">За датою</button><button data-s="manual">Вручну</button></div>
@@ -1232,10 +1237,11 @@ views.transactions = (app) => {
     </div>
   </div>`);
   $('#ff-kind', f).value = txFilter.kind;
+  if ($('#ff-tag', f)) $('#ff-tag', f).value = txFilter.tag;
   $('#ff-q', f).addEventListener('input', () => { txFilter.q = $('#ff-q', f).value; renderList(); });
-  ['ff-acc','ff-kind','ff-from','ff-to'].forEach(id => $('#'+id, f).addEventListener('change', () => {
-    txFilter.account=$('#ff-acc',f).value; txFilter.kind=$('#ff-kind',f).value; txFilter.from=$('#ff-from',f).value; txFilter.to=$('#ff-to',f).value; renderList();
-  }));
+  ['ff-acc','ff-kind','ff-from','ff-to','ff-tag'].forEach(id => { const el2 = $('#'+id, f); if (el2) el2.addEventListener('change', () => {
+    txFilter.account=$('#ff-acc',f).value; txFilter.kind=$('#ff-kind',f).value; txFilter.from=$('#ff-from',f).value; txFilter.to=$('#ff-to',f).value; txFilter.tag=$('#ff-tag',f)?$('#ff-tag',f).value:''; renderList();
+  }); });
   f.querySelectorAll('.pill button').forEach(b => { b.classList.toggle('on', b.dataset.s===txFilter.sort);
     b.onclick = () => { txFilter.sort = b.dataset.s; render(); }; });
   app.appendChild(f);
@@ -1249,9 +1255,10 @@ views.transactions = (app) => {
     let rows = state.transactions.filter(t => {
       if (txFilter.account && t.account_id != txFilter.account && t.to_account_id != txFilter.account) return false;
       if (txFilter.kind && t.kind !== txFilter.kind) return false;
+      if (txFilter.tag && !(t.tags||[]).includes(txFilter.tag)) return false;
       if (!inRange(t, txFilter.from, txFilter.to)) return false;
       if (q) {
-        const hay = `${t.note||''} ${categoryById(t.category_id)?.name||''} ${accountName(t.account_id)} ${t.kind==='TRANSFER'?accountName(t.to_account_id):''} ${t.amount}`.toLowerCase();
+        const hay = `${t.note||''} ${categoryById(t.category_id)?.name||''} ${accountName(t.account_id)} ${t.kind==='TRANSFER'?accountName(t.to_account_id):''} ${(t.tags||[]).join(' ')} ${t.amount}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
