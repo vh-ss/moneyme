@@ -952,7 +952,7 @@ let dashCurSet = new Set();   // порожньо = всі валюти
 views.dashboard = (app) => {
   // баланси за валютами
   const byCur = {};
-  state.accounts.forEach(a => { byCur[a.currency_code] = (byCur[a.currency_code]||0) + accountBalance(a.id); });
+  state.accounts.filter(a => !a.archived).forEach(a => { byCur[a.currency_code] = (byCur[a.currency_code]||0) + accountBalance(a.id); });
   const allCurs = Object.keys(byCur);
   [...dashCurSet].forEach(c => { if (!allCurs.includes(c)) dashCurSet.delete(c); });
   const selected = dashCurSet.size ? allCurs.filter(c => dashCurSet.has(c)) : allCurs;
@@ -1027,7 +1027,7 @@ views.dashboard = (app) => {
       <h2>Рахунки</h2><span class="muted small">Перетягніть картку на іншу — переказ</span></div>
     <div class="accgrid" id="accgrid"></div></section>`);
   const grid = $('#accgrid', sec);
-  const accs = state.accounts.filter(a => selected.includes(a.currency_code));
+  const accs = state.accounts.filter(a => !a.archived && selected.includes(a.currency_code));
   if (state.accounts.length === 0) grid.appendChild(el(`<div class="muted small">Ще немає рахунків. Додайте у вкладці «Рахунки».</div>`));
   else if (accs.length === 0) grid.appendChild(el(`<div class="muted small">Немає рахунків за обраними валютами.</div>`));
   accs.forEach(a => {
@@ -1332,13 +1332,15 @@ views.accounts = (app) => {
 
   function accCard(a) {
     const bnk = a.bank_id ? bankById(a.bank_id) : null;
-    const c = el(`<div class="card" style="padding:14px;border-left:4px solid ${a.color};display:flex;justify-content:space-between;gap:10px">
-      <div style="min-width:0"><div style="font-weight:600">${a.icon?a.icon+' ':''}${esc(a.name)}</div>
+    const c = el(`<div class="card" style="padding:14px;border-left:4px solid ${a.color};display:flex;justify-content:space-between;gap:10px${a.archived?';opacity:.6':''}">
+      <div style="min-width:0"><div style="font-weight:600">${a.icon?a.icon+' ':''}${esc(a.name)}${a.archived?' <span class="muted small">(архів)</span>':''}</div>
       <div class="muted small">${TYPE_LABEL[a.type]} · ${curSym(a.currency_code)}${bnk?' · '+esc(bnk.name):''} · старт: ${money(a.initial_balance,a.currency_code)}</div>
       <div class="tabnum" style="font-size:18px;font-weight:800;margin-top:4px">${money(accountBalance(a.id),a.currency_code)}</div></div>
       <div style="display:flex;flex-direction:column;gap:4px"></div></div>`);
     const actions = c.lastElementChild;
     const ed = el(`<button class="btn ghost sm">Змінити</button>`); ed.onclick=()=>openAccountForm(a);
+    const arch = el(`<button class="btn ghost sm">${a.archived?'Розархівувати':'Архівувати'}</button>`);
+    arch.onclick = () => { a.archived = a.archived ? 0 : 1; save(); render(); };
     const del = el(`<button class="btn danger sm">Видалити</button>`);
     del.onclick=()=>deleteWithUndo(`Рахунок «${a.name}» видалено`, () => {
       // повертаємо суми кредитів за платежами, що видаляються разом з рахунком
@@ -1351,7 +1353,7 @@ views.accounts = (app) => {
       state.accounts = state.accounts.filter(x=>x.id!==a.id);
       state.transactions = state.transactions.filter(t=>t.account_id!==a.id && t.to_account_id!==a.id);
     });
-    actions.appendChild(ed); actions.appendChild(del);
+    actions.appendChild(ed); actions.appendChild(arch); actions.appendChild(del);
     makeReorderable(c, 'acc', a.id, reorderAccount);
     return c;
   }
@@ -1359,30 +1361,41 @@ views.accounts = (app) => {
 
   if (state.accounts.length === 0) { app.appendChild(el(`<div class="muted" style="margin-top:8px">Ще немає рахунків.</div>`)); return; }
 
+  const active = a => !a.archived;
   if (accBankFilter === '') {
     const hasBanks = state.banks.length > 0;
     // групування по банках + сумарний баланс групи за валютами
     state.banks.forEach(b => {
-      const list = state.accounts.filter(a => a.bank_id === b.id);
+      const list = state.accounts.filter(a => active(a) && a.bank_id === b.id);
       if (list.length === 0) return;
       const total = {}; list.forEach(a => total[a.currency_code]=(total[a.currency_code]||0)+accountBalance(a.id));
       const totStr = Object.entries(total).map(([c,v])=>money(v,c)).join(' · ');
       app.appendChild(el(`<div class="row" style="justify-content:space-between;align-items:baseline;margin-top:16px"><h2 style="min-width:0">${esc(b.name)}</h2><span class="muted small tabnum">${totStr}</span></div>`));
       app.appendChild(gridOf(list));
     });
-    const none = state.accounts.filter(a => !a.bank_id);
+    const none = state.accounts.filter(a => active(a) && !a.bank_id);
     if (none.length) {
       if (hasBanks) app.appendChild(el(`<div class="row" style="margin-top:16px"><h2 class="muted">Без банку</h2></div>`));
       app.appendChild(gridOf(none));
     }
   } else {
-    const list = accBankFilter === 'none'
+    const list = (accBankFilter === 'none'
       ? state.accounts.filter(a => !a.bank_id)
-      : state.accounts.filter(a => a.bank_id === parseInt(accBankFilter));
+      : state.accounts.filter(a => a.bank_id === parseInt(accBankFilter))).filter(active);
     if (list.length === 0) app.appendChild(el(`<div class="muted" style="margin-top:8px">Немає рахунків у цій групі.</div>`));
     else app.appendChild(gridOf(list));
   }
+
+  // архівні рахунки
+  const archived = state.accounts.filter(a => a.archived);
+  if (archived.length) {
+    const t = el(`<div style="margin-top:18px"><button class="btn ghost sm" id="show-arch">${showArchived?'▾':'▸'} Архівні рахунки (${archived.length})</button></div>`);
+    $('#show-arch', t).onclick = () => { showArchived = !showArchived; render(); };
+    app.appendChild(t);
+    if (showArchived) app.appendChild(gridOf(archived));
+  }
 };
+let showArchived = false;
 
 function openAccountForm(existing) {
   const e = existing || { type:'CARD', currency_code:'UAH', initial_balance:0, color:PALETTE[0] };
@@ -1394,6 +1407,11 @@ function openAccountForm(existing) {
         <option value="CASH">Готівка</option><option value="CARD">Картка</option><option value="BANK">Банк. рахунок</option></select></div>
       <div style="flex:1"><label class="lab">Валюта</label><select id="a-cur">${CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join('')}</select></div>
     </div>
+    <div><label class="lab">Іконка</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="a-icon" maxlength="2" value="${esc(e.icon||'')}" placeholder="🙂" style="width:54px;text-align:center;font-size:18px">
+        <div id="a-icons" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+      </div></div>
     <div><label class="lab">Банк (необовʼязково)</label><select id="a-bank"><option value="">— без банку —</option>${state.banks.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
     <div><label class="lab">Стартовий залишок</label><input id="a-init" inputmode="decimal" value="${e.initial_balance ?? 0}"></div>
     <div><label class="lab">Колір</label><div id="a-color"></div></div>
@@ -1401,6 +1419,11 @@ function openAccountForm(existing) {
   </div>`);
   $('#a-type', body).value = e.type; $('#a-cur', body).value = e.currency_code;
   $('#a-bank', body).value = e.bank_id ? String(e.bank_id) : '';
+  ['💳','💵','🏦','💰','🪙','💼','📈','🧾','🛒','🎁','🏠','🚗'].forEach(ic => {
+    const b = el(`<button class="curchip" style="padding:4px 8px;font-size:16px">${ic}</button>`);
+    b.onclick = (ev) => { ev.preventDefault(); $('#a-icon', body).value = ic; };
+    $('#a-icons', body).appendChild(b);
+  });
   $('#a-color', body).appendChild(swatchPicker(color, c => color = c));
   openModal(existing?'Редагувати рахунок':'Новий рахунок', body, {
     onSave: (close) => {
@@ -1409,9 +1432,10 @@ function openAccountForm(existing) {
       if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
       const rec = { name, type:$('#a-type',body).value, currency_code:$('#a-cur',body).value,
         bank_id: $('#a-bank',body).value ? parseInt($('#a-bank',body).value) : null,
+        icon: $('#a-icon',body).value.trim() || null,
         initial_balance: round2(num($('#a-init',body).value)), color };
       if (existing) Object.assign(existing, rec);
-      else { rec.id = nextId('acc'); rec.icon=null; state.accounts.push(rec); }
+      else { rec.id = nextId('acc'); state.accounts.push(rec); }
       save(); close(); render();
     }
   });
