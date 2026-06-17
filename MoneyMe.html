@@ -78,7 +78,7 @@
   .quick .exp .dot { background: var(--red); } .quick .inc .dot { background: var(--green); }
 
   .accgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-  .acc { border-top: 4px solid #999; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); cursor: grab; user-select: none; }
+  .acc { border-top: 4px solid #999; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); cursor: grab; user-select: none; touch-action: none; }
   .acc:active { cursor: grabbing; }
   .acc.dragover { box-shadow: 0 0 0 2px var(--accent); }
   .acc.dragging { opacity: .4; }
@@ -727,6 +727,62 @@ function openTransferPicker(fromId) {
   });
 }
 
+// Меню дій по рахунку (тап/правий клік на картці «Огляду»).
+function accountActionMenu(a, x, y){
+  openContextMenu(x, y, [
+    { label: 'Витрата', icon: '−', color: 'var(--red)', onClick: () => openEntryForm('EXPENSE', null, a.id) },
+    { label: 'Надходження', icon: '+', color: 'var(--green)', onClick: () => openEntryForm('INCOME', null, a.id) },
+    { sep: true },
+    { label: 'Переказ із цього рахунку', icon: '⇄', color: '#0ea5e9', onClick: () => openTransferPicker(a.id) },
+  ], a.name);
+}
+// Перетягування картки рахунку через Pointer Events (працює і мишею, і пальцем).
+// Тап без переміщення відкриває меню дій. Drop на іншу картку — діалог переказу.
+function enableCardDrag(node, a){
+  let sx=0, sy=0, dragging=false, ghost=null, target=null;
+  const TH = 8;
+  node.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    sx = e.clientX; sy = e.clientY; dragging = false; target = null;
+    document.addEventListener('pointermove', move, { passive:false });
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
+  function move(e){
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!dragging) {
+      if (Math.hypot(dx, dy) < TH) return;
+      dragging = true; node.classList.add('dragging');
+      ghost = node.cloneNode(true);
+      Object.assign(ghost.style, { position:'fixed', left:'0', top:'0', margin:'0', pointerEvents:'none', opacity:'.92',
+        width: node.offsetWidth+'px', zIndex:'70', boxShadow:'0 12px 28px rgba(0,0,0,.28)' });
+      document.body.appendChild(ghost);
+    }
+    e.preventDefault();
+    ghost.style.transform = `translate(${e.clientX - node.offsetWidth/2}px, ${e.clientY - 22}px)`;
+    ghost.style.visibility = 'hidden';
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    ghost.style.visibility = '';
+    const t = under && under.closest ? under.closest('.acc') : null;
+    if (target && target !== t) target.classList.remove('dragover');
+    target = (t && t !== node) ? t : null;
+    if (target) target.classList.add('dragover');
+  }
+  function up(e){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    node.classList.remove('dragging');
+    if (ghost) { ghost.remove(); ghost = null; }
+    if (dragging) {
+      if (target) { target.classList.remove('dragover'); const toId = parseInt(target.dataset.acc); if (toId && toId !== a.id) openTransferDialog(a.id, toId); }
+    } else {
+      accountActionMenu(a, e.clientX || sx, e.clientY || sy);   // тап → меню
+    }
+    target = null;
+  }
+}
+
 function swatchPicker(selected, onPick) {
   const wrap = el(`<div class="swatches"></div>`);
   PALETTE.forEach(c => {
@@ -1232,7 +1288,7 @@ views.dashboard = (app) => {
   // рахунки з drag-and-drop
   const sec = el(`<section>
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2>Рахунки</h2><span class="muted small">Перетягніть картку на іншу — переказ</span></div>
+      <h2>Рахунки</h2><span class="muted small">Перетягніть на іншу — переказ · тап — меню</span></div>
     <div class="accgrid" id="accgrid"></div></section>`);
   const grid = $('#accgrid', sec);
   const accs = state.accounts.filter(a => !a.archived && selected.includes(a.currency_code));
@@ -1240,29 +1296,12 @@ views.dashboard = (app) => {
   else if (accs.length === 0) grid.appendChild(el(`<div class="muted small">Немає рахунків за обраними валютами.</div>`));
   accs.forEach(a => {
     const bnk = a.bank_id ? bankById(a.bank_id) : null;
-    const node = el(`<div class="acc" draggable="true" style="border-top-color:${a.color}" title="Перетягніть на інший рахунок для переказу">
+    const node = el(`<div class="acc" data-acc="${a.id}" style="border-top-color:${a.color}" title="Перетягніть на інший рахунок — переказ. Тап/клік — меню дій.">
       <div class="top"><span class="name">${a.icon?a.icon+' ':''}${esc(a.name)}</span><span class="type">${TYPE_LABEL[a.type]||a.type}</span></div>
       ${bnk?`<div class="muted" style="font-size:11px;margin-top:2px">${esc(bnk.name)}</div>`:''}
       <div class="bal tabnum">${money(accountBalance(a.id), a.currency_code)}</div></div>`);
-    node.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', String(a.id)); node.classList.add('dragging'); });
-    node.addEventListener('dragend', () => node.classList.remove('dragging'));
-    node.addEventListener('dragover', e => { e.preventDefault(); node.classList.add('dragover'); });
-    node.addEventListener('dragleave', () => node.classList.remove('dragover'));
-    node.addEventListener('drop', e => {
-      e.preventDefault(); node.classList.remove('dragover');
-      const fromId = parseInt(e.dataTransfer.getData('text/plain'));
-      if (fromId && fromId !== a.id) openTransferDialog(fromId, a.id);
-    });
-    // правий клік → вибір операції по цьому рахунку
-    node.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      openContextMenu(e.clientX, e.clientY, [
-        { label: 'Витрата', icon: '−', color: 'var(--red)', onClick: () => openEntryForm('EXPENSE', null, a.id) },
-        { label: 'Надходження', icon: '+', color: 'var(--green)', onClick: () => openEntryForm('INCOME', null, a.id) },
-        { sep: true },
-        { label: 'Переказ із цього рахунку', icon: '⇄', color: '#0ea5e9', onClick: () => openTransferPicker(a.id) },
-      ], a.name);
-    });
+    enableCardDrag(node, a);   // pointer-drag (миша+тач) + тап = меню дій
+    node.addEventListener('contextmenu', e => { e.preventDefault(); accountActionMenu(a, e.clientX, e.clientY); });
     grid.appendChild(node);
   });
   app.appendChild(sec);
