@@ -875,7 +875,7 @@ function openTransferEdit(tx) {
 }
 
 //==================== Рядок операції ====================
-function txRow(t, { onEdit, onDelete } = {}) {
+function txRow(t, { onEdit, onDelete, onDup } = {}) {
   const isT = t.kind === 'TRANSFER', isInc = t.kind === 'INCOME';
   const cat = t.category_id ? categoryById(t.category_id) : null;
   const icon = isT ? '⇄' : isInc ? '＋' : (cat?.icon || '－');
@@ -892,9 +892,20 @@ function txRow(t, { onEdit, onDelete } = {}) {
       <div class="txsub">${fmtDate(t.date)} · ${esc(sub)}${t.note?' · '+esc(t.note):''}</div></div>
     <div style="text-align:right">${amtHtml}</div>
   </div>`);
+  if (onDup) { const b = el(`<button class="btn ghost sm" title="Дублювати">⧉</button>`); b.onclick=()=>onDup(t); row.appendChild(b); }
   if (onEdit) { const b = el(`<button class="btn ghost sm">✎</button>`); b.onclick=()=>onEdit(t); row.appendChild(b); }
   if (onDelete) { const b = el(`<button class="btn danger sm">✕</button>`); b.onclick=()=>onDelete(t); row.appendChild(b); }
   return row;
+}
+
+// Дублювати операцію (одним кліком, з датою сьогодні).
+function duplicateTx(tx) {
+  const copy = JSON.parse(JSON.stringify(tx));
+  copy.id = nextId('tx'); copy.ord = nextOrd(); copy.date = todayISO();
+  delete copy.loan_id;   // дубль — звичайна операція, без звʼязку з кредитом
+  state.transactions.push(copy);
+  save(); render();
+  showToast('Операцію скопійовано', null, null, 3000);
 }
 
 //==================== SVG-діаграми ====================
@@ -1066,41 +1077,63 @@ views.dashboard = (app) => {
 };
 
 //==================== Вигляд: Операції ====================
-let txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO() };
+let txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date' };
 views.transactions = (app) => {
   app.appendChild(el(`<h1>Операції</h1>`));
-  const f = el(`<div class="card" style="padding:14px"><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
-    <div><label class="lab">Рахунок</label><select id="ff-acc"><option value="">Усі</option>${state.accounts.map(a=>`<option value="${a.id}" ${txFilter.account==a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
-    <div><label class="lab">Тип</label><select id="ff-kind">
-      <option value="">Усі</option><option value="EXPENSE">Витрати</option><option value="INCOME">Надходження</option><option value="TRANSFER">Перекази</option></select></div>
-    <div><label class="lab">Від</label><input id="ff-from" type="date" value="${txFilter.from}"></div>
-    <div><label class="lab">До</label><input id="ff-to" type="date" value="${txFilter.to}"></div>
-  </div></div>`);
+  const f = el(`<div class="card" style="padding:14px">
+    <div><label class="lab">Пошук (нотатка, категорія, рахунок, сума)</label><input id="ff-q" placeholder="🔍 шукати…" value="${esc(txFilter.q)}"></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-top:10px">
+      <div><label class="lab">Рахунок</label><select id="ff-acc"><option value="">Усі</option>${state.accounts.map(a=>`<option value="${a.id}" ${txFilter.account==a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
+      <div><label class="lab">Тип</label><select id="ff-kind">
+        <option value="">Усі</option><option value="EXPENSE">Витрати</option><option value="INCOME">Надходження</option><option value="TRANSFER">Перекази</option></select></div>
+      <div><label class="lab">Від</label><input id="ff-from" type="date" value="${txFilter.from}"></div>
+      <div><label class="lab">До</label><input id="ff-to" type="date" value="${txFilter.to}"></div>
+    </div>
+    <div class="row" style="align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px">
+      <div class="pill"><button data-s="date">За датою</button><button data-s="manual">Вручну</button></div>
+      <span class="muted small">${txFilter.sort==='manual'?'Перетягуйте рядки, щоб змінити порядок':'Сортування за датою'}</span>
+    </div>
+  </div>`);
   $('#ff-kind', f).value = txFilter.kind;
-  f.addEventListener('change', () => {
-    txFilter = { account:$('#ff-acc',f).value, kind:$('#ff-kind',f).value, from:$('#ff-from',f).value, to:$('#ff-to',f).value };
-    render();
-  });
+  $('#ff-q', f).addEventListener('input', () => { txFilter.q = $('#ff-q', f).value; renderList(); });
+  ['ff-acc','ff-kind','ff-from','ff-to'].forEach(id => $('#'+id, f).addEventListener('change', () => {
+    txFilter.account=$('#ff-acc',f).value; txFilter.kind=$('#ff-kind',f).value; txFilter.from=$('#ff-from',f).value; txFilter.to=$('#ff-to',f).value; renderList();
+  }));
+  f.querySelectorAll('.pill button').forEach(b => { b.classList.toggle('on', b.dataset.s===txFilter.sort);
+    b.onclick = () => { txFilter.sort = b.dataset.s; render(); }; });
   app.appendChild(f);
-  app.appendChild(el(`<div class="muted small" style="margin-top:10px">Перетягуйте рядки, щоб змінити їхній порядок у списку.</div>`));
 
-  const list = el(`<div class="card" style="padding:12px;margin-top:8px"></div>`);
-  const ll = list;
-  let rows = state.transactions.filter(t => {
-    if (txFilter.account && t.account_id != txFilter.account && t.to_account_id != txFilter.account) return false;
-    if (txFilter.kind && t.kind !== txFilter.kind) return false;
-    return inRange(t, txFilter.from, txFilter.to);
-  }).sort((a,b)=>(b.ord||0)-(a.ord||0));
-  if (rows.length === 0) ll.appendChild(el(`<div class="empty">Нічого не знайдено за фільтрами</div>`));
-  rows.forEach(t => {
-    const row = txRow(t, {
-      onEdit: (tx) => tx.kind === 'TRANSFER' ? openTransferEdit(tx) : openEntryForm(tx.kind, tx),
-      onDelete: (tx) => deleteTx(tx)
-    });
-    makeReorderable(row, 'tx', t.id, reorderTx);
-    ll.appendChild(row);
-  });
+  const list = el(`<div class="card" style="padding:12px;margin-top:10px"></div>`);
   app.appendChild(list);
+
+  function renderList() {
+    list.innerHTML = '';
+    const q = txFilter.q.trim().toLowerCase();
+    let rows = state.transactions.filter(t => {
+      if (txFilter.account && t.account_id != txFilter.account && t.to_account_id != txFilter.account) return false;
+      if (txFilter.kind && t.kind !== txFilter.kind) return false;
+      if (!inRange(t, txFilter.from, txFilter.to)) return false;
+      if (q) {
+        const hay = `${t.note||''} ${categoryById(t.category_id)?.name||''} ${accountName(t.account_id)} ${t.kind==='TRANSFER'?accountName(t.to_account_id):''} ${t.amount}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    rows.sort(txFilter.sort==='manual'
+      ? (a,b)=>(b.ord||0)-(a.ord||0)
+      : (a,b)=> b.date<a.date?-1 : b.date>a.date?1 : (b.ord||0)-(a.ord||0));
+    if (rows.length === 0) { list.appendChild(el(`<div class="empty">Нічого не знайдено</div>`)); return; }
+    rows.forEach(t => {
+      const row = txRow(t, {
+        onEdit: (tx) => tx.kind === 'TRANSFER' ? openTransferEdit(tx) : openEntryForm(tx.kind, tx),
+        onDelete: (tx) => deleteTx(tx),
+        onDup: (tx) => duplicateTx(tx),
+      });
+      if (txFilter.sort === 'manual') makeReorderable(row, 'tx', t.id, reorderTx);
+      list.appendChild(row);
+    });
+  }
+  renderList();
 };
 
 //==================== Вигляд: Аналітика ====================
