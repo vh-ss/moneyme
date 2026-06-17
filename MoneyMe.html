@@ -224,7 +224,10 @@ function normalize() {
   if (!state.recurring) { state.recurring = []; changed = true; }   // регулярні платежі
   if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1 }; changed = true; }
   ['acc','cat','tx','bank','loan','rec'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = 1; changed = true; } });
-  (state.categories || []).forEach(c => { if (c.budget === undefined && c.kind === 'EXPENSE') { c.budget = 0; changed = true; } });
+  (state.categories || []).forEach(c => {
+    if (c.budget === undefined && c.kind === 'EXPENSE') { c.budget = 0; changed = true; }
+    if (c.kind === 'EXPENSE' && !c.budget_period) { c.budget_period = 'monthly'; changed = true; }
+  });
   if (state.version !== SCHEMA_VERSION) { state.version = SCHEMA_VERSION; changed = true; }
   if (changed) save();
 }
@@ -425,6 +428,7 @@ const num = (s) => { const n = parseFloat(String(s).replace(',', '.')); return i
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
 const monthStartISO = () => todayISO().slice(0,8) + '01';
+const yearStartISO = () => todayISO().slice(0,4) + '-01-01';
 function money(amount, cur='UAH') {
   if (hideBalances) return '••••• ' + curSym(cur);
   let v = isFinite(amount) ? amount : 0;
@@ -473,23 +477,24 @@ function categoryById(id){ return state.categories.find(c=>c.id===id); }
 function categorySpent(catId, from, to){
   return round2(state.transactions.filter(t => t.kind==='EXPENSE' && t.category_id===catId && inRange(t, from, to)).reduce((s,t)=>s+t.amount,0));
 }
-// Картка «Бюджети»: категорії витрат з лімітом і поточним станом за період (за замовч. — поточний місяць).
+// Період витрат категорії за її типом бюджету (місяць/рік), станом на сьогодні.
+function budgetRange(c){ return c.budget_period === 'yearly' ? { from: yearStartISO(), to: todayISO(), label: 'рік' } : { from: monthStartISO(), to: todayISO(), label: 'міс.' }; }
+// Картка «Бюджети»: категорії витрат з лімітом; кожна — у своєму циклі (місяць/рік).
 function budgetsCard(opts){
-  const from = (opts&&opts.from) || monthStartISO(), to = (opts&&opts.to) || todayISO();
-  const title = (opts&&opts.title) || 'Бюджети (місяць)';
+  const title = (opts&&opts.title) || 'Бюджети';
   const cats = state.categories.filter(c => c.kind==='EXPENSE' && (c.budget||0) > 0);
   if (!cats.length) return null;
-  const rows = cats.map(c => ({ c, spent: categorySpent(c.id, from, to) })).sort((a,b)=> (b.spent/b.c.budget) - (a.spent/a.c.budget));
-  const totSpent = rows.reduce((s,r)=>s+r.spent,0), totBudget = rows.reduce((s,r)=>s+r.c.budget,0);
-  const card = el(`<section class="card" style="padding:16px"><div class="row" style="justify-content:space-between;align-items:baseline"><h2>${esc(title)}</h2><span class="muted small tabnum">${money(totSpent)} / ${money(totBudget)}</span></div></section>`);
-  rows.forEach(({c, spent}) => {
+  const rows = cats.map(c => { const r = budgetRange(c); return { c, spent: categorySpent(c.id, r.from, r.to), label: r.label }; })
+    .sort((a,b)=> (b.spent/b.c.budget) - (a.spent/a.c.budget));
+  const card = el(`<section class="card" style="padding:16px"><h2 style="margin-bottom:2px">${esc(title)}</h2></section>`);
+  rows.forEach(({c, spent, label}) => {
     const pct = Math.min(100, Math.round(spent / c.budget * 100));
     const real = Math.round(spent / c.budget * 100);
     const over = spent > c.budget;
     const color = over ? 'var(--red)' : (spent >= c.budget*0.8 ? 'var(--amber)' : 'var(--green)');
     card.appendChild(el(`<div style="margin:9px 0 0">
       <div style="display:flex;justify-content:space-between;font-size:14px;gap:8px">
-        <span class="ln">${c.icon?c.icon+' ':''}${esc(c.name)}</span>
+        <span class="ln">${c.icon?c.icon+' ':''}${esc(c.name)} <span class="muted small">/ ${label}</span></span>
         <span class="small tabnum" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(c.budget)} · ${real}%${over?' ⛔':''}</span>
       </div>
       <div class="pbar" style="margin-top:4px"><i style="width:${pct}%;background:${color}"></i></div>
@@ -1314,8 +1319,8 @@ views.analytics = (app) => {
   </div>`);
   app.appendChild(sum);
 
-  // бюджети за обраний період
-  const bcard = budgetsCard({ from: anFilter.from, to: anFilter.to, title: 'Бюджети за період' });
+  // бюджети (кожна категорія у своєму циклі — місяць/рік)
+  const bcard = budgetsCard();
   if (bcard) { bcard.style.marginTop = '14px'; app.appendChild(bcard); }
 
   // графік чистих активів (останні 12 місяців)
@@ -1556,7 +1561,8 @@ views.categories = (app) => {
   list.forEach((c, i) => {
     const budget = c.budget || 0;
     const hasB = c.kind === 'EXPENSE' && budget > 0;
-    const spent = hasB ? categorySpent(c.id, mFrom, mTo) : 0;
+    const r = hasB ? budgetRange(c) : null;
+    const spent = hasB ? categorySpent(c.id, r.from, r.to) : 0;
     const pct = hasB ? Math.min(100, Math.round(spent / budget * 100)) : 0;
     const over = hasB && spent > budget;
     const barColor = over ? 'var(--red)' : (spent >= budget * 0.8 ? 'var(--amber)' : 'var(--green)');
@@ -1564,7 +1570,7 @@ views.categories = (app) => {
       <span class="grip" title="Перетягніть, щоб змінити порядок">⠿</span>
       <span class="txicon" style="background:${c.color}22;color:${c.color}">${c.icon||'•'}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600">${esc(c.name)}</div>
+        <div style="font-weight:600">${esc(c.name)}${hasB?` <span class="muted small">/ ${r.label}</span>`:''}</div>
         ${hasB?`<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
           <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${barColor}"></i></div>
           <span class="small" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(budget)}</span>
@@ -1607,18 +1613,22 @@ function openCategoryForm(existing) {
     <div class="row"><div style="flex:0 0 70px"><label class="lab">Емодзі</label><input id="c-icon" maxlength="2" value="${esc(e.icon||'')}" placeholder="🙂" style="text-align:center;font-size:18px"></div>
     <div style="flex:1"><label class="lab">Назва</label><input id="c-name" value="${esc(e.name||'')}"></div></div>
     <div id="c-emoji"></div>
-    ${catKind==='EXPENSE' ? `<div><label class="lab">Місячний бюджет (0 — без ліміту)</label><input id="c-budget" inputmode="decimal" value="${e.budget||0}"></div>` : ''}
+    ${catKind==='EXPENSE' ? `<div class="row">
+      <div style="flex:1"><label class="lab">Бюджет (0 — без ліміту)</label><input id="c-budget" inputmode="decimal" value="${e.budget||0}"></div>
+      <div style="flex:0 0 130px"><label class="lab">Період</label><select id="c-budperiod"><option value="monthly">На місяць</option><option value="yearly">На рік</option></select></div>
+    </div>` : ''}
     <div><label class="lab">Колір</label><div id="c-color"></div></div>
     <div class="err hidden" id="c-err"></div></div>`);
   $('#c-emoji', body).appendChild(emojiPicker($('#c-icon', body)));
   $('#c-color', body).appendChild(swatchPicker(color, c => color = c));
+  if ($('#c-budperiod', body)) $('#c-budperiod', body).value = e.budget_period || 'monthly';
   openModal(existing?'Редагувати категорію':'Нова категорія', body, {
     onSave: (close) => {
       const name = $('#c-name', body).value.trim();
       const err = $('#c-err', body);
       if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
       const rec = { name, kind: catKind, color, icon: $('#c-icon',body).value.trim() || null };
-      if (catKind === 'EXPENSE') rec.budget = round2(num(($('#c-budget',body)||{}).value || 0));
+      if (catKind === 'EXPENSE') { rec.budget = round2(num(($('#c-budget',body)||{}).value || 0)); rec.budget_period = ($('#c-budperiod',body)||{}).value || 'monthly'; }
       if (existing) Object.assign(existing, rec);
       else { rec.id = nextId('cat'); state.categories.push(rec); }
       save(); close(); render();
