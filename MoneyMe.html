@@ -1045,6 +1045,8 @@ views.dashboard = (app) => {
   selected.forEach(c => { const v = toUAH(byCur[c], c); if (v == null) missing = true; else uah += v; });
   const ratesNote = ratesCache.date ? `курс НБУ на ${fmtDate(ratesCache.date)}`
     : (ratesCache.error ? 'курси недоступні' : 'завантаження курсів…');
+  // курси валют, які є на рахунках (крім гривні)
+  const rateLines = allCurs.filter(c => c !== 'UAH').map(c => { const r = rateFor(c); return r==null ? null : `1 ${curSym(c)} = ${(+r.toFixed(2)).toLocaleString('uk-UA')} ₴`; }).filter(Boolean);
 
   const head = el(`<section class="card" style="padding:18px">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
@@ -1057,6 +1059,7 @@ views.dashboard = (app) => {
       <span class="muted small"> · ${ratesNote}${missing?' · деякі валюти без курсу':''}</span>
       <button class="btn ghost sm" id="rrefresh" title="Оновити курси">⟳</button>
     </div>
+    ${rateLines.length ? `<div class="muted small tabnum" style="margin-top:4px">Курси: ${rateLines.join(' · ')}</div>` : ''}
     <div class="row small" style="flex-wrap:wrap;gap:16px;margin-top:12px">
       <div><span class="muted">Надходження (міс.): </span><b style="color:var(--green)">${money(inc)}</b></div>
       <div><span class="muted">Витрати (міс.): </span><b style="color:var(--red)">${money(exp)}</b></div>
