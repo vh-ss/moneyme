@@ -69,6 +69,10 @@
   .quick button { display: flex; align-items: center; justify-content: center; gap: 12px; border: 0; border-radius: 18px; padding: 18px; font-size: 16px; font-weight: 700; }
   .quick .exp { background: #fef2f2; color: var(--red); } .quick .exp:hover { background: #fee2e2; }
   .quick .inc { background: #f0fdf4; color: var(--green); } .quick .inc:hover { background: #dcfce7; }
+  html[data-theme="dark"] .quick .exp { background: #3b1d1d; } html[data-theme="dark"] .quick .exp:hover { background: #4a2424; }
+  html[data-theme="dark"] .quick .inc { background: #16301f; } html[data-theme="dark"] .quick .inc:hover { background: #1c3d28; }
+  .quick.sm button { padding: 12px; font-size: 15px; border-radius: 14px; }
+  .quick.sm .dot { width: 30px; height: 30px; font-size: 21px; }
   .quick .dot { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; color: #fff; font-size: 26px; line-height: 1; }
   .quick .exp .dot { background: var(--red); } .quick .inc .dot { background: var(--green); }
 
@@ -1280,6 +1284,13 @@ views.dashboard = (app) => {
 let txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'' };
 views.transactions = (app) => {
   app.appendChild(el(`<h1>Операції</h1>`));
+  const quick = el(`<div class="quick sm" style="margin:0 0 14px">
+    <button class="exp"><span class="dot">−</span> Витрата</button>
+    <button class="inc"><span class="dot">+</span> Надходження</button>
+  </div>`);
+  quick.children[0].onclick = () => openEntryForm('EXPENSE');
+  quick.children[1].onclick = () => openEntryForm('INCOME');
+  app.appendChild(quick);
   const f = el(`<div class="card" style="padding:14px">
     <div><label class="lab">Пошук (нотатка, категорія, рахунок, сума)</label><input id="ff-q" placeholder="🔍 шукати…" value="${esc(txFilter.q)}"></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-top:10px">
