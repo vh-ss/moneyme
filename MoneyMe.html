@@ -79,16 +79,15 @@
   input[type=date]::-webkit-calendar-picker-indicator { filter: var(--cal-filter, none); }
   html[data-theme="dark"] { --cal-filter: invert(1) brightness(1.4); }
 
-  .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
-  .quick button { display: flex; align-items: center; justify-content: center; gap: 12px; border: 0; border-radius: 18px; padding: 18px; font-size: 16px; font-weight: 700; }
-  .quick .exp { background: #fef2f2; color: var(--red); } .quick .exp:hover { background: #fee2e2; }
-  .quick .inc { background: #f0fdf4; color: var(--green); } .quick .inc:hover { background: #dcfce7; }
-  html[data-theme="dark"] .quick .exp { background: #3b1d1d; } html[data-theme="dark"] .quick .exp:hover { background: #4a2424; }
-  html[data-theme="dark"] .quick .inc { background: #16301f; } html[data-theme="dark"] .quick .inc:hover { background: #1c3d28; }
-  .quick.sm button { padding: 12px; font-size: 15px; border-radius: 14px; }
-  .quick.sm .dot { width: 30px; height: 30px; font-size: 21px; }
-  .quick .dot { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; color: #fff; font-size: 26px; line-height: 1; }
-  .quick .exp .dot { background: var(--red); } .quick .inc .dot { background: var(--green); }
+  .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
+  .quick button { display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 14px; padding: 13px 14px; font-size: 15px; font-weight: 700; color: #fff; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.10); transition: filter .15s ease, transform .04s ease; }
+  .quick button:hover { filter: brightness(1.06); }
+  .quick button:active { transform: translateY(1px); }
+  .quick .exp { background: var(--red); }
+  .quick .inc { background: var(--green); }
+  .quick .dot { width: 24px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.22); display: grid; place-items: center; color: #fff; font-size: 18px; font-weight: 800; line-height: 1; }
+  .quick.sm button { padding: 11px 12px; font-size: 14px; }
+  .quick.sm .dot { width: 22px; height: 22px; font-size: 16px; }
 
   .accgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
   /* заголовок секції з підказкою праворуч */
@@ -377,6 +376,7 @@ const I18N_PARTIAL = [
   ['Дані успішно відновлено.','Data restored successfully.'],['Помилка імпорту: ','Import error: '],
   ['Шаблони підписок, оренди, комуналки тощо. Коли надходить термін — натисніть «Внести», і операція створиться, а дата зсунеться на наступний період.','Templates for subscriptions, rent, utilities, etc. When due — press “Add”, a transaction is created and the date moves to the next period.'],
   ['комісія ','fee '],['шукати','search'],["напр. ","e.g. "],['Без категорії','No category'],
+  ['Пошук і фільтри','Search & filters'],[' · застосовано',' · applied'],['Скинути фільтри','Reset filters'],
   ['Розархівувати','Unarchive'],['Архівувати','Archive'],['Сортування за датою','Sort by date'],['Перетягуйте рядки, щоб змінити порядок','Drag rows to reorder'],
   ['Експорт у файл','Export to file'],['Імпорт із файлу','Import from file'],['Операції в CSV','Transactions to CSV'],
   ['Світла','Light'],['Темна','Dark'],['Приховано','Hidden'],['Показано','Shown'],['Увімкнено','On'],['Вимкнено','Off'],
@@ -1628,6 +1628,7 @@ views.dashboard = (app) => {
 
 //==================== Вигляд: Операції ====================
 let txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'' };
+let showTxFilters = false;   // блок пошуку/фільтрів згорнутий за замовчуванням
 views.transactions = (app) => {
   app.appendChild(el(`<h1>Операції</h1>`));
   const quick = el(`<div class="quick sm" style="margin:0 0 14px">
@@ -1637,6 +1638,20 @@ views.transactions = (app) => {
   quick.children[0].onclick = () => openEntryForm('EXPENSE');
   quick.children[1].onclick = () => openEntryForm('INCOME');
   app.appendChild(quick);
+
+  // згортання блоку пошуку/фільтрів (розкривається за потреби)
+  const fltActive = !!(txFilter.q || txFilter.account || txFilter.kind || txFilter.tag
+    || txFilter.from !== monthStartISO() || txFilter.to !== todayISO() || txFilter.sort !== 'date');
+  const toggle = el(`<button class="btn ${fltActive?'primary':''}" id="togglefilters" style="width:100%;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <span>🔍 Пошук і фільтри${fltActive?' · застосовано':''}</span><span>${showTxFilters?'▴':'▾'}</span></button>`);
+  toggle.onclick = () => { showTxFilters = !showTxFilters; render(); };
+  app.appendChild(toggle);
+  if (fltActive && !showTxFilters) {
+    const reset = el(`<button class="btn ghost sm" style="margin:-4px 0 10px">✕ Скинути фільтри</button>`);
+    reset.onclick = () => { txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'' }; render(); };
+    app.appendChild(reset);
+  }
+  if (showTxFilters) {
   const f = el(`<div class="card" style="padding:14px">
     <div><label class="lab">Пошук (нотатка, категорія, рахунок, сума)</label><input id="ff-q" placeholder="🔍 шукати…" value="${esc(txFilter.q)}"></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-top:10px">
@@ -1661,6 +1676,7 @@ views.transactions = (app) => {
   f.querySelectorAll('.pill button').forEach(b => { b.classList.toggle('on', b.dataset.s===txFilter.sort);
     b.onclick = () => { txFilter.sort = b.dataset.s; render(); }; });
   app.appendChild(f);
+  }
 
   const list = el(`<div class="card" style="padding:12px;margin-top:10px"></div>`);
   app.appendChild(list);
