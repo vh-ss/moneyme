@@ -2901,20 +2901,43 @@ async function cloudPush(){
     setSyncStatus('idle');
   } catch (e) { setSyncStatus('error', e.message || String(e)); }
 }
+// Підключення акаунта з ізоляцією даних: дані кожного Google-акаунта — окремі.
+// На спільному пристрої локальні дані НЕ заливаються в чужий акаунт без підтвердження.
 async function cloudConnect(){
   if (!syncConfigured()) { alert('Спершу вставте Google Client ID у Налаштуваннях.'); return; }
   if (location.protocol.indexOf('http') !== 0) { alert('Синхронізація працює лише з https-хостингу (GitHub Pages), не з локального файлу.'); return; }
   try {
     setSyncStatus('connecting');
     await getToken(true);
+    Sync.fileId = await driveFindFile();
+    let remote = Sync.fileId ? await driveDownload(Sync.fileId) : null;
+    const remoteHasData = !!(remote && remote.updatedAt);
+    const localHasData = !!(((state.accounts||[]).length) || ((state.transactions||[]).length));
+    let pushLocal = false;
+    if (remoteHasData) {
+      // на цьому акаунті вже є дані → беремо їх (локальні з пристрою НЕ змішуємо)
+      adoptRemote(remote);
+    } else if (localHasData) {
+      // акаунт порожній, а на пристрої є дані — питаємо, чий це пристрій
+      const up = confirm('У цьому Google-акаунті ще немає даних MoneyMe.\n\nOK — завантажити дані з цього пристрою в акаунт (це ваш пристрій).\nСкасувати — почати з чистого (дані на пристрої буде очищено).');
+      if (!up) { state = seed(); normalize(); persist(); render(); }
+      pushLocal = true;
+    } else {
+      pushLocal = true;   // і там, і там порожньо — створюємо файл
+    }
+    if (pushLocal) Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());
+    markSynced(state.updatedAt);
     Sync.on = true; localStorage.setItem('moneyme.sync.on', '1');
-    await cloudSync(false);
+    setSyncStatus('idle');
   } catch (e) { setSyncStatus('error', e.message || String(e)); }
 }
 function cloudDisconnect(){
+  const wipe = confirm('Відключити Google Drive.\n\nOK — також очистити дані MoneyMe на цьому пристрої (зручно на спільному пристрої; у Drive вони лишаться).\nСкасувати — лишити дані локально для офлайн-роботи.');
   if (Sync.token && window.google && google.accounts) { try { google.accounts.oauth2.revoke(Sync.token.access_token, function(){}); } catch (e) {} }
   Sync.on = false; Sync.token = null; Sync.fileId = null;
   localStorage.removeItem('moneyme.sync.on');
+  localStorage.removeItem('moneyme.sync.base');
+  if (wipe) { state = seed(); normalize(); persist(); }
   setSyncStatus('off');
 }
 
