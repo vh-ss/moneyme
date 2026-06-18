@@ -1,7 +1,8 @@
 /* MoneyMe service worker — офлайн-кеш оболонки застосунку.
    Дані застосунку зберігаються у localStorage (не тут); SW кешує лише статику,
    щоб усе відкривалося без мережі. Cross-origin запити (Google API) не чіпаємо. */
-const CACHE = 'moneyme-shell-v1';
+const BUILD = '5d453893dd';   // підставляється збиранням (.build-pwa.cjs) — хеш контенту застосунку
+const CACHE = 'moneyme-shell-' + BUILD;
 const ASSETS = [
   './',
   './index.html',
@@ -17,7 +18,7 @@ self.addEventListener('install', (e) => {
     const c = await caches.open(CACHE);
     // не валимо інсталяцію, якщо якогось файлу немає (напр. лише MoneyMe.html без index.html)
     await Promise.allSettled(ASSETS.map((u) => c.add(u)));
-    self.skipWaiting();
+    // НЕ робимо skipWaiting автоматично — даємо застосунку показати плашку «оновити»
   })());
 });
 

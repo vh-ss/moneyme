@@ -103,6 +103,8 @@
   .acc .name { font-weight: 600; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
   .acc .type { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); flex: 0 0 auto; white-space: nowrap; }
   .acc .bal { margin-top: 10px; font-size: 22px; font-weight: 800; }
+  .acc.compact { padding: 12px 14px; }
+  .acc.compact .bal { margin-top: 6px; font-size: 20px; }
 
   .txrow { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--softline); }
   .txrow:last-child { border-bottom: 0; }
@@ -1478,9 +1480,18 @@ function barsSVG(months) {
 }
 
 //==================== Вигляд: Огляд ====================
-let dashCurSet = new Set();   // порожньо = всі валюти
+let dashCurSet = new Set(['UAH']);   // за замовчуванням показуємо лише гривню (порожньо = всі)
 let showZeroAccounts = false; // показувати рахунки з нульовим балансом на «Огляді»
 views.dashboard = (app) => {
+  // швидке додавання — витрата / надходження
+  const quick = el(`<div class="quick" style="margin:0 0 14px">
+    <button class="exp"><span class="dot">−</span> Витрата</button>
+    <button class="inc"><span class="dot">+</span> Надходження</button>
+  </div>`);
+  quick.children[0].onclick = () => openEntryForm('EXPENSE');
+  quick.children[1].onclick = () => openEntryForm('INCOME');
+  app.appendChild(quick);
+
   // баланси за валютами
   const byCur = {};
   state.accounts.filter(a => !a.archived).forEach(a => { byCur[a.currency_code] = (byCur[a.currency_code]||0) + accountBalance(a.id); });
@@ -1577,10 +1588,9 @@ views.dashboard = (app) => {
   else if (allAccs.length === 0) grid.appendChild(el(`<div class="muted small">Немає рахунків за обраними валютами.</div>`));
   else if (accs.length === 0) grid.appendChild(el(`<div class="muted small">Усі рахунки з нульовим балансом.</div>`));
   accs.forEach(a => {
-    const bnk = a.bank_id ? bankById(a.bank_id) : null;
-    const node = el(`<div class="acc" data-acc="${a.id}" style="border-top-color:${a.color}" title="Перетягніть на інший рахунок — переказ. Тап/клік — меню дій.">
-      <div class="top"><span class="name">${a.icon?a.icon+' ':''}${esc(a.name)}</span><span class="type">${TYPE_LABEL[a.type]||a.type}</span></div>
-      ${bnk?`<div class="muted" style="font-size:11px;margin-top:2px">${esc(bnk.name)}</div>`:''}
+    // мінімальна картка на Огляді: лише назва + баланс (деталі — на вкладці «Рахунки»)
+    const node = el(`<div class="acc compact" data-acc="${a.id}" style="border-top-color:${a.color}" title="Перетягніть на інший рахунок — переказ. Тап/клік — меню дій.">
+      <div class="top"><span class="name">${a.icon?a.icon+' ':''}${esc(a.name)}</span></div>
       <div class="bal tabnum">${money(accountBalance(a.id), a.currency_code)}</div></div>`);
     enableCardDrag(node, a);   // pointer-drag (миша+тач) + тап = меню дій
     node.addEventListener('contextmenu', e => { e.preventDefault(); accountActionMenu(a, e.clientX, e.clientY); });
@@ -2881,9 +2891,34 @@ ensureRatesFresh();
 ensureDailySnapshot();   // точка відновлення на сьогодні
 maybeAutoBackup();       // опційне автозавантаження бекапу
 
-// PWA: реєстрація service worker (лише на http/https; на file:// пропускаємо)
+// PWA: реєстрація service worker + плашка «доступне оновлення» (лише на http/https)
+function showUpdateBar(reg){
+  if (document.getElementById('upd-bar')) return;
+  const bar = el(`<div id="upd-bar" style="position:fixed;left:8px;right:8px;bottom:8px;z-index:10000;background:var(--ink2);color:#fff;padding:10px 14px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.28)">
+    <span class="small">Доступна нова версія MoneyMe</span>
+    <span style="display:flex;gap:8px"><button class="btn primary sm" id="upd-now">Оновити</button><button class="btn sm" id="upd-later">Пізніше</button></span></div>`);
+  document.body.appendChild(bar);
+  $('#upd-now', bar).onclick = () => {
+    bar.remove();
+    if (reg.waiting) { navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true }); reg.waiting.postMessage('skipWaiting'); }
+    else location.reload();
+  };
+  $('#upd-later', bar).onclick = () => bar.remove();
+}
 if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js');
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg);
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing; if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBar(reg);
+        });
+      });
+      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);   // перевіряти оновлення раз на годину
+    } catch (e) {}
+  });
 }
 // Автосинхронізація при старті/поверненні в застосунок/появі мережі
 if (Sync.on && syncAvailable()) { setSyncStatus('idle'); loadGIS().then(() => cloudSync(false)).catch(() => setSyncStatus('error', 'немає мережі')); }
