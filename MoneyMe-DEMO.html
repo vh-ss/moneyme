@@ -1511,7 +1511,7 @@ let dashCurSet = new Set(['UAH']);   // за замовчуванням пока
 let showZeroAccounts = false; // показувати рахунки з нульовим балансом на «Огляді»
 views.dashboard = (app) => {
   // швидке додавання — витрата / надходження
-  const quick = el(`<div class="quick" style="margin:0 0 14px">
+  const quick = el(`<div class="quick sm" style="margin:16px 0">
     <button class="exp"><span class="dot">−</span> Витрата</button>
     <button class="inc"><span class="dot">+</span> Надходження</button>
   </div>`);
