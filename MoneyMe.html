@@ -2391,7 +2391,6 @@ views.settings = (app) => {
 
   // ——— Синхронізація з Google Drive ———
   const isHttp = location.protocol.indexOf('http') === 0;
-  const cid = (localStorage.getItem('moneyme.sync.clientId') || '').trim();
   const st = (() => { switch (Sync.status) {
     case 'connecting': return ['Підключення…', 'var(--muted)'];
     case 'syncing':    return ['Синхронізація…', 'var(--muted)'];
@@ -2404,17 +2403,13 @@ views.settings = (app) => {
     <h2>Синхронізація — Google Drive</h2>
     <p class="muted small">Зберігає дані у прихованій папці вашого Google Drive і синхронізує ПК ↔ телефон. Працює лише у веб-версії (https), не у файлі. Офлайн усе одно працює — зміни вивантажаться, щойно зʼявиться мережа.</p>
     ${isHttp ? '' : '<div class="notice" style="margin-top:8px">⚠️ Це локальний файл. Синхронізація доступна лише з веб-версії (GitHub Pages) — див. SETUP.md.</div>'}
-    <div style="margin-top:10px"><label class="lab">Google OAuth Client ID</label>
-      <input id="sy-cid" placeholder="…apps.googleusercontent.com" value="${esc(cid)}"></div>
-    <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
-      <button class="btn" id="sy-savecid">Зберегти ID</button>
+    <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
       ${Sync.on
         ? '<button class="btn" id="sy-now">Синхронізувати зараз</button><button class="btn danger" id="sy-off">Відключити</button>'
         : '<button class="btn primary" id="sy-connect">Підключити Google Drive</button>'}
     </div>
     <div class="small" style="margin-top:10px;color:${st[1]}">${esc(st[0])}</div>
   </section>`);
-  $('#sy-savecid', sync).onclick = () => { const v = $('#sy-cid', sync).value.trim(); if (v) localStorage.setItem('moneyme.sync.clientId', v); else localStorage.removeItem('moneyme.sync.clientId'); Sync.tokenClient = null; showToast('Client ID збережено', null, null, 1800); render(); };
   if ($('#sy-connect', sync)) $('#sy-connect', sync).onclick = () => cloudConnect();
   if ($('#sy-now', sync)) $('#sy-now', sync).onclick = () => cloudSync(false);
   if ($('#sy-off', sync)) $('#sy-off', sync).onclick = () => { cloudDisconnect(); render(); };
@@ -2762,9 +2757,11 @@ function openLoanForm(existing, presetBankId) {
 const DRIVE_FILE_NAME = 'moneyme-data.json';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
-const GOOGLE_CLIENT_ID = '';   // запасний; зазвичай Client ID вводиться в Налаштуваннях
+// Google OAuth Client ID застосунку. Це НЕ секрет (захищений прив'язкою до Authorized
+// JavaScript origins у Google Console), тож вшитий у код — користувачі лише входять через Google.
+const GOOGLE_CLIENT_ID = '934338930225-arnhi5r45ptk1japnogvjqguob4q5mnv.apps.googleusercontent.com';
 
-function clientId(){ return (localStorage.getItem('moneyme.sync.clientId') || GOOGLE_CLIENT_ID || '').trim(); }
+function clientId(){ return (GOOGLE_CLIENT_ID || localStorage.getItem('moneyme.sync.clientId') || '').trim(); }
 function syncAvailable(){ return location.protocol.indexOf('http') === 0 && !!clientId(); }
 function syncConfigured(){ return !!clientId(); }
 function setSyncStatus(s, detail){ Sync.status = s; Sync.detail = detail || ''; if (currentView === 'settings') render(); }
