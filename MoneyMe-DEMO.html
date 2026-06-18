@@ -95,8 +95,8 @@
   .sechead { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
   .sechead h2 { margin: 0; }
   .sechead .hint { text-align: right; }
-  .acc { border-top: 4px solid #999; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); cursor: grab; user-select: none; touch-action: none; }
-  .acc:active { cursor: grabbing; }
+  .acc { border-top: 4px solid #999; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); user-select: none; touch-action: pan-y; }
+  .acc .grip { touch-action: none; }   /* перетягування лише за ручку ⠿ */
   .acc.dragover { box-shadow: 0 0 0 2px var(--accent); }
   .acc.dragging { opacity: .4; }
   .acc .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -365,7 +365,7 @@ const I18N_EN = {
 };
 // Підрядкові заміни — для складених рядків (текст склеєний із числами/назвами).
 const I18N_PARTIAL = [
-  ['Перетягніть на іншу — переказ · тап — меню','Drag onto another — transfer · tap — menu'],
+  ['Ручкою ⠿ на іншу — переказ · тап — меню','By the ⠿ handle onto another — transfer · tap — menu'],
   ['Перетягуйте за ручку ⠿ або кнопками ↑ / ↓, щоб змінити порядок — він застосується і у списках вибору категорії.','Drag by the ⠿ handle or use ↑ / ↓ to reorder — also applies in category pickers.'],
   ['Перетягуйте рядки, щоб змінити їхній порядок у списку.','Drag rows to reorder the list.'],
   ['Перетягуйте картки, щоб змінити порядок (застосується і на «Огляді»).','Drag cards to reorder (also on Overview).'],
@@ -984,17 +984,20 @@ function accountActionMenu(a, x, y){
 // Перетягування картки рахунку через Pointer Events (працює і мишею, і пальцем).
 // Тап без переміщення відкриває меню дій. Drop на іншу картку — діалог переказу.
 function enableCardDrag(node, a){
-  let sx=0, sy=0, dragging=false, ghost=null, target=null;
+  let sx=0, sy=0, dragging=false, armed=false, moved=false, ghost=null, target=null;
   const TH = 8;
   node.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    sx = e.clientX; sy = e.clientY; dragging = false; target = null;
+    armed = !!(e.target.closest && e.target.closest('.grip'));   // тягнемо лише за ручку ⠿
+    sx = e.clientX; sy = e.clientY; dragging = false; moved = false; target = null;
     document.addEventListener('pointermove', move, { passive:false });
     document.addEventListener('pointerup', up);
     document.addEventListener('pointercancel', up);
   });
   function move(e){
     const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (Math.hypot(dx, dy) >= TH) moved = true;
+    if (!armed) return;            // не за ручку — не тягнемо (даємо прокрутити сторінку)
     if (!dragging) {
       if (Math.hypot(dx, dy) < TH) return;
       dragging = true; node.classList.add('dragging');
@@ -1021,8 +1024,8 @@ function enableCardDrag(node, a){
     if (ghost) { ghost.remove(); ghost = null; }
     if (dragging) {
       if (target) { target.classList.remove('dragover'); const toId = parseInt(target.dataset.acc); if (toId && toId !== a.id) openTransferDialog(a.id, toId); }
-    } else {
-      accountActionMenu(a, e.clientX || sx, e.clientY || sy);   // тап → меню
+    } else if (!moved) {
+      accountActionMenu(a, e.clientX || sx, e.clientY || sy);   // тап (без руху) → меню
     }
     target = null;
   }
@@ -1599,7 +1602,7 @@ views.dashboard = (app) => {
   // рахунки з drag-and-drop
   const sec = el(`<section>
     <div class="sechead">
-      <h2>Рахунки</h2><span class="muted small hint">Перетягніть на іншу — переказ · тап — меню</span></div>
+      <h2>Рахунки</h2><span class="muted small hint">Ручкою ⠿ на іншу — переказ · тап — меню</span></div>
     <div class="accgrid" id="accgrid"></div></section>`);
   const grid = $('#accgrid', sec);
   const allAccs = state.accounts.filter(a => !a.archived && selected.includes(a.currency_code));
@@ -1610,8 +1613,8 @@ views.dashboard = (app) => {
   else if (accs.length === 0) grid.appendChild(el(`<div class="muted small">Усі рахунки з нульовим балансом.</div>`));
   accs.forEach(a => {
     // мінімальна картка на Огляді: лише назва + баланс (деталі — на вкладці «Рахунки»)
-    const node = el(`<div class="acc compact" data-acc="${a.id}" style="border-top-color:${a.color}" title="Перетягніть на інший рахунок — переказ. Тап/клік — меню дій.">
-      <div class="top"><span class="name">${a.icon?a.icon+' ':''}${esc(a.name)}</span></div>
+    const node = el(`<div class="acc compact" data-acc="${a.id}" style="border-top-color:${a.color}" title="Тап — меню дій. Перетягніть ручкою ⠿ на іншу картку — переказ.">
+      <div class="top"><span class="name">${a.icon?a.icon+' ':''}${esc(a.name)}</span><span class="grip" title="Перетягніть на іншу картку — переказ">⠿</span></div>
       <div class="bal tabnum">${money(accountBalance(a.id), a.currency_code)}</div></div>`);
     enableCardDrag(node, a);   // pointer-drag (миша+тач) + тап = меню дій
     node.addEventListener('contextmenu', e => { e.preventDefault(); accountActionMenu(a, e.clientX, e.clientY); });
