@@ -2432,7 +2432,7 @@ views.settings = (app) => {
     <div class="small" style="margin-top:10px;color:${st[1]}">${esc(st[0])}</div>
   </section>`);
   if ($('#sy-connect', sync)) $('#sy-connect', sync).onclick = () => cloudConnect();
-  if ($('#sy-now', sync)) $('#sy-now', sync).onclick = () => cloudSync(false);
+  if ($('#sy-now', sync)) $('#sy-now', sync).onclick = () => cloudSync(true);
   if ($('#sy-off', sync)) $('#sy-off', sync).onclick = () => { cloudDisconnect(); render(); };
   app.appendChild(sync);
 
@@ -2806,26 +2806,42 @@ function loadGIS(){
   });
   return Sync.gisLoading;
 }
+const TOKEN_KEY = 'moneyme.demo.sync.token';
+// Токен зберігаємо (≈1 год) і перевикористовуємо між перезавантаженнями — щоб не просити
+// вхід щоразу (особливо на телефоні, де браузер «вивантажує» сторінку у фоні).
+function getCachedToken(){
+  if (Sync.token && Sync.token.exp - Date.now() > 60000) return Sync.token.access_token;
+  try { const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null'); if (t && t.exp - Date.now() > 60000) { Sync.token = t; return t.access_token; } } catch (e) {}
+  return null;
+}
+function saveToken(resp){
+  Sync.token = { access_token: resp.access_token, exp: Date.now() + ((resp.expires_in || 3300) * 1000) };
+  try { localStorage.setItem(TOKEN_KEY, JSON.stringify(Sync.token)); } catch (e) {}
+}
 function ensureTokenClient(){
   if (Sync.tokenClient) return;
   Sync.tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId(), scope: DRIVE_SCOPE,
     callback: (resp) => {
-      if (resp && resp.access_token) {
-        Sync.token = { access_token: resp.access_token, exp: Date.now() + ((resp.expires_in || 3300) * 1000) };
-        if (Sync._tokRes) { Sync._tokRes(Sync.token.access_token); Sync._tokRes = Sync._tokRej = null; }
-      } else if (Sync._tokRej) { Sync._tokRej(new Error('Доступ не надано')); Sync._tokRes = Sync._tokRej = null; }
+      if (resp && resp.access_token) { saveToken(resp); if (Sync._tokRes) { Sync._tokRes(Sync.token.access_token); Sync._tokRes = Sync._tokRej = null; } }
+      else if (Sync._tokRej) { Sync._tokRej(new Error('Доступ не надано')); Sync._tokRes = Sync._tokRej = null; }
     },
     error_callback: (err) => { if (Sync._tokRej) { Sync._tokRej(new Error((err && err.type) || 'Помилка входу')); Sync._tokRes = Sync._tokRej = null; } },
   });
 }
-function getToken(interactive){
-  if (Sync.token && Sync.token.exp - Date.now() > 60000) return Promise.resolve(Sync.token.access_token);
+// Запит нового токена через вікно Google (prompt: '' — тихо, якщо вхід уже є; 'consent' — з вибором акаунта).
+function acquireToken(prompt){
   return loadGIS().then(() => { ensureTokenClient(); return new Promise((res, rej) => {
     Sync._tokRes = res; Sync._tokRej = rej;
-    try { Sync.tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' }); }
+    try { Sync.tokenClient.requestAccessToken({ prompt: prompt || '' }); }
     catch (e) { Sync._tokRes = Sync._tokRej = null; rej(e); }
   }); });
+}
+// interactive=false → лише наявний токен (НЕ показуємо вікно у фоні). true → дозволяємо тихий запит.
+function getToken(interactive){
+  const c = getCachedToken(); if (c) return Promise.resolve(c);
+  if (!interactive) return Promise.reject(new Error('Потрібен вхід'));
+  return acquireToken('');
 }
 async function driveFetch(url, opts){
   const tok = await getToken(false);
@@ -2880,8 +2896,9 @@ function adoptRemote(remote){
 
 // Повна реконсиляція: тягнемо віддалене, порівнюємо мітки часу, приймаємо новіше.
 async function cloudSync(interactive){
-  if (!syncAvailable()) { setSyncStatus(syncConfigured() ? 'off' : 'off'); return; }
+  if (!syncAvailable()) { setSyncStatus('off'); return; }
   if (!navigator.onLine) { setSyncStatus('offline'); return; }
+  if (!interactive && !getCachedToken()) { setSyncStatus(Sync.on ? 'idle' : 'off'); return; }   // фон без токена — без вікна входу
   try {
     setSyncStatus('syncing');
     await getToken(!!interactive);
@@ -2905,6 +2922,7 @@ async function cloudSync(interactive){
 async function cloudPush(){
   if (!Sync.on || !syncAvailable()) return;
   if (!navigator.onLine) { setSyncStatus('offline'); return; }
+  if (!getCachedToken()) { setSyncStatus('idle'); return; }   // нема токена — відкладаємо (зміни лишаються в черзі), без вікна
   try {
     setSyncStatus('syncing');
     await getToken(false);
@@ -2926,7 +2944,8 @@ async function cloudConnect(){
   if (location.protocol.indexOf('http') !== 0) { alert('Синхронізація працює лише з https-хостингу (GitHub Pages), не з локального файлу.'); return; }
   try {
     setSyncStatus('connecting');
-    await getToken(true);
+    Sync.token = null; localStorage.removeItem(TOKEN_KEY);   // свіжий вхід — можна обрати акаунт
+    await acquireToken('consent');
     Sync.fileId = await driveFindFile();
     let remote = Sync.fileId ? await driveDownload(Sync.fileId) : null;
     const remoteHasData = !!(remote && remote.updatedAt);
@@ -2955,6 +2974,7 @@ function cloudDisconnect(){
   Sync.on = false; Sync.token = null; Sync.fileId = null;
   localStorage.removeItem('moneyme.demo.sync.on');
   localStorage.removeItem('moneyme.demo.sync.base');
+  localStorage.removeItem(TOKEN_KEY);
   if (wipe) { state = seed(); normalize(); persist(); }
   setSyncStatus('off');
 }
@@ -2994,8 +3014,11 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
     } catch (e) {}
   });
 }
-// Автосинхронізація при старті/поверненні в застосунок/появі мережі
-if (Sync.on && syncAvailable()) { setSyncStatus('idle'); loadGIS().then(() => cloudSync(false)).catch(() => setSyncStatus('error', 'немає мережі')); }
+// Автосинхронізація при старті/поверненні в застосунок/появі мережі.
+// Усі ці тригери — ФОНОВІ: cloudSync(false) синхронізує лише за наявності збереженого
+// токена і НІКОЛИ не відкриває вікно входу Google. Вікно зʼявляється тільки коли користувач
+// сам тисне «Підключити» чи «Синхронізувати зараз».
+if (Sync.on && syncAvailable()) { setSyncStatus('idle'); cloudSync(false); }
 else if (!navigator.onLine && Sync.on) { setSyncStatus('offline'); }
 window.addEventListener('online', () => { if (Sync.on && syncAvailable()) cloudSync(false); });
 window.addEventListener('offline', () => { if (Sync.on) setSyncStatus('offline'); });
