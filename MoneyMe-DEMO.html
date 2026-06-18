@@ -2,8 +2,18 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>MoneyMe — облік фінансів</title>
+<meta name="description" content="Персональний облік витрат і доходів. Працює офлайн, синхронізація через Google Drive." />
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#3b82f6" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="MoneyMe" />
 <style>
   :root {
     --bg: #f1f5f9; --card: #fff; --ink: #1e293b; --muted: #64748b; --line: #e2e8f0;
@@ -275,6 +285,18 @@ const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
 function curSym(cur){ return CUR_SYMBOL[cur] || cur; }
 const TYPE_LABEL = { CASH:'Готівка', CARD:'Картка', BANK:'Банк. рахунок' };
 
+// Стан синхронізації з Google Drive. Оголошуємо рано, бо save() звертається до Sync
+// (повна логіка — у блоці «Синхронізація з Google Drive» нижче). Функції синхронізації —
+// це function-декларації, тож гарантовано доступні через підняття (hoisting).
+const Sync = {
+  on: localStorage.getItem('moneyme.demo.sync.on') === '1',
+  status: 'off', detail: '', applying: false,
+  token: null, tokenClient: null, fileId: null, gisLoading: null,
+  pending: false, pushTimer: null,
+  base: localStorage.getItem('moneyme.demo.sync.base') || null,   // updatedAt останньої вдалої синх
+  last: localStorage.getItem('moneyme.demo.sync.last') || null,
+};
+
 let state = load();
 normalize();
 
@@ -532,7 +554,12 @@ function load() {
   } catch (e) {}
   return seed();
 }
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function persist() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function save() {
+  if (!Sync.applying) state.updatedAt = new Date().toISOString();   // мітка часу для синхронізації
+  persist();
+  cloudOnLocalChange();   // поставити в чергу вивантаження у Drive (no-op, якщо синх вимкнено)
+}
 
 // Приватність: приховування сум балансів (зберігається між сесіями).
 let hideBalances = localStorage.getItem('moneyme.demo.hide') === '1';
@@ -2339,6 +2366,37 @@ views.settings = (app) => {
   backup.appendChild(autoBox);
   app.appendChild(backup);
 
+  // ——— Синхронізація з Google Drive ———
+  const isHttp = location.protocol.indexOf('http') === 0;
+  const cid = (localStorage.getItem('moneyme.demo.sync.clientId') || '').trim();
+  const st = (() => { switch (Sync.status) {
+    case 'connecting': return ['Підключення…', 'var(--muted)'];
+    case 'syncing':    return ['Синхронізація…', 'var(--muted)'];
+    case 'idle':       return ['✓ Синхронізовано' + (Sync.last ? ' · ' + new Date(Sync.last).toLocaleString('uk-UA') : ''), 'var(--green)'];
+    case 'offline':    return ['Офлайн — зміни збережено, вивантажаться пізніше', 'var(--amber)'];
+    case 'error':      return ['Помилка: ' + (Sync.detail || ''), 'var(--red)'];
+    default:           return [Sync.on ? 'Очікування…' : 'Вимкнено', 'var(--muted)'];
+  } })();
+  const sync = el(`<section class="card" style="padding:18px;margin-top:16px">
+    <h2>Синхронізація — Google Drive</h2>
+    <p class="muted small">Зберігає дані у прихованій папці вашого Google Drive і синхронізує ПК ↔ телефон. Працює лише у веб-версії (https), не у файлі. Офлайн усе одно працює — зміни вивантажаться, щойно зʼявиться мережа.</p>
+    ${isHttp ? '' : '<div class="notice" style="margin-top:8px">⚠️ Це локальний файл. Синхронізація доступна лише з веб-версії (GitHub Pages) — див. SETUP.md.</div>'}
+    <div style="margin-top:10px"><label class="lab">Google OAuth Client ID</label>
+      <input id="sy-cid" placeholder="…apps.googleusercontent.com" value="${esc(cid)}"></div>
+    <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+      <button class="btn" id="sy-savecid">Зберегти ID</button>
+      ${Sync.on
+        ? '<button class="btn" id="sy-now">Синхронізувати зараз</button><button class="btn danger" id="sy-off">Відключити</button>'
+        : '<button class="btn primary" id="sy-connect">Підключити Google Drive</button>'}
+    </div>
+    <div class="small" style="margin-top:10px;color:${st[1]}">${esc(st[0])}</div>
+  </section>`);
+  $('#sy-savecid', sync).onclick = () => { const v = $('#sy-cid', sync).value.trim(); if (v) localStorage.setItem('moneyme.demo.sync.clientId', v); else localStorage.removeItem('moneyme.demo.sync.clientId'); Sync.tokenClient = null; showToast('Client ID збережено', null, null, 1800); render(); };
+  if ($('#sy-connect', sync)) $('#sy-connect', sync).onclick = () => cloudConnect();
+  if ($('#sy-now', sync)) $('#sy-now', sync).onclick = () => cloudSync(false);
+  if ($('#sy-off', sync)) $('#sy-off', sync).onclick = () => { cloudDisconnect(); render(); };
+  app.appendChild(sync);
+
   // точки відновлення (щоденні знімки в браузері)
   const points = restorePoints().slice().reverse();
   const rp = el(`<section class="card" style="padding:18px;margin-top:16px">
@@ -2365,7 +2423,7 @@ views.settings = (app) => {
   app.appendChild(danger);
 
   app.appendChild(el(`<section class="card" style="padding:18px;margin-top:16px">
-    <h2>Про застосунок</h2><p class="muted small">MoneyMe працює повністю у вашому браузері. Дані зберігаються локально (localStorage) на цьому ПК — інтернет не потрібен. Для перенесення чи бекапу користуйтесь експортом у файл.</p></section>`));
+    <h2>Про застосунок</h2><p class="muted small">MoneyMe працює у вашому браузері й офлайн: дані зберігаються локально (localStorage) на пристрої. У веб-версії (PWA) їх можна синхронізувати між ПК і телефоном через вашу приховану папку Google Drive. Для перенесення чи бекапу також є експорт у файл.</p></section>`));
 };
 function recalcSeq(data){
   const mx = (arr)=>arr.reduce((m,x)=>Math.max(m,x.id||0),0);
@@ -2673,11 +2731,187 @@ function openLoanForm(existing, presetBankId) {
   }});
 }
 
+//==================== Синхронізація з Google Drive ====================
+// Дані застосунку — це state у localStorage. У Drive тримаємо ОДИН JSON у прихованій
+// папці застосунку (appDataFolder) — вона невидима у звичайному Drive і доступна лише
+// цьому застосунку. Працює тільки з https-хостингу (file:// не дозволяє OAuth Google).
+// Офлайн: усі зміни одразу в localStorage; коли є мережа+з'єднання — вивантажуються у Drive.
+const DRIVE_FILE_NAME = 'moneyme-data.json';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const GIS_SRC = 'https://accounts.google.com/gsi/client';
+const GOOGLE_CLIENT_ID = '';   // запасний; зазвичай Client ID вводиться в Налаштуваннях
+
+function clientId(){ return (localStorage.getItem('moneyme.demo.sync.clientId') || GOOGLE_CLIENT_ID || '').trim(); }
+function syncAvailable(){ return location.protocol.indexOf('http') === 0 && !!clientId(); }
+function syncConfigured(){ return !!clientId(); }
+function setSyncStatus(s, detail){ Sync.status = s; Sync.detail = detail || ''; if (currentView === 'settings') render(); }
+
+// Черга вивантаження після локальної зміни (викликається із save()).
+function cloudOnLocalChange(){
+  if (!Sync.on || !syncAvailable()) return;
+  Sync.pending = true;
+  clearTimeout(Sync.pushTimer);
+  Sync.pushTimer = setTimeout(cloudPush, 2500);
+}
+
+function loadGIS(){
+  if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+  if (Sync.gisLoading) return Sync.gisLoading;
+  Sync.gisLoading = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = GIS_SRC; s.async = true; s.defer = true;
+    s.onload = res; s.onerror = () => rej(new Error('Не вдалося завантажити Google Identity (немає мережі?)'));
+    document.head.appendChild(s);
+  });
+  return Sync.gisLoading;
+}
+function ensureTokenClient(){
+  if (Sync.tokenClient) return;
+  Sync.tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId(), scope: DRIVE_SCOPE,
+    callback: (resp) => {
+      if (resp && resp.access_token) {
+        Sync.token = { access_token: resp.access_token, exp: Date.now() + ((resp.expires_in || 3300) * 1000) };
+        if (Sync._tokRes) { Sync._tokRes(Sync.token.access_token); Sync._tokRes = Sync._tokRej = null; }
+      } else if (Sync._tokRej) { Sync._tokRej(new Error('Доступ не надано')); Sync._tokRes = Sync._tokRej = null; }
+    },
+    error_callback: (err) => { if (Sync._tokRej) { Sync._tokRej(new Error((err && err.type) || 'Помилка входу')); Sync._tokRes = Sync._tokRej = null; } },
+  });
+}
+function getToken(interactive){
+  if (Sync.token && Sync.token.exp - Date.now() > 60000) return Promise.resolve(Sync.token.access_token);
+  return loadGIS().then(() => { ensureTokenClient(); return new Promise((res, rej) => {
+    Sync._tokRes = res; Sync._tokRej = rej;
+    try { Sync.tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' }); }
+    catch (e) { Sync._tokRes = Sync._tokRej = null; rej(e); }
+  }); });
+}
+async function driveFetch(url, opts){
+  const tok = await getToken(false);
+  const o = Object.assign({}, opts); o.headers = Object.assign({}, o.headers, { Authorization: 'Bearer ' + tok });
+  let r = await fetch(url, o);
+  if (r.status === 401) { const t2 = await getToken(true); o.headers.Authorization = 'Bearer ' + t2; r = await fetch(url, o); }
+  return r;
+}
+async function driveFindFile(){
+  const q = encodeURIComponent("name='" + DRIVE_FILE_NAME + "'");
+  const r = await driveFetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,modifiedTime)&q=' + q);
+  if (!r.ok) throw new Error('Drive list ' + r.status);
+  const j = await r.json();
+  return (j.files && j.files[0]) ? j.files[0].id : null;
+}
+async function driveDownload(id){
+  const r = await driveFetch('https://www.googleapis.com/drive/v3/files/' + id + '?alt=media');
+  if (!r.ok) throw new Error('Drive get ' + r.status);
+  return r.json();
+}
+async function driveUpload(id, payload){
+  const body = JSON.stringify(payload);
+  if (id) {
+    const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files/' + id + '?uploadType=media',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
+    if (!r.ok) throw new Error('Drive update ' + r.status);
+    return id;
+  }
+  const boundary = 'mm' + Math.random().toString(16).slice(2);
+  const meta = { name: DRIVE_FILE_NAME, parents: ['appDataFolder'] };
+  const multipart = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) +
+    '\r\n--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + boundary + '--';
+  const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body: multipart });
+  if (!r.ok) throw new Error('Drive create ' + r.status);
+  return (await r.json()).id;
+}
+function cloudPayload(){ return { app: 'MoneyMe', version: SCHEMA_VERSION, updatedAt: state.updatedAt || new Date().toISOString(), data: state }; }
+function markSynced(at){ Sync.base = at || state.updatedAt || null; Sync.last = new Date().toISOString(); Sync.pending = false;
+  localStorage.setItem('moneyme.demo.sync.base', Sync.base || ''); localStorage.setItem('moneyme.demo.sync.last', Sync.last); }
+// Зберегти знімок поточного стану в точки відновлення (щоб нічого не втратити при конфлікті).
+function cloudBackupSnapshot(label){ try { const h = restorePoints(); h.push({ date: todayISO(), at: new Date().toISOString(), label: label || '', data: JSON.parse(JSON.stringify(state)) }); localStorage.setItem('moneyme.demo.history', JSON.stringify(h.slice(-7))); } catch (e) {} }
+function adoptRemote(remote){
+  const incoming = (remote && remote.data) ? remote : { data: remote };
+  Sync.applying = true;
+  state = migrateBackup(incoming);
+  normalize();
+  persist();
+  Sync.applying = false;
+  if (typeof updateLangBtn === 'function') {}
+  render();
+}
+
+// Повна реконсиляція: тягнемо віддалене, порівнюємо мітки часу, приймаємо новіше.
+async function cloudSync(interactive){
+  if (!syncAvailable()) { setSyncStatus(syncConfigured() ? 'off' : 'off'); return; }
+  if (!navigator.onLine) { setSyncStatus('offline'); return; }
+  try {
+    setSyncStatus('syncing');
+    await getToken(!!interactive);
+    if (!Sync.fileId) Sync.fileId = await driveFindFile();
+    let remote = null;
+    if (Sync.fileId) { try { remote = await driveDownload(Sync.fileId); } catch (e) { Sync.fileId = await driveFindFile(); if (Sync.fileId) remote = await driveDownload(Sync.fileId); } }
+    const localUpd = state.updatedAt || '';
+    const remoteUpd = (remote && remote.updatedAt) || '';
+    if (remote && remoteUpd && remoteUpd > localUpd) {
+      if (localUpd && localUpd !== Sync.base) cloudBackupSnapshot('Локальна версія перед синхронізацією');
+      adoptRemote(remote);
+      markSynced(state.updatedAt);
+    } else {
+      Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());
+      markSynced(state.updatedAt);
+    }
+    setSyncStatus('idle');
+  } catch (e) { setSyncStatus('error', e.message || String(e)); }
+}
+// Вивантаження локальних змін; якщо інший пристрій випередив — повна реконсиляція.
+async function cloudPush(){
+  if (!Sync.on || !syncAvailable()) return;
+  if (!navigator.onLine) { setSyncStatus('offline'); return; }
+  try {
+    setSyncStatus('syncing');
+    await getToken(false);
+    if (!Sync.fileId) Sync.fileId = await driveFindFile();
+    let remote = null;
+    if (Sync.fileId) { try { remote = await driveDownload(Sync.fileId); } catch (e) {} }
+    if (remote && remote.updatedAt && Sync.base && remote.updatedAt > Sync.base && remote.updatedAt > (state.updatedAt || '')) {
+      return cloudSync(false);   // на сервері новіше — зливаємо коректно
+    }
+    Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());
+    markSynced(state.updatedAt);
+    setSyncStatus('idle');
+  } catch (e) { setSyncStatus('error', e.message || String(e)); }
+}
+async function cloudConnect(){
+  if (!syncConfigured()) { alert('Спершу вставте Google Client ID у Налаштуваннях.'); return; }
+  if (location.protocol.indexOf('http') !== 0) { alert('Синхронізація працює лише з https-хостингу (GitHub Pages), не з локального файлу.'); return; }
+  try {
+    setSyncStatus('connecting');
+    await getToken(true);
+    Sync.on = true; localStorage.setItem('moneyme.demo.sync.on', '1');
+    await cloudSync(false);
+  } catch (e) { setSyncStatus('error', e.message || String(e)); }
+}
+function cloudDisconnect(){
+  if (Sync.token && window.google && google.accounts) { try { google.accounts.oauth2.revoke(Sync.token.access_token, function(){}); } catch (e) {} }
+  Sync.on = false; Sync.token = null; Sync.fileId = null;
+  localStorage.removeItem('moneyme.demo.sync.on');
+  setSyncStatus('off');
+}
+
 //==================== Старт ====================
 navigate(hashView() || 'dashboard');   // відкриваємо вкладку з URL (зберігається при F5)
 ensureRatesFresh();
 ensureDailySnapshot();   // точка відновлення на сьогодні
 maybeAutoBackup();       // опційне автозавантаження бекапу
+
+// PWA: реєстрація service worker (лише на http/https; на file:// пропускаємо)
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+// Автосинхронізація при старті/поверненні в застосунок/появі мережі
+if (Sync.on && syncAvailable()) { setSyncStatus('idle'); loadGIS().then(() => cloudSync(false)).catch(() => setSyncStatus('error', 'немає мережі')); }
+else if (!navigator.onLine && Sync.on) { setSyncStatus('offline'); }
+window.addEventListener('online', () => { if (Sync.on && syncAvailable()) cloudSync(false); });
+window.addEventListener('offline', () => { if (Sync.on) setSyncStatus('offline'); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Sync.on && syncAvailable() && navigator.onLine) cloudSync(false); });
 </script>
 </body>
 </html>
