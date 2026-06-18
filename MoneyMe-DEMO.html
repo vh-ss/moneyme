@@ -1174,16 +1174,24 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
 }
 
 //==================== Діалог переказу ====================
-function openTransferDialog(fromId, toId) {
+function openTransferDialog(fromId, toId, opts) {
+  opts = opts || {};
   const from = state.accounts.find(a=>a.id===fromId);
   const to = state.accounts.find(a=>a.id===toId);
   if (!from || !to) return;
   const cross = from.currency_code !== to.currency_code;
   const F = from.currency_code, T = to.currency_code;
   const ori = cross ? rateOrientation(F, T) : null;
+  const pick = !!(opts.fromList && opts.toList);   // режим вибору рахунків (для поповнення цілі тощо)
+  const fromSel = pick
+    ? `<select id="t-from" style="flex:1;min-width:0">${opts.fromList.map(a=>`<option value="${a.id}" ${a.id===from.id?'selected':''}>${esc(a.name)} · ${money(accountBalance(a.id),a.currency_code)}</option>`).join('')}</select>`
+    : `<b style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(from.name)}</b>`;
+  const toSel = pick
+    ? `<select id="t-to" style="flex:1;min-width:0">${opts.toList.map(a=>`<option value="${a.id}" ${a.id===to.id?'selected':''}>${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select>`
+    : `<b style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(to.name)}</b>`;
   const body = el(`<div>
-    <div class="preview" style="display:flex;justify-content:space-between;align-items:center;background:#f8fafc">
-      <b>${esc(from.name)}</b><span class="muted">→</span><b>${esc(to.name)}</b>
+    <div class="preview" style="display:flex;align-items:center;gap:8px;background:#f8fafc">
+      ${fromSel}<span class="muted" style="flex:0 0 auto">→</span>${toSel}
     </div>
     <div><label class="lab">Сума (${curSym(from.currency_code)})</label><input id="t-amt" inputmode="decimal" placeholder="0.00" style="font-size:22px;font-weight:700"></div>
     <div class="row">
@@ -1253,10 +1261,15 @@ function openTransferDialog(fromId, toId) {
     const defX = defaultCrossX(F, T);
     if (defX != null) { rateEl.value = String(defX); $('#t-ratehint', body).textContent = `Курс НБУ${ratesCache.date ? ' на ' + fmtDate(ratesCache.date) : ''} — змініть курс або суму нижче.`; }
   }
+  if (opts.preset) {
+    if (opts.preset.amt) amtEl.value = opts.preset.amt;
+    if (opts.preset.note != null) $('#t-note', body).value = opts.preset.note;
+    if (opts.preset.date) $('#t-date', body).value = opts.preset.date;
+  }
   fromRate();
 
-  openModal('Переказ між рахунками', body, {
-    saveLabel: 'Переказати',
+  const closeDlg = openModal(opts.title || 'Переказ між рахунками', body, {
+    saveLabel: opts.saveLabel || 'Переказати',
     onSave: (close) => {
       const amt = num(amtEl.value);
       const err = $('#t-err', body);
@@ -1279,6 +1292,16 @@ function openTransferDialog(fromId, toId) {
       save(); close(); render();
     }
   });
+  if (pick) {   // зміна «звідки/куди» → перевідкриваємо діалог із новими рахунками, зберігаючи введену суму
+    const reopen = () => {
+      const nf = parseInt($('#t-from', body).value), nt = parseInt($('#t-to', body).value);
+      const preset = { amt: amtEl.value, note: $('#t-note', body).value, date: $('#t-date', body).value };
+      closeDlg();
+      openTransferDialog(nf, nt, Object.assign({}, opts, { preset }));
+    };
+    $('#t-from', body).onchange = reopen;
+    $('#t-to', body).onchange = reopen;
+  }
 }
 
 //==================== Редагування переказу ====================
@@ -2228,12 +2251,14 @@ function openGoalContribute(g, sign){
     save(); close(); render();
   }});
 }
-// Поповнити звʼязану ціль: переказ на перший підвʼязаний рахунок (джерело й суму можна змінити в діалозі).
+// Поповнити звʼязану ціль: переказ з обраного рахунка-джерела на підвʼязаний рахунок цілі.
+// Куди — підвʼязані рахунки цілі; Звідки — усі інші рахунки з балансом > 0.
 function goalTopUp(g){
-  const target = goalAccounts(g)[0]; if (!target) return;
-  const src = state.accounts.find(a => !a.archived && a.id !== target.id);
-  if (!src) { alert('Потрібен інший рахунок як джерело переказу.'); return; }
-  openTransferDialog(src.id, target.id);
+  const toList = goalAccounts(g).filter(a => !a.archived);
+  if (!toList.length) return;
+  const fromList = state.accounts.filter(a => !a.archived && accountBalance(a.id) > 0 && !(g.account_ids||[]).includes(a.id));
+  if (!fromList.length) { alert('Немає рахунків з додатним балансом для поповнення.'); return; }
+  openTransferDialog(fromList[0].id, toList[0].id, { fromList, toList, title: 'Поповнити «' + (g.name||'Ціль') + '»', saveLabel: 'Поповнити' });
 }
 
 function openGoalForm(existing){
