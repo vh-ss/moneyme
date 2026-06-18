@@ -2929,20 +2929,24 @@ async function cloudConnect(){
     let remote = Sync.fileId ? await driveDownload(Sync.fileId) : null;
     const remoteHasData = !!(remote && remote.updatedAt);
     const localHasData = !!(((state.accounts||[]).length) || ((state.transactions||[]).length));
+    const everConnected = localStorage.getItem('moneyme.sync.everConnected') === '1';
     let pushLocal = false;
     if (remoteHasData) {
-      // на цьому акаунті вже є дані → беремо їх (локальні з пристрою НЕ змішуємо)
+      // на цьому акаунті вже є дані → ЗАВЖДИ підтягуємо їх (локальні з пристрою НЕ заливаємо)
       adoptRemote(remote);
-    } else if (localHasData) {
-      // акаунт порожній, а на пристрої є дані — питаємо, чий це пристрій
-      const up = confirm('У цьому Google-акаунті ще немає даних MoneyMe.\n\nOK — завантажити дані з цього пристрою в акаунт (це ваш пристрій).\nСкасувати — почати з чистого (дані на пристрої буде очищено).');
+    } else if (!everConnected && localHasData) {
+      // ПЕРШЕ підключення на цьому пристрої, акаунт порожній, локально є дані → налаштування власника
+      const up = confirm('Перше підключення синхронізації. Акаунт порожній.\n\nOK — завантажити поточні дані з цього пристрою у ваш акаунт.\nСкасувати — почати з чистого.');
       if (!up) { state = seed(); normalize(); persist(); render(); }
       pushLocal = true;
     } else {
-      pushLocal = true;   // і там, і там порожньо — створюємо файл
+      // зміна акаунта на порожній → беремо «чисто» з сервера, локальне НЕ заливаємо (щоб дані не перетікали)
+      if (localHasData) { state = seed(); normalize(); persist(); render(); }
+      pushLocal = true;
     }
     if (pushLocal) Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());
     markSynced(state.updatedAt);
+    localStorage.setItem('moneyme.sync.everConnected', '1');
     Sync.on = true; localStorage.setItem('moneyme.sync.on', '1');
     setSyncStatus('idle');
   } catch (e) { setSyncStatus('error', e.message || String(e)); }
