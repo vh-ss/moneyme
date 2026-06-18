@@ -249,7 +249,6 @@
     <a data-view="recurring"><span class="ni">🔁</span><span class="nt">Регулярні</span></a>
     <a data-view="categories"><span class="ni">🏷️</span><span class="nt">Категорії</span></a>
     <a data-view="settings"><span class="ni">⚙️</span><span class="nt">Налаштування</span></a>
-    <button class="navlang" id="langbtn" title="Мова / Language">EN</button>
   </div>
 </header>
 <div class="wrap" id="app"></div>
@@ -340,7 +339,12 @@ const I18N_EN = {
   '— не вказано —':'— not set —','— без банку —':'— no bank —','— не створювати операцію —':"— don't create a transaction —",
   'Стартовий залишок':'Starting balance','Банк (необовʼязково)':'Bank (optional)','Дедлайн (необовʼязково)':'Deadline (optional)','Місячний бюджет':'Monthly budget','Переносити невитрачене на наступний місяць':'Carry over unspent to next month',
   'Приховати баланси (••••)':'Hide balances (••••)','Цифри для скріна (демо-суми, реальні дані не змінюються)':'Screenshot numbers (demo amounts, real data unchanged)','Автозавантаження бекап-файлу раз на день':'Auto-download backup file once a day',
-  'MoneyMe працює повністю у вашому браузері. Дані зберігаються локально (localStorage) на цьому ПК — інтернет не потрібен. Для перенесення чи бекапу користуйтесь експортом у файл.':'MoneyMe runs entirely in your browser. Data is stored locally (localStorage) on this PC — no internet needed. To move or back up, use export to file.',
+  'MoneyMe працює у вашому браузері й офлайн: дані зберігаються локально (localStorage) на пристрої. У веб-версії (PWA) їх можна синхронізувати між ПК і телефоном через вашу приховану папку Google Drive. Для перенесення чи бекапу також є експорт у файл.':'MoneyMe runs in your browser and offline: data is stored locally (localStorage) on the device. In the web version (PWA) it can sync between PC and phone via your hidden Google Drive folder. There is also export to file for transfer or backup.',
+  'Синхронізація — Google Drive':'Sync — Google Drive','Зберегти ID':'Save ID','Підключити Google Drive':'Connect Google Drive','Синхронізувати зараз':'Sync now','Відключити':'Disconnect',
+  'Зберігає дані у прихованій папці вашого Google Drive і синхронізує ПК ↔ телефон. Працює лише у веб-версії (https), не у файлі. Офлайн усе одно працює — зміни вивантажаться, щойно зʼявиться мережа.':'Stores data in a hidden folder of your Google Drive and syncs PC ↔ phone. Works only in the web version (https), not from a file. Offline still works — changes upload once you are back online.',
+  'Доступна нова версія MoneyMe':'A new version of MoneyMe is available','Оновити':'Update','Пізніше':'Later',
+  '✓ Синхронізовано':'✓ Synced','Підключення…':'Connecting…','Синхронізація…':'Syncing…','Очікування…':'Waiting…','Вимкнено':'Off',
+  'Офлайн — зміни збережено, вивантажаться пізніше':'Offline — changes saved, will upload later',
 };
 // Підрядкові заміни — для складених рядків (текст склеєний із числами/назвами).
 const I18N_PARTIAL = [
@@ -376,6 +380,7 @@ const I18N_PARTIAL = [
   ['Розархівувати','Unarchive'],['Архівувати','Archive'],['Сортування за датою','Sort by date'],['Перетягуйте рядки, щоб змінити порядок','Drag rows to reorder'],
   ['Експорт у файл','Export to file'],['Імпорт із файлу','Import from file'],['Операції в CSV','Transactions to CSV'],
   ['Світла','Light'],['Темна','Dark'],['Приховано','Hidden'],['Показано','Shown'],['Увімкнено','On'],['Вимкнено','Off'],
+  ['✓ Синхронізовано','✓ Synced'],['Помилка: ','Error: '],
   [' (сьогодні)',' (today)'],
   ['Ще немає рахунків. Додайте у вкладці «Рахунки».','No accounts yet. Add one in the “Accounts” tab.'],
   ['Спишеться з «','Debited from “'],['Зарахується на «','Credited to “'],['Спишеться','Debited'],['Зарахується','Credited'],
@@ -859,8 +864,6 @@ function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTM
 
 window.addEventListener('hashchange', () => { const v = hashView(); if (v && v !== currentView) navigate(v); });
 document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigate(a.dataset.view); }));
-function updateLangBtn(){ const b = document.getElementById('langbtn'); if (b) b.textContent = lang === 'uk' ? 'EN' : 'UA'; }
-(function(){ const b = document.getElementById('langbtn'); if (b) b.onclick = () => { setLang(lang === 'uk' ? 'en' : 'uk'); updateLangBtn(); }; updateLangBtn(); })();
 
 // Свайпи вліво/вправо — перехід між вкладками (тач).
 const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','goals','recurring','categories','settings'];
@@ -2303,6 +2306,10 @@ views.settings = (app) => {
   const appearance = el(`<section class="card" style="padding:18px">
     <h2>Вигляд і приватність</h2>
     <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px">
+      <span class="muted small">Мова</span>
+      <button class="btn" id="langbtn">${lang==='uk'?'🌐 Українська':'🌐 English'}</button>
+    </div>
+    <div class="row" style="align-items:center;justify-content:space-between;margin-top:12px">
       <span class="muted small">Тема оформлення</span>
       <button class="btn" id="themebtn">${theme==='dark'?'🌙 Темна':'☀️ Світла'}</button>
     </div>
@@ -2314,6 +2321,7 @@ views.settings = (app) => {
       <span class="muted small">Цифри для скріна (демо-суми, реальні дані не змінюються)</span>
       <button class="btn ${screenshotMode?'primary':''}" id="randbtn">${screenshotMode?'🎲 Увімкнено':'🎲 Вимкнено'}</button>
     </div></section>`);
+  $('#langbtn', appearance).onclick = () => setLang(lang === 'uk' ? 'en' : 'uk');
   $('#themebtn', appearance).onclick = () => toggleTheme();
   $('#hidebtn', appearance).onclick = () => setHideBalances(!hideBalances);
   $('#randbtn', appearance).onclick = () => toggleScreenshot();
@@ -2826,7 +2834,6 @@ function adoptRemote(remote){
   normalize();
   persist();
   Sync.applying = false;
-  if (typeof updateLangBtn === 'function') {}
   render();
 }
 
