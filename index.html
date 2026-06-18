@@ -235,11 +235,11 @@
 
   /* дуже вузькі екрани — щоб верхнє меню гарантовано вмістилось без обрізання */
   @media (max-width: 400px) {
-    .nav { padding: 10px 3px; gap: 0; }
-    .brand { margin-right: 1px; }
-    .brand .logo { width: 27px; height: 27px; }
-    .nav a { padding: 10px 5px; }
-    .nav a .ni { font-size: 17px; }
+    .nav { padding: 10px 2px; gap: 0; }
+    .brand { margin-right: 0; }
+    .brand .logo { width: 26px; height: 26px; }
+    .nav a { padding: 10px 4px; }
+    .nav a .ni { font-size: 16px; }
     .navlang { padding: 5px 6px; margin-left: 3px; font-size: 11px; }
   }
 </style>
@@ -253,6 +253,7 @@
     <a data-view="analytics"><span class="ni">📊</span><span class="nt">Аналітика</span></a>
     <a data-view="accounts"><span class="ni">💳</span><span class="nt">Рахунки</span></a>
     <a data-view="credits"><span class="ni">🏦</span><span class="nt">Кредити</span></a>
+    <a data-view="crypto"><span class="ni">🪙</span><span class="nt">Крипто</span></a>
     <a data-view="goals"><span class="ni">🎯</span><span class="nt">Цілі</span></a>
     <a data-view="recurring"><span class="ni">🔁</span><span class="nt">Регулярні</span></a>
     <a data-view="categories"><span class="ni">🏷️</span><span class="nt">Категорії</span></a>
@@ -285,6 +286,22 @@ const Sync = {
   last: localStorage.getItem('moneyme.sync.last') || null,
 };
 
+// Криптовалюти: символ → CoinGecko id (для цін у USD). Оголошуємо рано — потрібні в normalize().
+const CRYPTO_CG = {
+  '1INCH':'1inch','ADA':'cardano','APT':'aptos','ARB':'arbitrum','AUDIO':'audius','BNB':'binancecoin',
+  'BTC':'bitcoin','ETC':'ethereum-classic','ETH':'ethereum','IVPAY':'ivendpay','LTC':'litecoin','NOT':'notcoin',
+  'OP':'optimism','POL':'polygon-ecosystem-token','SOL':'solana','SUPRA':'supra','TON':'the-open-network',
+  'TRX':'tron','USDC':'usd-coin','USDT':'tether','WBT':'whitebit','WLKN':'walken','XCH':'chia'
+};
+// Початковий портфель (зі скріншоту користувача) — засівається один раз для наявних даних.
+const CRYPTO_SEED = [
+  ['1INCH',325.38443],['ADA',2577.355247],['APT',20.159102],['ARB',109.80302],['AUDIO',99.98],
+  ['BNB',0.52398903],['ETC',1.5713562],['ETH',0.254761255],['IVPAY',6000],['LTC',0.03657],
+  ['NOT',280696.306],['OP',100.1501982],['POL',202.33149],['SOL',24.43220335],['SUPRA',290448.0924],
+  ['TON',550.9784871],['TRX',22.23],['USDC',2.92028461],['USDT',1.09281919],['WBT',204.890605],
+  ['WLKN',22323.503],['XCH',35.4456987]
+].map((x, i) => ({ id: i + 1, symbol: x[0], amount: x[1], cg: CRYPTO_CG[x[0]] || null, price: null }));
+
 let state = load();
 normalize();
 
@@ -296,8 +313,9 @@ function normalize() {
   if (!state.loans) { state.loans = []; changed = true; }
   if (!state.recurring) { state.recurring = []; changed = true; }   // регулярні платежі
   if (!state.goals) { state.goals = []; changed = true; }           // цілі накопичення
-  if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1 }; changed = true; }
-  ['acc','cat','tx','bank','loan','rec','goal'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = 1; changed = true; } });
+  if (state.crypto === undefined) { state.crypto = CRYPTO_SEED.map(h => Object.assign({}, h)); changed = true; }   // крипто-портфель (засів зі скріншоту)
+  if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1 }; changed = true; }
+  ['acc','cat','tx','bank','loan','rec','goal','cry'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = (k==='cry') ? ((state.crypto||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : 1; changed = true; } });
   (state.categories || []).forEach(c => {
     if (c.budget === undefined && c.kind === 'EXPENSE') { c.budget = 0; changed = true; }
     if (c.kind === 'EXPENSE' && !c.budget_period) { c.budget_period = 'monthly'; changed = true; }
@@ -346,6 +364,8 @@ const I18N_EN = {
   'Курс':'Rate','Сума зарах.':'Credited amount',
   '— не вказано —':'— not set —','— без банку —':'— no bank —','— не створювати операцію —':"— don't create a transaction —",
   'Стартовий залишок':'Starting balance','Банк (необовʼязково)':'Bank (optional)','Дедлайн (необовʼязково)':'Deadline (optional)','Місячний бюджет':'Monthly budget','Переносити невитрачене на наступний місяць':'Carry over unspent to next month',
+  'Криптовалюти':'Cryptocurrencies','Загальна вартість портфеля':'Total portfolio value','Активів немає. Натисніть «+ Додати».':'No assets. Tap "+ Add".','Новий крипто-актив':'New crypto asset','Редагувати актив':'Edit asset','Символ':'Symbol','Кількість':'Amount','CoinGecko ID (для авто-ціни)':'CoinGecko ID (for auto price)','Ручна ціна, USD (необовʼязково)':'Manual price, USD (optional)',
+  'Автозаповнюється для відомих символів. Якщо монети немає в CoinGecko — лишіть порожнім і вкажіть ручну ціну.':'Auto-filled for known symbols. If the coin is not on CoinGecko — leave empty and set a manual price.',
   'Приховати баланси (••••)':'Hide balances (••••)','Цифри для скріна (демо-суми, реальні дані не змінюються)':'Screenshot numbers (demo amounts, real data unchanged)','Автозавантаження бекап-файлу раз на день':'Auto-download backup file once a day',
   'MoneyMe працює у вашому браузері й офлайн: дані зберігаються локально (localStorage) на пристрої. У веб-версії (PWA) їх можна синхронізувати між ПК і телефоном через вашу приховану папку Google Drive. Для перенесення чи бекапу також є експорт у файл.':'MoneyMe runs in your browser and offline: data is stored locally (localStorage) on the device. In the web version (PWA) it can sync between PC and phone via your hidden Google Drive folder. There is also export to file for transfer or backup.',
   'Синхронізація — Google Drive':'Sync — Google Drive','Зберегти ID':'Save ID','Підключити Google Drive':'Connect Google Drive','Синхронізувати зараз':'Sync now','Відключити':'Disconnect',
@@ -389,6 +409,8 @@ const I18N_PARTIAL = [
   ['комісія ','fee '],['шукати','search'],["напр. ","e.g. "],['Без категорії','No category'],
   ['Пошук і фільтри','Search & filters'],[' · застосовано',' · applied'],['Скинути фільтри','Reset filters'],
   ['без витрат цього періоду','with no spending this period'],
+  ['ціни CoinGecko на ','CoinGecko prices on '],['ціни недоступні','prices unavailable'],['завантаження цін…','loading prices…'],
+  ['⟳ Ціни','⟳ Prices'],['нема ціни','no price'],['якщо немає авто-ціни','if no auto price'],
   ['Розархівувати','Unarchive'],['Архівувати','Archive'],['Сортування за датою','Sort by date'],['Перетягуйте рядки, щоб змінити порядок','Drag rows to reorder'],
   ['Експорт у файл','Export to file'],['Імпорт із файлу','Import from file'],['Операції в CSV','Transactions to CSV'],
   ['Світла','Light'],['Темна','Dark'],['Приховано','Hidden'],['Показано','Shown'],['Увімкнено','On'],['Вимкнено','Off'],
@@ -421,7 +443,7 @@ function translateTree(root){
   root.querySelectorAll('[title]').forEach(e => { const r = tStr(e.getAttribute('title')); if (r !== e.getAttribute('title')) e.setAttribute('title', r); });
   root.querySelectorAll('option').forEach(o => { const r = tStr(o.textContent); if (r !== o.textContent) o.textContent = r; });
 }
-const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
+const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], crypto:['Крипто','Crypto'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
 function setNavLabels(){ document.querySelectorAll('.nav a').forEach(a => { const m = NAV_LABELS[a.dataset.view]; const nt = a.querySelector('.nt'); if (m && nt) nt.textContent = (lang === 'en') ? m[1] : m[0]; }); }
 // #app перебудовується щоразу з українського джерела, тож переклад у EN ставимо поверх; назад у UK — просто не перекладаємо.
 function applyLang(){ setNavLabels(); if (lang === 'en') translateTree(document.getElementById('app')); }
@@ -545,6 +567,36 @@ async function ensureRatesFresh(force) {
   if (currentView === 'dashboard') render();
 }
 
+//==================== Криптовалюти (ціни з CoinGecko, раз на день) ====================
+const CRYPTO_PRICES_KEY = 'moneyme.cryptoPrices';
+let cryptoCache = loadCryptoPrices();
+function loadCryptoPrices(){ try { const r = JSON.parse(localStorage.getItem(CRYPTO_PRICES_KEY)); if (r && r.usd) return r; } catch (e) {} return { date:'', usd:{}, error:null }; }
+// Ціна 1 одиниці у USD: з кешу за CoinGecko id, або ручна price; null — невідома.
+function cryptoUnitUsd(h){
+  const p = h.cg && cryptoCache.usd ? cryptoCache.usd[h.cg] : null;
+  if (typeof p === 'number' && p >= 0) return p;
+  return (typeof h.price === 'number' && h.price >= 0) ? h.price : null;
+}
+function cryptoValueUsd(h){ const p = cryptoUnitUsd(h); return p == null ? 0 : (h.amount || 0) * p; }
+function cryptoTotalUsd(){ return round2((state.crypto || []).reduce((s, h) => s + cryptoValueUsd(h), 0)); }
+function cryptoTotalUAH(){ const r = rateFor('USD'); return r == null ? null : round2(cryptoTotalUsd() * r); }
+function hasCrypto(){ return (state.crypto || []).length > 0; }
+async function ensureCryptoFresh(force){
+  const ids = [...new Set((state.crypto || []).map(h => h.cg).filter(Boolean))];
+  if (!ids.length) return;
+  if (!force && cryptoCache.date === todayISO() && Object.keys(cryptoCache.usd || {}).length) return;
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=' + ids.join(','), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const usd = {};
+    Object.keys(data).forEach(k => { if (data[k] && typeof data[k].usd === 'number') usd[k] = data[k].usd; });
+    cryptoCache = { date: todayISO(), usd, fetched_at: new Date().toISOString(), error: null };
+    localStorage.setItem(CRYPTO_PRICES_KEY, JSON.stringify(cryptoCache));
+  } catch (e) { cryptoCache.error = e.message || 'не вдалося отримати ціни'; }
+  if (currentView === 'crypto' || currentView === 'dashboard') render();
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -581,7 +633,7 @@ function seed() {
    ['Одяг','#14b8a6','👕'],['Інше','#64748b','📦']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'EXPENSE',color:c,icon:i}));
   [['Зарплата','#16a34a','💼'],['Підробіток','#0ea5e9','💸'],['Подарунки','#eab308','🎁'],
    ['Інше','#64748b','📥']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'INCOME',color:c,icon:i}));
-  return { version: SCHEMA_VERSION, seq: { acc:1, cat:cid, tx:1, bank:1, loan:1, rec:1, goal:1 }, accounts: [], categories: cats, transactions: [], banks: [], loans: [], recurring: [], goals: [] };
+  return { version: SCHEMA_VERSION, seq: { acc:1, cat:cid, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1 }, accounts: [], categories: cats, transactions: [], banks: [], loans: [], recurring: [], goals: [], crypto: [] };
 }
 function nextId(kind){ const v = state.seq[kind]++; save(); return v; }
 
@@ -884,7 +936,7 @@ window.addEventListener('hashchange', () => { const v = hashView(); if (v && v !
 document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigate(a.dataset.view); }));
 
 // Свайпи вліво/вправо — перехід між вкладками (тач).
-const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','goals','recurring','categories','settings'];
+const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','crypto','goals','recurring','categories','settings'];
 function swipeNavigate(dir){
   const i = VIEW_ORDER.indexOf(currentView), ni = i + dir;
   if (i < 0 || ni < 0 || ni >= VIEW_ORDER.length) return;
@@ -1543,8 +1595,9 @@ views.dashboard = (app) => {
   const byCur = {};
   state.accounts.filter(a => !a.archived).forEach(a => { byCur[a.currency_code] = (byCur[a.currency_code]||0) + accountBalance(a.id); });
   const allCurs = Object.keys(byCur);
-  [...dashCurSet].forEach(c => { if (!allCurs.includes(c)) dashCurSet.delete(c); });
+  [...dashCurSet].forEach(c => { if (c !== 'CRYPTO' && !allCurs.includes(c)) dashCurSet.delete(c); });
   const selected = dashCurSet.size ? allCurs.filter(c => dashCurSet.has(c)) : allCurs;
+  const showCrypto = hasCrypto() && (dashCurSet.size === 0 || dashCurSet.has('CRYPTO'));   // крипта в активах, якщо ввімкнено
 
   const from = monthStartISO(), to = todayISO();
   let inc=0, exp=0, fees=0;
@@ -1558,6 +1611,7 @@ views.dashboard = (app) => {
   // підсумок у UAH за курсом
   let uah = 0, missing = false;
   selected.forEach(c => { const v = toUAH(byCur[c], c); if (v == null) missing = true; else uah += v; });
+  if (showCrypto) { const cu = cryptoTotalUAH(); if (cu == null) missing = true; else uah += cu; }
   const ratesNote = ratesCache.date ? `курс НБУ на ${fmtDate(ratesCache.date)}`
     : (ratesCache.error ? 'курси недоступні' : 'завантаження курсів…');
   // курси валют, які є на рахунках (крім гривні)
@@ -1585,16 +1639,18 @@ views.dashboard = (app) => {
 
   // чіпи фільтра валют
   const cf = $('#curfilter', head);
-  if (allCurs.length > 1) {
+  if (allCurs.length > 1 || hasCrypto()) {
     const mkChip = (label, active, onClick) => { const b = el(`<button class="curchip${active?' on':''}">${label}</button>`); b.onclick = onClick; return b; };
     cf.appendChild(mkChip('Всі', dashCurSet.size===0, () => { dashCurSet.clear(); render(); }));
     allCurs.forEach(c => cf.appendChild(mkChip(curSym(c), dashCurSet.has(c), () => { dashCurSet.has(c)?dashCurSet.delete(c):dashCurSet.add(c); render(); })));
+    if (hasCrypto()) cf.appendChild(mkChip('₿', dashCurSet.has('CRYPTO'), () => { dashCurSet.has('CRYPTO')?dashCurSet.delete('CRYPTO'):dashCurSet.add('CRYPTO'); render(); }));
   }
   $('#rrefresh', head).onclick = () => ensureRatesFresh(true);
 
   const bc = $('#bc', head);
-  if (selected.length === 0) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
+  if (selected.length === 0 && !showCrypto) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
+  if (showCrypto) bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Криптопортфель">₿ ${money(cryptoTotalUsd(),'USD')}</div>`));
   app.appendChild(head);
 
   // бюджети категорій з лімітом (поточний місяць) — без тих, що 0%
@@ -2308,6 +2364,90 @@ function openGoalForm(existing){
     if (existing) Object.assign(existing, rec);
     else { rec.id = nextId('goal'); state.goals.push(rec); }
     save(); close(); render();
+  }});
+}
+
+//==================== Вигляд: Криптовалюти ====================
+// Форматування кількості монет (велика або з багатьма знаками після коми).
+function fmtAmt(n){ const v = Number(n) || 0; return v.toLocaleString('uk-UA', { maximumFractionDigits: 8 }); }
+views.crypto = (app) => {
+  ensureCryptoFresh();   // оновити ціни (раз на день; повертає одразу, якщо свіжі)
+  const head = el(`<div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h1 style="margin:0">Криптовалюти</h1><div class="row" style="gap:6px"></div></div>`);
+  const acts = head.lastElementChild;
+  const add = el(`<button class="btn primary sm">+ Додати</button>`); add.onclick = () => openCryptoForm();
+  acts.appendChild(add); app.appendChild(head);
+
+  const list = (state.crypto || []).map(h => ({ h, val: cryptoValueUsd(h), unit: cryptoUnitUsd(h) })).sort((a, b) => b.val - a.val);
+  const totalUsd = cryptoTotalUsd(), totalUah = cryptoTotalUAH();
+  const note = cryptoCache.date ? `ціни CoinGecko на ${fmtDate(cryptoCache.date)}` : (cryptoCache.error ? 'ціни недоступні' : 'завантаження цін…');
+
+  const sum = el(`<section class="card" style="padding:16px;margin-top:12px">
+    <div class="row" style="justify-content:space-between;align-items:center"><div class="muted small">Загальна вартість портфеля</div>
+      <button class="btn ghost sm" id="cr-refresh" title="Оновити ціни">⟳ Ціни</button></div>
+    <div class="row" style="align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:4px">
+      <div class="tabnum" style="font-size:28px;font-weight:800">${money(totalUsd,'USD')}</div>
+      ${totalUah!=null?`<div class="muted tabnum">≈ ${money(totalUah,'UAH')}</div>`:''}
+    </div>
+    <div class="muted small" style="margin-top:4px">${note}</div>
+  </section>`);
+  $('#cr-refresh', sum).onclick = () => ensureCryptoFresh(true);
+  app.appendChild(sum);
+
+  if (!list.length) { app.appendChild(el(`<div class="muted" style="margin-top:12px">Активів немає. Натисніть «+ Додати».</div>`)); return; }
+
+  const card = el(`<section class="card" style="padding:8px 12px;margin-top:12px"></section>`);
+  list.forEach(({ h, val, unit }) => {
+    const pct = totalUsd > 0 ? Math.round(val / totalUsd * 100) : 0;
+    const row = el(`<div class="txrow" style="gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">${esc(h.symbol)}${unit==null?' <span class="small" style="color:var(--amber)">нема ціни</span>':''}</div>
+        <div class="muted small tabnum">${fmtAmt(h.amount)} × ${unit==null?'—':money(unit,'USD')}</div>
+      </div>
+      <div style="text-align:right;flex:0 0 auto">
+        <div class="tabnum" style="font-weight:700">${money(val,'USD')}</div>
+        <div class="muted small tabnum">${pct}%</div>
+      </div>
+      <div class="row" style="gap:4px;flex:0 0 auto"></div>
+    </div>`);
+    const a = row.lastElementChild;
+    const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openCryptoForm(h);
+    const del = el(`<button class="btn danger sm">✕</button>`); del.onclick = () => deleteWithUndo(`${h.symbol} видалено`, () => { state.crypto = state.crypto.filter(x => x.id !== h.id); });
+    a.appendChild(ed); a.appendChild(del);
+    card.appendChild(row);
+  });
+  app.appendChild(card);
+};
+
+function openCryptoForm(existing){
+  const e = existing || { symbol:'', amount:'', cg:'', price:'' };
+  const body = el(`<div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Символ</label><input id="cr-sym" value="${esc(e.symbol||'')}" placeholder="напр. BTC" style="text-transform:uppercase"></div>
+      <div style="flex:1"><label class="lab">Кількість</label><input id="cr-amt" inputmode="decimal" value="${e.amount ?? ''}"></div>
+    </div>
+    <div><label class="lab">CoinGecko ID (для авто-ціни)</label><input id="cr-cg" value="${esc(e.cg||'')}" placeholder="напр. bitcoin"></div>
+    <div class="muted small" style="margin-top:-2px">Автозаповнюється для відомих символів. Якщо монети немає в CoinGecko — лишіть порожнім і вкажіть ручну ціну.</div>
+    <div><label class="lab">Ручна ціна, USD (необовʼязково)</label><input id="cr-price" inputmode="decimal" value="${e.price ?? ''}" placeholder="якщо немає авто-ціни"></div>
+    <div class="err hidden" id="cr-err"></div>
+  </div>`);
+  $('#cr-sym', body).addEventListener('input', () => {
+    const s = $('#cr-sym', body).value.trim().toUpperCase();
+    const cgEl = $('#cr-cg', body);
+    if (CRYPTO_CG[s] && (!cgEl.value || cgEl.dataset.auto)) { cgEl.value = CRYPTO_CG[s]; cgEl.dataset.auto = '1'; }
+  });
+  openModal(existing?'Редагувати актив':'Новий крипто-актив', body, { onSave:(close)=>{
+    const symbol = $('#cr-sym', body).value.trim().toUpperCase(); const err = $('#cr-err', body);
+    if (!symbol) { err.textContent='Введіть символ'; err.classList.remove('hidden'); return; }
+    const amount = num($('#cr-amt', body).value);
+    if (!(amount > 0)) { err.textContent='Введіть кількість більше 0'; err.classList.remove('hidden'); return; }
+    const cg = $('#cr-cg', body).value.trim().toLowerCase() || null;
+    const priceStr = $('#cr-price', body).value.trim();
+    const price = priceStr ? num(priceStr) : null;
+    const rec = { symbol, amount, cg, price };
+    if (existing) Object.assign(existing, rec);
+    else { rec.id = nextId('cry'); state.crypto.push(rec); }
+    save(); close(); render();
+    ensureCryptoFresh(true);   // підтягнути ціну (зокрема нового активу)
   }});
 }
 
@@ -3056,6 +3196,7 @@ function cloudDisconnect(){
 //==================== Старт ====================
 navigate(hashView() || 'dashboard');   // відкриваємо вкладку з URL (зберігається при F5)
 ensureRatesFresh();
+ensureCryptoFresh();   // ціни крипти (раз на день)
 ensureDailySnapshot();   // точка відновлення на сьогодні
 maybeAutoBackup();       // опційне автозавантаження бекапу
 
