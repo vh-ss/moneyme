@@ -294,15 +294,6 @@ const CRYPTO_CG = {
   'OP':'optimism','POL':'polygon-ecosystem-token','SOL':'solana','SUPRA':'supra','TON':'the-open-network',
   'TRX':'tron','USDC':'usd-coin','USDT':'tether','WBT':'whitebit','WLKN':'walken','XCH':'chia'
 };
-// Початковий портфель (зі скріншоту користувача) — засівається один раз для наявних даних.
-const CRYPTO_SEED = [
-  ['1INCH',325.38443],['ADA',2577.355247],['APT',20.159102],['ARB',109.80302],['AUDIO',99.98],
-  ['BNB',0.52398903],['ETC',1.5713562],['ETH',0.254761255],['IVPAY',6000],['LTC',0.03657],
-  ['NOT',280696.306],['OP',100.1501982],['POL',202.33149],['SOL',24.43220335],['SUPRA',290448.0924],
-  ['TON',550.9784871],['TRX',22.23],['USDC',2.92028461],['USDT',1.09281919],['WBT',204.890605],
-  ['WLKN',22323.503],['XCH',35.4456987]
-].map((x, i) => ({ id: i + 1, symbol: x[0], amount: x[1], cg: CRYPTO_CG[x[0]] || null, price: null }));
-
 let state = load();
 normalize();
 
@@ -314,7 +305,7 @@ function normalize() {
   if (!state.loans) { state.loans = []; changed = true; }
   if (!state.recurring) { state.recurring = []; changed = true; }   // регулярні платежі
   if (!state.goals) { state.goals = []; changed = true; }           // цілі накопичення
-  if (state.crypto === undefined) { state.crypto = CRYPTO_SEED.map(h => Object.assign({}, h)); changed = true; }   // крипто-портфель (засів зі скріншоту)
+  if (state.crypto === undefined) { state.crypto = []; changed = true; }   // крипто-портфель (порожній за замовчуванням)
   if (!Array.isArray(state.cryptoHistory)) { state.cryptoHistory = []; changed = true; }   // історія вартості портфеля
   if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1 }; changed = true; }
   ['acc','cat','tx','bank','loan','rec','goal','cry'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = (k==='cry') ? ((state.crypto||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : 1; changed = true; } });
