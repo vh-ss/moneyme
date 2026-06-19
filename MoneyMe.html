@@ -359,7 +359,7 @@ const I18N_EN = {
   'Стартовий залишок':'Starting balance','Банк (необовʼязково)':'Bank (optional)','Дедлайн (необовʼязково)':'Deadline (optional)','Місячний бюджет':'Monthly budget','Переносити невитрачене на наступний місяць':'Carry over unspent to next month',
   'Криптовалюти':'Cryptocurrencies','Загальна вартість портфеля':'Total portfolio value','Активів немає. Натисніть «+ Додати».':'No assets. Tap "+ Add".','Новий крипто-актив':'New crypto asset','Редагувати актив':'Edit asset','Символ':'Symbol','Кількість':'Amount','CoinGecko ID (для авто-ціни)':'CoinGecko ID (for auto price)','Ручна ціна, USD (необовʼязково)':'Manual price, USD (optional)',
   'Автозаповнюється для відомих символів. Якщо монети немає в CoinGecko — лишіть порожнім і вкажіть ручну ціну.':'Auto-filled for known symbols. If the coin is not on CoinGecko — leave empty and set a manual price.',
-  'Розподіл портфеля':'Portfolio allocation','Історія портфеля':'Portfolio history','Ручна ціна, USD':'Manual price, USD','Сума закупки, USD':'Purchase cost, USD','Інші':'Other',
+  'Розподіл портфеля':'Portfolio allocation','Історія портфеля':'Portfolio history','Ручна ціна, USD':'Manual price, USD','Сума закупки, USD':'Purchase cost, USD','Інші':'Other','Очистити криптопортфель':'Clear crypto portfolio',
   'Сума закупки (необовʼязково) — щоб рахувати прибуток/збиток у %.':'Purchase cost (optional) — to compute profit/loss in %.',
   '📈 Історія портфеля накопичується — графік зʼявиться за кілька днів користування.':'📈 Portfolio history is accumulating — the chart will appear after a few days of use.',
   'Приховати баланси (••••)':'Hide balances (••••)','Цифри для скріна (демо-суми, реальні дані не змінюються)':'Screenshot numbers (demo amounts, real data unchanged)','Автозавантаження бекап-файлу раз на день':'Auto-download backup file once a day',
@@ -2472,6 +2472,10 @@ views.crypto = (app) => {
     card.appendChild(row);
   });
   app.appendChild(card);
+
+  const clear = el(`<div style="margin-top:14px"><button class="btn ghost sm" style="color:var(--red)">Очистити криптопортфель</button></div>`);
+  clear.firstElementChild.onclick = () => { if (confirm('Видалити ВСІ крипто-активи? (можна скасувати)')) deleteWithUndo('Криптопортфель очищено', () => { state.crypto = []; }); };
+  app.appendChild(clear);
 };
 
 function openCryptoForm(existing){
