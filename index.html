@@ -292,7 +292,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '0495fd01ed';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '68da313857';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -512,12 +512,19 @@ function deleteWithUndo(label, mutate) {
   save(); render();
   showToast(label, 'Скасувати', () => { state = snap; save(); render(); });
 }
-// Якщо обʼєкт має привʼязки — ЗАБОРОНЯЄМО видалення (показуємо, що саме привʼязане).
-// parts — перелік привʼязок; hint — що зробити, щоб усе ж видалити. Повертає true, якщо видаляти можна.
-function blockDeleteIfUsed(name, parts, hint) {
-  if (!parts.length) return true;
-  alert(`${name} не можна видалити — є привʼязки:\n• ${parts.join('\n• ')}\n\n${hint || 'Спершу приберіть або перенесіть їх.'}`);
-  return false;
+// Інфо-вікно перед видаленням обʼєкта з привʼязками: показує, що зачепить, і дає вибір
+// «Видалити / Скасувати». parts — перелік привʼязок; opts.hint — порада;
+// opts.onConfirm — дія видалення (виконується при підтвердженні; зазвичай deleteWithUndo).
+function confirmDeleteImpact(name, parts, { hint, onConfirm } = {}) {
+  if (!parts.length) { if (onConfirm) onConfirm(); return; }   // немає привʼязок — видаляємо одразу
+  const body = el(`<div>
+    <div style="margin-bottom:8px">Це видалення зачепить:</div>
+    <ul style="margin:0;padding-left:20px;line-height:1.8">${parts.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+    ${hint ? `<div class="notice" style="margin-top:10px">${esc(hint)}</div>` : ''}
+  </div>`);
+  openModal(`Видалити ${name}?`, body, { saveLabel: '🗑 Видалити', onSave: (close) => { close(); if (onConfirm) onConfirm(); } });
+  const ok = [...document.querySelectorAll('#modal-root .overlay')].pop()?.querySelector('.mfoot .btn.primary');
+  if (ok) { ok.classList.remove('primary'); ok.classList.add('danger'); }
 }
 
 //==================== Бекап: завантаження файлу, точки відновлення, автозавантаження ====================
@@ -2175,8 +2182,7 @@ views.accounts = (app) => {
       if (recN) parts.push(`${recN} регулярних платежів`);
       if (goalN) parts.push(`${goalN} цілей (рахунок підвʼязаний)`);
       if (primary) parts.push(`основний рахунок банку «${primary.name}»`);
-      if (!blockDeleteIfUsed(`Рахунок «${a.name}»`, parts, 'Зазвичай тут краще «Архівувати» — рахунок зникне зі списків, а операції збережуться. Щоб саме видалити, спершу приберіть привʼязки.')) return;
-      deleteWithUndo(`Рахунок «${a.name}» видалено`, () => {
+      const doDelete = () => deleteWithUndo(`Рахунок «${a.name}» видалено`, () => {
         // повертаємо суми кредитів за платежами, що видаляються разом з рахунком
         state.transactions.forEach(t => {
           if ((t.account_id===a.id || t.to_account_id===a.id) && t.loan_id) {
@@ -2190,6 +2196,7 @@ views.accounts = (app) => {
         state.goals.forEach(g => { if (g.account_ids) g.account_ids = g.account_ids.filter(id => id !== a.id); }); // відвʼязуємо від цілей
         state.banks.forEach(b=>{ if(b.primary_account_id===a.id) b.primary_account_id=null; }); // скидаємо «основний рахунок»
       });
+      confirmDeleteImpact(`Рахунок «${a.name}»`, parts, { hint: 'Порада: зазвичай краще «Архівувати» — рахунок зникне зі списків, а операції збережуться. При видаленні всі його операції підуть разом із ним.', onConfirm: doDelete });
     };
     actions.appendChild(ed); actions.appendChild(arch); actions.appendChild(del);
     makeReorderable(c, 'acc', a.id, reorderAccount);
@@ -3211,12 +3218,11 @@ views.credits = (app) => {
       const parts = [];
       if (accN) parts.push(`${accN} рахунків (привʼязані до банку)`);
       if (loanN) parts.push(`${loanN} кредитів`);
-      if (!blockDeleteIfUsed(`Банк «${bank.name}»`, parts, 'Спершу відвʼяжіть рахунки (змініть у них банк) і видаліть кредити цього банку.')) return;
-      deleteWithUndo(`Банк «${bank.name}» видалено`, () => {
+      confirmDeleteImpact(`Банк «${bank.name}»`, parts, { hint: 'Рахунки відвʼяжуться від банку (самі рахунки залишаться), а кредити цього банку буде видалено.', onConfirm: () => deleteWithUndo(`Банк «${bank.name}» видалено`, () => {
         state.banks = state.banks.filter(x=>x.id!==bank.id);
         state.loans = state.loans.filter(l=>l.bank_id!==bank.id);
         state.accounts.forEach(a => { if (a.bank_id === bank.id) a.bank_id = null; });
-      });
+      }) });
     };
     acts.appendChild(addLoan); acts.appendChild(edB); acts.appendChild(delB);
 
@@ -3264,8 +3270,7 @@ function loanRow(l, bank) {
     const payN = state.transactions.filter(t => t.loan_id===l.id).length;
     const parts = [];
     if (payN) parts.push(`${payN} операцій-платежів`);
-    if (!blockDeleteIfUsed(`Кредит «${l.name||'Кредит'}»`, parts, 'Спершу видаліть ці операції-платежі.')) return;
-    deleteWithUndo('Кредит видалено', () => { state.loans = state.loans.filter(x=>x.id!==l.id); state.transactions.forEach(t=>{ if(t.loan_id===l.id) t.loan_id=null; }); });
+    confirmDeleteImpact(`Кредит «${l.name||'Кредит'}»`, parts, { hint: 'Операції-платежі залишаться, але втратять привʼязку до цього кредиту.', onConfirm: () => deleteWithUndo('Кредит видалено', () => { state.loans = state.loans.filter(x=>x.id!==l.id); state.transactions.forEach(t=>{ if(t.loan_id===l.id) t.loan_id=null; }); }) });
   };
   acts.appendChild(ed); acts.appendChild(del);
   return node;
