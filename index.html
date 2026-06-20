@@ -292,7 +292,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '68da313857';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'be28994f71';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -515,11 +515,12 @@ function deleteWithUndo(label, mutate) {
 // Інфо-вікно перед видаленням обʼєкта з привʼязками: показує, що зачепить, і дає вибір
 // «Видалити / Скасувати». parts — перелік привʼязок; opts.hint — порада;
 // opts.onConfirm — дія видалення (виконується при підтвердженні; зазвичай deleteWithUndo).
-function confirmDeleteImpact(name, parts, { hint, onConfirm } = {}) {
-  if (!parts.length) { if (onConfirm) onConfirm(); return; }   // немає привʼязок — видаляємо одразу
+function confirmDeleteImpact(name, parts, { hint, onConfirm, force } = {}) {
+  if (!parts.length && !force) { if (onConfirm) onConfirm(); return; }   // немає привʼязок і не примусово — видаляємо одразу
   const body = el(`<div>
-    <div style="margin-bottom:8px">Це видалення зачепить:</div>
-    <ul style="margin:0;padding-left:20px;line-height:1.8">${parts.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+    ${parts.length
+      ? `<div style="margin-bottom:8px">Це видалення зачепить:</div><ul style="margin:0;padding-left:20px;line-height:1.8">${parts.map(p => `<li>${esc(p)}</li>`).join('')}</ul>`
+      : `<div>Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).</div>`}
     ${hint ? `<div class="notice" style="margin-top:10px">${esc(hint)}</div>` : ''}
   </div>`);
   openModal(`Видалити ${name}?`, body, { saveLabel: '🗑 Видалити', onSave: (close) => { close(); if (onConfirm) onConfirm(); } });
@@ -3269,8 +3270,12 @@ function loanRow(l, bank) {
   del.onclick = () => {
     const payN = state.transactions.filter(t => t.loan_id===l.id).length;
     const parts = [];
-    if (payN) parts.push(`${payN} операцій-платежів`);
-    confirmDeleteImpact(`Кредит «${l.name||'Кредит'}»`, parts, { hint: 'Операції-платежі залишаться, але втратять привʼязку до цього кредиту.', onConfirm: () => deleteWithUndo('Кредит видалено', () => { state.loans = state.loans.filter(x=>x.id!==l.id); state.transactions.forEach(t=>{ if(t.loan_id===l.id) t.loan_id=null; }); }) });
+    if (payN) parts.push(`${payN} операцій-платежів — залишаться, але втратять привʼязку до кредиту`);
+    confirmDeleteImpact(`Кредит «${l.name||'Кредит'}»`, parts, {
+      force: true,   // кредит — важливий запис: підтверджуємо завжди, навіть без платежів
+      hint: `Кредит на ${money(l.principal, bank.currency)} · виплачено ${money(l.paid||0, bank.currency)} · залишок ${money(out, bank.currency)}.`,
+      onConfirm: () => deleteWithUndo('Кредит видалено', () => { state.loans = state.loans.filter(x=>x.id!==l.id); state.transactions.forEach(t=>{ if(t.loan_id===l.id) t.loan_id=null; }); })
+    });
   };
   acts.appendChild(ed); acts.appendChild(del);
   return node;
