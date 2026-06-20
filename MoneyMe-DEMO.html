@@ -815,8 +815,51 @@ function reorderBank(srcId, dstId) {
   save(); render();
 }
 
-// Видалення операції. Якщо це платіж за кредитом (loan_id) — повертаємо суму у виплачене.
+// Видалення операції — спершу показуємо інфо й просимо підтвердження, далі видаляємо (з можливістю undo).
 function deleteTx(tx) {
+  const isT = tx.kind === 'TRANSFER', isInc = tx.kind === 'INCOME';
+  const cur = accountCur(tx.account_id);
+  const cat = tx.category_id ? categoryById(tx.category_id) : null;
+  const typeLabel = isT ? 'Переказ' : isInc ? 'Надходження' : 'Витрата';
+  const typeColor = isT ? '#0ea5e9' : isInc ? 'var(--green)' : 'var(--red)';
+  const amtStr = isT ? money(tx.amount, cur) : (isInc ? '+' : '−') + money(tx.amount, cur);
+  const rows = [];
+  if (isT) {
+    rows.push(['Напрямок', `${accountName(tx.account_id)} → ${accountName(tx.to_account_id)}`]);
+    const T = accountCur(tx.to_account_id);
+    if (tx.to_amount != null && T !== cur) rows.push(['Зараховано', money(tx.to_amount, T)]);
+    if (tx.fee_amount > 0) rows.push(['Комісія', money(tx.fee_amount, cur)]);
+  } else {
+    rows.push(['Категорія', cat ? `${cat.icon ? cat.icon + ' ' : ''}${cat.name}` : 'Без категорії']);
+    rows.push(['Рахунок', accountName(tx.account_id)]);
+  }
+  rows.push(['Дата', fmtDate(tx.date)]);
+  if (tx.note) rows.push(['Нотатка', tx.note]);
+  if (tx.tags && tx.tags.length) rows.push(['Теги', tx.tags.map(x => '#' + x).join(' ')]);
+  const warns = [];
+  if (tx.loan_id) warns.push('Це платіж за кредитом — суму буде повернено у залишок боргу.');
+  if (tx.recurring_id) warns.push('Це регулярний платіж — дату наступного списання буде відкочено на цикл назад.');
+
+  const body = el(`<div>
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-weight:700;color:${typeColor}">${typeLabel}</span>
+      <span class="tabnum" style="font-size:22px;font-weight:800;color:${isT ? 'var(--ink)' : typeColor}">${amtStr}</span>
+    </div>
+    ${rows.map(([k, v]) => `<div class="row" style="justify-content:space-between;gap:18px;margin-top:6px"><span class="muted small">${esc(k)}</span><b style="text-align:right">${esc(v)}</b></div>`).join('')}
+    ${warns.length ? `<div class="notice" style="margin-top:12px">${warns.map(esc).join('<br>')}</div>` : ''}
+  </div>`);
+
+  openModal('Видалити операцію?', body, {
+    saveLabel: '🗑 Видалити',
+    onSave: (close) => { close(); doDeleteTx(tx); }
+  });
+  // кнопку підтвердження робимо «небезпечною» (червоною)
+  const ok = [...document.querySelectorAll('#modal-root .overlay')].pop()?.querySelector('.mfoot .btn.primary');
+  if (ok) { ok.classList.remove('primary'); ok.classList.add('danger'); }
+}
+
+// Власне видалення (після підтвердження). Якщо це платіж за кредитом (loan_id) — повертаємо суму у залишок боргу.
+function doDeleteTx(tx) {
   deleteWithUndo(tx.kind === 'TRANSFER' ? 'Переказ видалено' : 'Операцію видалено', () => {
     if (tx.loan_id) {
       const loan = state.loans.find(l => l.id === tx.loan_id);
