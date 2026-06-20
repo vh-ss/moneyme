@@ -383,6 +383,7 @@ const I18N_EN = {
   'Криптовалюти':'Cryptocurrencies','Загальна вартість портфеля':'Total portfolio value','Активів немає. Натисніть «+ Додати».':'No assets. Tap "+ Add".','Новий крипто-актив':'New crypto asset','Редагувати актив':'Edit asset','Символ':'Symbol','Кількість':'Amount','CoinGecko ID (для авто-ціни)':'CoinGecko ID (for auto price)','Ручна ціна, USD (необовʼязково)':'Manual price, USD (optional)',
   'Автозаповнюється для відомих символів. Якщо монети немає в CoinGecko — лишіть порожнім і вкажіть ручну ціну.':'Auto-filled for known symbols. If the coin is not on CoinGecko — leave empty and set a manual price.',
   'Розподіл портфеля':'Portfolio allocation','Історія портфеля':'Portfolio history','Ручна ціна, USD':'Manual price, USD','Сума закупки, USD':'Purchase cost, USD','Інші':'Other','Очистити криптопортфель':'Clear crypto portfolio',
+  'Операції за карткою':'Account transactions','Біржі / гаманці (через кому)':'Exchanges / wallets (comma-separated)',
   'Сума закупки (необовʼязково) — щоб рахувати прибуток/збиток у %.':'Purchase cost (optional) — to compute profit/loss in %.',
   '📈 Історія портфеля накопичується — графік зʼявиться за кілька днів користування.':'📈 Portfolio history is accumulating — the chart will appear after a few days of use.',
   'Приховати баланси (••••)':'Hide balances (••••)','Цифри для скріна (демо-суми, реальні дані не змінюються)':'Screenshot numbers (demo amounts, real data unchanged)','Автозавантаження бекап-файлу раз на день':'Auto-download backup file once a day',
@@ -604,6 +605,8 @@ function cryptoTotalUsd(){ return round2((state.crypto || []).reduce((s, h) => s
 function cryptoTotalUAH(){ const r = rateFor('USD'); return r == null ? null : round2(cryptoTotalUsd() * r); }
 function cryptoTotalCost(){ const xs = (state.crypto || []).filter(h => typeof h.cost === 'number' && h.cost > 0); return xs.length ? round2(xs.reduce((s,h)=>s+h.cost,0)) : null; }
 function hasCrypto(){ return (state.crypto || []).length > 0; }
+// Усі біржі/гаманці зі збережених активів (для підказки при додаванні наступного).
+function cryptoExchanges(){ const s = new Set(); (state.crypto || []).forEach(h => (h.exchanges || []).forEach(x => s.add(x))); return [...s].sort((a, b) => a.localeCompare(b, 'uk')); }
 // Знімок вартості портфеля на сьогодні (для історії). Один запис на день.
 function recordCryptoSnapshot(){
   if (!hasCrypto()) return;
@@ -1066,6 +1069,7 @@ function accountActionMenu(a, x, y){
     { label: 'Надходження', icon: '+', color: 'var(--green)', onClick: () => openEntryForm('INCOME', null, a.id) },
     { sep: true },
     { label: 'Переказ із цього рахунку', icon: '⇄', color: '#0ea5e9', onClick: () => openTransferPicker(a.id) },
+    { label: 'Операції за карткою', icon: '🧾', color: '#64748b', onClick: () => showTxFor({ account: a.id }) },
   ], a.name);
 }
 // Перетягування картки рахунку через Pointer Events (працює і мишею, і пальцем).
@@ -1527,7 +1531,7 @@ function openTransferEdit(tx) {
 function txRow(t, { onEdit, onDelete, onDup } = {}) {
   const isT = t.kind === 'TRANSFER', isInc = t.kind === 'INCOME';
   const cat = t.category_id ? categoryById(t.category_id) : null;
-  const icon = isT ? '⇄' : isInc ? '＋' : (cat?.icon || '－');
+  const icon = isT ? '⇄' : (cat?.icon || (isInc ? '＋' : '－'));   // значок категорії (і для надходжень)
   const color = isT ? '#0ea5e9' : isInc ? 'var(--green)' : (cat?.color || 'var(--red)');
   const cur = accountCur(t.account_id);
   const title = isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : (cat?.name || 'Без категорії');
@@ -1759,8 +1763,10 @@ views.dashboard = (app) => {
 };
 
 //==================== Вигляд: Операції ====================
-let txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'' };
+let txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'', category:'' };
 let showTxFilters = false;   // блок пошуку/фільтрів згорнутий за замовчуванням
+// Відкрити «Операції» з готовим фільтром (по рахунку/категорії) — діапазон дат знімаємо (усі операції).
+function showTxFor(f){ txFilter = Object.assign({ account:'', kind:'', from:'', to:'', q:'', sort:'date', tag:'', category:'' }, f); showTxFilters = false; navigate('transactions'); }
 views.transactions = (app) => {
   app.appendChild(el(`<h1>Операції</h1>`));
   const quick = el(`<div class="quick sm" style="margin:0 0 14px">
@@ -1772,7 +1778,7 @@ views.transactions = (app) => {
   app.appendChild(quick);
 
   // згортання блоку пошуку/фільтрів (розкривається за потреби)
-  const fltActive = !!(txFilter.q || txFilter.account || txFilter.kind || txFilter.tag
+  const fltActive = !!(txFilter.q || txFilter.account || txFilter.kind || txFilter.tag || txFilter.category
     || txFilter.from !== monthStartISO() || txFilter.to !== todayISO() || txFilter.sort !== 'date');
   const toggle = el(`<button class="btn ${fltActive?'primary':''}" id="togglefilters" style="width:100%;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <span>🔍 Пошук і фільтри${fltActive?' · застосовано':''}</span><span>${showTxFilters?'▴':'▾'}</span></button>`);
@@ -1780,7 +1786,7 @@ views.transactions = (app) => {
   app.appendChild(toggle);
   if (fltActive && !showTxFilters) {
     const reset = el(`<button class="btn ghost sm" style="margin:-4px 0 10px">✕ Скинути фільтри</button>`);
-    reset.onclick = () => { txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'' }; render(); };
+    reset.onclick = () => { txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'', category:'' }; render(); };
     app.appendChild(reset);
   }
   if (showTxFilters) {
@@ -1788,6 +1794,7 @@ views.transactions = (app) => {
     <div><label class="lab">Пошук (нотатка, категорія, рахунок, сума)</label><input id="ff-q" placeholder="🔍 шукати…" value="${esc(txFilter.q)}"></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-top:10px">
       <div><label class="lab">Рахунок</label><select id="ff-acc"><option value="">Усі</option>${state.accounts.map(a=>`<option value="${a.id}" ${txFilter.account==a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
+      <div><label class="lab">Категорія</label><select id="ff-cat"><option value="">Усі</option>${state.categories.map(c=>`<option value="${c.id}" ${txFilter.category==c.id?'selected':''}>${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select></div>
       <div><label class="lab">Тип</label><select id="ff-kind">
         <option value="">Усі</option><option value="EXPENSE">Витрати</option><option value="INCOME">Надходження</option><option value="TRANSFER">Перекази</option></select></div>
       <div><label class="lab">Від</label><input id="ff-from" type="date" value="${txFilter.from}"></div>
@@ -1802,8 +1809,8 @@ views.transactions = (app) => {
   $('#ff-kind', f).value = txFilter.kind;
   if ($('#ff-tag', f)) $('#ff-tag', f).value = txFilter.tag;
   $('#ff-q', f).addEventListener('input', () => { txFilter.q = $('#ff-q', f).value; renderList(); });
-  ['ff-acc','ff-kind','ff-from','ff-to','ff-tag'].forEach(id => { const el2 = $('#'+id, f); if (el2) el2.addEventListener('change', () => {
-    txFilter.account=$('#ff-acc',f).value; txFilter.kind=$('#ff-kind',f).value; txFilter.from=$('#ff-from',f).value; txFilter.to=$('#ff-to',f).value; txFilter.tag=$('#ff-tag',f)?$('#ff-tag',f).value:''; renderList();
+  ['ff-acc','ff-cat','ff-kind','ff-from','ff-to','ff-tag'].forEach(id => { const el2 = $('#'+id, f); if (el2) el2.addEventListener('change', () => {
+    txFilter.account=$('#ff-acc',f).value; txFilter.category=$('#ff-cat',f).value; txFilter.kind=$('#ff-kind',f).value; txFilter.from=$('#ff-from',f).value; txFilter.to=$('#ff-to',f).value; txFilter.tag=$('#ff-tag',f)?$('#ff-tag',f).value:''; renderList();
   }); });
   f.querySelectorAll('.pill button').forEach(b => { b.classList.toggle('on', b.dataset.s===txFilter.sort);
     b.onclick = () => { txFilter.sort = b.dataset.s; render(); }; });
@@ -1818,6 +1825,7 @@ views.transactions = (app) => {
     const q = txFilter.q.trim().toLowerCase();
     let rows = state.transactions.filter(t => {
       if (txFilter.account && t.account_id != txFilter.account && t.to_account_id != txFilter.account) return false;
+      if (txFilter.category && t.category_id != txFilter.category) return false;
       if (txFilter.kind && t.kind !== txFilter.kind) return false;
       if (txFilter.tag && !(t.tags||[]).includes(txFilter.tag)) return false;
       if (!inRange(t, txFilter.from, txFilter.to)) return false;
@@ -2210,6 +2218,7 @@ views.categories = (app) => {
     if (i === list.length - 1) { down.disabled = true; down.style.opacity = .3; }
     up.onclick = () => moveCategory(c, -1);
     down.onclick = () => moveCategory(c, 1);
+    const ops = el(`<button class="btn ghost sm" title="Операції цієї категорії">🧾</button>`); ops.onclick=()=>showTxFor({ category: c.id });
     const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick=()=>openCategoryForm(c);
     const del = el(`<button class="btn danger sm">✕</button>`);
     del.onclick=()=>deleteWithUndo(`Категорію «${c.name}» видалено`, () => {
@@ -2217,7 +2226,7 @@ views.categories = (app) => {
       state.transactions.forEach(t=>{ if(t.category_id===c.id)t.category_id=null; });
       state.recurring.forEach(r=>{ if(r.category_id===c.id)r.category_id=null; });
     });
-    node.appendChild(up); node.appendChild(down); node.appendChild(ed); node.appendChild(del);
+    node.appendChild(up); node.appendChild(down); node.appendChild(ops); node.appendChild(ed); node.appendChild(del);
     grid.appendChild(node);
   });
   app.appendChild(grid);
@@ -2481,6 +2490,7 @@ views.crypto = (app) => {
       <div style="flex:1;min-width:0">
         <div style="font-weight:600">${esc(h.symbol)}${unit==null?' <span class="small" style="color:var(--amber)">нема ціни</span>':''}${chgT?` <span class="small tabnum" style="color:${chgT.color}">${chgT.txt}</span>`:''}</div>
         <div class="muted small tabnum">${fmtAmt(h.amount)} × ${unit==null?'—':money(unit,'USD')}</div>
+        ${(h.exchanges&&h.exchanges.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">${h.exchanges.map(x=>`<span class="chip" style="font-size:10px;padding:1px 7px">${esc(x)}</span>`).join('')}</div>`:''}
       </div>
       <div style="text-align:right;flex:0 0 auto">
         <div class="tabnum" style="font-weight:700">${money(val,'USD')}</div>
@@ -2515,6 +2525,9 @@ function openCryptoForm(existing){
       <div style="flex:1"><label class="lab">Сума закупки, USD</label><input id="cr-cost" inputmode="decimal" value="${e.cost ?? ''}" placeholder="скільки вклали"></div>
     </div>
     <div class="muted small" style="margin-top:-2px">Сума закупки (необовʼязково) — щоб рахувати прибуток/збиток у %.</div>
+    <div><label class="lab">Біржі / гаманці (через кому)</label>
+      <input id="cr-exch" value="${esc((e.exchanges||[]).join(', '))}" placeholder="напр. Binance, WhiteBIT" list="cr-exch-list" autocomplete="off">
+      <datalist id="cr-exch-list">${cryptoExchanges().map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
     <div class="err hidden" id="cr-err"></div>
   </div>`);
   $('#cr-sym', body).addEventListener('input', () => {
@@ -2532,7 +2545,8 @@ function openCryptoForm(existing){
     const price = priceStr ? num(priceStr) : null;
     const costStr = $('#cr-cost', body).value.trim();
     const cost = costStr ? num(costStr) : null;
-    const rec = { symbol, amount, cg, price, cost };
+    const exchanges = [...new Set(($('#cr-exch', body).value || '').split(',').map(s => s.trim()).filter(Boolean))];
+    const rec = { symbol, amount, cg, price, cost, exchanges };
     if (existing) Object.assign(existing, rec);
     else { rec.id = nextId('cry'); state.crypto.push(rec); }
     save(); close(); render();
