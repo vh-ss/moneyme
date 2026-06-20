@@ -97,6 +97,7 @@
   .quick .exp { background: #c0474c; background: color-mix(in srgb, var(--red) 74%, #64748b); }      /* приглушений червоний */
   .quick .inc { background: #2f9159; background: color-mix(in srgb, var(--green) 74%, #64748b); }    /* приглушений зелений */
   .quick .dot { width: 24px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.22); display: grid; place-items: center; color: #fff; font-size: 18px; font-weight: 800; line-height: 1; }
+  .quick .dot svg { width: 15px; height: 15px; display: block; }
   .quick.sm button { padding: 11px 12px; font-size: 14px; }
   .quick.sm .dot { width: 22px; height: 22px; font-size: 16px; }
 
@@ -291,7 +292,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '18857e3a81';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '059266f373';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1664,8 +1665,8 @@ let showZeroAccounts = false; // показувати рахунки з нуль
 views.dashboard = (app) => {
   // швидке додавання — витрата / надходження
   const quick = el(`<div class="quick sm" style="margin:16px 0">
-    <button class="exp"><span class="dot">−</span> Витрата</button>
-    <button class="inc"><span class="dot">+</span> Надходження</button>
+    <button class="exp"><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 12h10"/></svg></span> Витрата</button>
+    <button class="inc"><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 7v10M7 12h10"/></svg></span> Надходження</button>
   </div>`);
   quick.children[0].onclick = () => openEntryForm('EXPENSE');
   quick.children[1].onclick = () => openEntryForm('INCOME');
@@ -1812,8 +1813,8 @@ function showTxFor(f){ txFilter = Object.assign({ account:'', kind:'', from:'', 
 views.transactions = (app) => {
   app.appendChild(el(`<h1>Операції</h1>`));
   const quick = el(`<div class="quick sm" style="margin:0 0 14px">
-    <button class="exp"><span class="dot">−</span> Витрата</button>
-    <button class="inc"><span class="dot">+</span> Надходження</button>
+    <button class="exp"><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 12h10"/></svg></span> Витрата</button>
+    <button class="inc"><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 7v10M7 12h10"/></svg></span> Надходження</button>
   </div>`);
   quick.children[0].onclick = () => openEntryForm('EXPENSE');
   quick.children[1].onclick = () => openEntryForm('INCOME');
