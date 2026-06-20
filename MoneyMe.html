@@ -98,6 +98,9 @@
   .quick .inc { background: #2f9159; background: color-mix(in srgb, var(--green) 74%, #64748b); }    /* приглушений зелений */
   .quick .dot { width: 24px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.22); display: grid; place-items: center; color: #fff; font-size: 18px; font-weight: 800; line-height: 1; }
   .quick .dot svg { width: 15px; height: 15px; display: block; }
+  .ic { width: 1.15em; height: 1.15em; display: inline-block; vertical-align: -0.18em; flex: 0 0 auto; }
+  .btn.sm .ic, .btn.ghost.sm .ic, .btn.danger.sm .ic { width: 1.05em; height: 1.05em; }
+  .txicon .ic { width: 1.05em; height: 1.05em; vertical-align: middle; }
   .quick.sm button { padding: 11px 12px; font-size: 14px; }
   .quick.sm .dot { width: 22px; height: 22px; font-size: 16px; }
 
@@ -864,6 +867,27 @@ function doDeleteTx(tx) {
 }
 
 //==================== Утиліти ====================
+// Набір лінійних SVG-іконок у стилі застосунку (як верхнє меню). ic('name') → рядок <svg>.
+const ICONS = {
+  edit: '<path d="M4 20h4L18.4 9.6a2 2 0 0 0-2.8-2.8L5 17.4 4 20Z"/><path d="M13.5 6.9l3.6 3.6" stroke-width="1.6"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  dup: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/>',
+  refresh: '<path d="M3.5 11a8.5 8.5 0 0 1 14.4-5.5L20 8"/><path d="M20 3.5V8h-4.5"/><path d="M20.5 13a8.5 8.5 0 0 1-14.4 5.5L4 16"/><path d="M4 20.5V16h4.5"/>',
+  receipt: '<path d="M6 3.2v17.6l2-1.3 2 1.3 2-1.3 2 1.3 2-1.3 2 1.3V3.2L18 4.5 16 3.2 14 4.5 12 3.2 10 4.5 8 3.2 6 4.5Z"/><path d="M9 9h6M9 12.5h6" stroke-width="1.6"/>',
+  bank: '<path d="M3.5 9.5 12 4l8.5 5.5"/><path d="M5 9.5V20M19 9.5V20M3.5 20h17M9.5 20v-6M14.5 20v-6"/>',
+  plus: '<path d="M12 6v12M6 12h12"/>',
+  minus: '<path d="M6 12h12"/>',
+  transfer: '<path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5"/>',
+  split: '<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M12 3.5v17M3.5 12h17" stroke-width="1.5"/>',
+  moon: '<path d="M20 14.2A8 8 0 0 1 9.8 4 7 7 0 1 0 20 14.2Z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2 19 19M19 5l-1.8 1.8M6.8 17.2 5 19"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff: '<path d="M4 4l16 16" stroke-width="1.8"/><path d="M9.6 5.5A10.6 10.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a18 18 0 0 1-3 3.7M6.3 7.3A18 18 0 0 0 2.5 12S6 18.5 12 18.5a10 10 0 0 0 3.6-.7"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  dice: '<rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18" stroke-width="1.4"/>',
+};
+function ic(name){ return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`; }
 const $ = (sel, root=document) => root.querySelector(sel);
 const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1323,7 +1347,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     const r = el(`<div class="exrow" style="display:flex;gap:6px;margin-top:6px">
       <select class="sp-cat" style="flex:1;min-width:0"><option value="">Без категорії</option>${cats.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select>
       <input class="sp-amt" inputmode="decimal" placeholder="сума" value="${(amt!=null&&amt!=='')?amt:''}" style="flex:0 0 92px">
-      <button type="button" class="btn ghost sm sp-del" title="Прибрати">✕</button></div>`);
+      <button type="button" class="btn ghost sm sp-del" title="Прибрати">${ic('close')}</button></div>`);
     if (catId != null) r.querySelector('.sp-cat').value = String(catId);
     r.querySelector('.sp-amt').addEventListener('input', recomputeSplit);
     r.querySelector('.sp-del').onclick = () => { r.remove(); recomputeSplit(); };
@@ -1682,7 +1706,7 @@ function txRow(t, { onEdit, onDelete, onDup } = {}) {
   const isT = t.kind === 'TRANSFER', isInc = t.kind === 'INCOME';
   const isSplit = isSplitTx(t);
   const cat = (!isT && !isSplit && t.category_id) ? categoryById(t.category_id) : null;
-  const icon = isT ? '⇄' : isSplit ? '⊞' : (cat?.icon || (isInc ? '＋' : '－'));   // значок категорії (і для надходжень); split → ⊞
+  const icon = isT ? ic('transfer') : isSplit ? ic('split') : (cat?.icon || (isInc ? ic('plus') : ic('minus')));   // значок категорії (емодзі) або наш SVG
   const color = isT ? '#0ea5e9' : isInc ? 'var(--green)' : isSplit ? '#8b5cf6' : (cat?.color || 'var(--red)');
   const cur = accountCur(t.account_id);
   const title = isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
@@ -1716,9 +1740,9 @@ function txRow(t, { onEdit, onDelete, onDup } = {}) {
       <div class="txsub">${fmtDate(t.date)} · ${esc(sub)}${t.note?' · '+esc(t.note):''}${(t.tags&&t.tags.length)?' · '+t.tags.map(x=>'#'+esc(x)).join(' '):''}</div></div>
     <div style="text-align:right">${amtHtml}</div>
   </div>`);
-  if (onDup) { const b = el(`<button class="btn ghost sm" title="Дублювати">⧉</button>`); b.onclick=()=>onDup(t); row.appendChild(b); }
-  if (onEdit) { const b = el(`<button class="btn ghost sm">✎</button>`); b.onclick=()=>onEdit(t); row.appendChild(b); }
-  if (onDelete) { const b = el(`<button class="btn danger sm">✕</button>`); b.onclick=()=>onDelete(t); row.appendChild(b); }
+  if (onDup) { const b = el(`<button class="btn ghost sm" title="Дублювати">${ic('dup')}</button>`); b.onclick=()=>onDup(t); row.appendChild(b); }
+  if (onEdit) { const b = el(`<button class="btn ghost sm">${ic('edit')}</button>`); b.onclick=()=>onEdit(t); row.appendChild(b); }
+  if (onDelete) { const b = el(`<button class="btn danger sm">${ic('close')}</button>`); b.onclick=()=>onDelete(t); row.appendChild(b); }
   return row;
 }
 
@@ -1819,7 +1843,7 @@ views.dashboard = (app) => {
     <div style="margin-top:10px">
       <span class="muted">Разом ≈ </span><b class="tabnum" style="font-size:20px">${money(round2(uah),'UAH')}</b>
       <span class="muted small"> · ${ratesNote}${missing?' · деякі валюти без курсу':''}</span>
-      <button class="btn ghost sm" id="rrefresh" title="Оновити курси">⟳</button>
+      <button class="btn ghost sm" id="rrefresh" title="Оновити курси">${ic('refresh')}</button>
     </div>
     ${rateLines.length ? `<div class="muted small tabnum" style="margin-top:4px">Курси: ${rateLines.join(' · ')}</div>` : ''}
     <div class="row small" style="flex-wrap:wrap;gap:16px;margin-top:12px">
@@ -1939,7 +1963,7 @@ views.transactions = (app) => {
   toggle.onclick = () => { showTxFilters = !showTxFilters; render(); };
   app.appendChild(toggle);
   if (fltActive && !showTxFilters) {
-    const reset = el(`<button class="btn ghost sm" style="margin:-4px 0 10px">✕ Скинути фільтри</button>`);
+    const reset = el(`<button class="btn ghost sm" style="margin:-4px 0 10px">${ic('close')} Скинути фільтри</button>`);
     reset.onclick = () => { txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'', category:'' }; render(); };
     app.appendChild(reset);
   }
@@ -2416,9 +2440,9 @@ views.categories = (app) => {
     if (i === list.length - 1) { down.disabled = true; down.style.opacity = .3; }
     up.onclick = () => moveCategory(c, -1);
     down.onclick = () => moveCategory(c, 1);
-    const ops = el(`<button class="btn ghost sm" title="Операції цієї категорії">🧾</button>`); ops.onclick=()=>showTxFor({ category: c.id });
-    const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick=()=>openCategoryForm(c);
-    const del = el(`<button class="btn danger sm">✕</button>`);
+    const ops = el(`<button class="btn ghost sm" title="Операції цієї категорії">${ic('receipt')}</button>`); ops.onclick=()=>showTxFor({ category: c.id });
+    const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick=()=>openCategoryForm(c);
+    const del = el(`<button class="btn danger sm">${ic('close')}</button>`);
     del.onclick = () => deleteCategory(c);
     node.appendChild(up); node.appendChild(down); node.appendChild(ops); node.appendChild(ed); node.appendChild(del);
     grid.appendChild(node);
@@ -2517,8 +2541,8 @@ views.goals = (app) => {
       const outB = el(`<button class="btn ghost sm">− Зняти</button>`); outB.onclick = () => openGoalContribute(g, -1);
       acts.appendChild(inB); acts.appendChild(outB);
     }
-    const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openGoalForm(g);
-    const del = el(`<button class="btn danger sm">✕</button>`); del.onclick = () => deleteWithUndo('Ціль видалено', () => { state.goals = state.goals.filter(x=>x.id!==g.id); });
+    const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick = () => openGoalForm(g);
+    const del = el(`<button class="btn danger sm">${ic('close')}</button>`); del.onclick = () => deleteWithUndo('Ціль видалено', () => { state.goals = state.goals.filter(x=>x.id!==g.id); });
     acts.appendChild(ed); acts.appendChild(del);
     grid.appendChild(card);
   });
@@ -2630,7 +2654,7 @@ views.crypto = (app) => {
 
   const sum = el(`<section class="card" style="padding:16px;margin-top:12px">
     <div class="row" style="justify-content:space-between;align-items:center"><div class="muted small">Загальна вартість портфеля</div>
-      <button class="btn ghost sm" id="cr-refresh" title="Оновити ціни">⟳ Ціни</button></div>
+      <button class="btn ghost sm" id="cr-refresh" title="Оновити ціни">${ic('refresh')} Ціни</button></div>
     <div class="row" style="align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:4px">
       <div class="tabnum" style="font-size:28px;font-weight:800">${money(totalUsd,'USD')}</div>
       ${totalUah!=null?`<div class="muted tabnum">≈ ${money(totalUah,'UAH')}</div>`:''}
@@ -2710,8 +2734,8 @@ views.crypto = (app) => {
       <div class="row" style="gap:4px;flex:0 0 auto"></div>
     </div>`);
     const a = row.lastElementChild;
-    const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openCryptoForm(h);
-    const del = el(`<button class="btn danger sm">✕</button>`); del.onclick = () => deleteWithUndo(`${h.symbol} видалено`, () => { state.crypto = state.crypto.filter(x => x.id !== h.id); });
+    const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick = () => openCryptoForm(h);
+    const del = el(`<button class="btn danger sm">${ic('close')}</button>`); del.onclick = () => deleteWithUndo(`${h.symbol} видалено`, () => { state.crypto = state.crypto.filter(x => x.id !== h.id); });
     a.appendChild(ed); a.appendChild(del);
     card.appendChild(row);
   });
@@ -2723,7 +2747,7 @@ views.crypto = (app) => {
 function cryptoBottomActions(){
   const box = el(`<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center"></div>`);
   if (cryptoExchanges().length) {
-    const exBtn = el(`<button class="btn ghost sm">🏦 Біржі / гаманці</button>`);
+    const exBtn = el(`<button class="btn ghost sm">${ic('bank')} Біржі / гаманці</button>`);
     exBtn.onclick = () => openExchangesManager();
     box.appendChild(exBtn);
   }
@@ -2796,8 +2820,8 @@ function openExchangesManager(){
         <div style="min-width:0;flex:1"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nm)}</div><div class="muted small">${cnt} актив${cnt===1?'':(cnt>=2&&cnt<=4?'и':'ів')}</div></div>
         <div class="row" style="gap:6px;flex:0 0 auto"></div></div>`);
       const acts = row.lastElementChild;
-      const ren = el(`<button class="btn ghost sm" title="Перейменувати">✎</button>`); ren.onclick = () => renameExchange(nm, rebuild);
-      const del = el(`<button class="btn danger sm" title="Видалити">✕</button>`); del.onclick = () => deleteExchange(nm, rebuild);
+      const ren = el(`<button class="btn ghost sm" title="Перейменувати">${ic('edit')}</button>`); ren.onclick = () => renameExchange(nm, rebuild);
+      const del = el(`<button class="btn danger sm" title="Видалити">${ic('close')}</button>`); del.onclick = () => deleteExchange(nm, rebuild);
       acts.appendChild(ren); acts.appendChild(del);
       listBox.appendChild(row);
     });
@@ -2911,7 +2935,7 @@ function openCryptoForm(existing){
     const r = el(`<div class="exrow" style="display:flex;gap:6px;margin-top:6px">
       <input class="ex-name" list="cr-exch-list" placeholder="Біржа / гаманець" value="${esc(name||'')}" autocomplete="off" style="flex:1;min-width:0">
       <input class="ex-amt" inputmode="decimal" placeholder="к-сть" value="${(amt!=null&&amt!=='')?amt:''}" style="flex:0 0 96px">
-      <button type="button" class="btn ghost sm ex-del" title="Прибрати">✕</button></div>`);
+      <button type="button" class="btn ghost sm ex-del" title="Прибрати">${ic('close')}</button></div>`);
     r.querySelector('.ex-amt').addEventListener('input', recompute);
     r.querySelector('.ex-del').onclick = () => { r.remove(); recompute(); };
     rowsBox.appendChild(r);
@@ -2922,7 +2946,7 @@ function openCryptoForm(existing){
   // вибір кольору виділення рядка (з опцією «без кольору»)
   let crColor = e.color || null;
   const colorBox = $('#cr-color', body);
-  const noneBtn = el(`<button type="button" class="swatch ${!crColor?'sel':''}" title="Без кольору" style="background:var(--input);border:1px solid var(--inputline);color:var(--muted);display:grid;place-items:center;font-size:14px">✕</button>`);
+  const noneBtn = el(`<button type="button" class="swatch ${!crColor?'sel':''}" title="Без кольору" style="background:var(--input);border:1px solid var(--inputline);color:var(--muted);display:grid;place-items:center;font-size:14px">${ic('close')}</button>`);
   noneBtn.onclick = () => { colorBox.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel')); noneBtn.classList.add('sel'); crColor = null; };
   colorBox.appendChild(noneBtn);
   PALETTE.forEach(c => { const b = el(`<button type="button" class="swatch ${c===crColor?'sel':''}" style="background:${c}"></button>`); b.onclick = () => { colorBox.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel')); b.classList.add('sel'); crColor = c; }; colorBox.appendChild(b); });
@@ -2991,8 +3015,8 @@ views.recurring = (app) => {
     const acts = card.lastElementChild;
     const rec = el(`<button class="btn sm ${isDue?'primary':''}">Внести зараз</button>`); rec.onclick = () => recordRecurring(r);
     const tog = el(`<button class="btn ghost sm">${r.active===false?'Увімкнути':'Пауза'}</button>`); tog.onclick = () => { r.active = r.active===false; save(); render(); };
-    const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openRecurringForm(r);
-    const del = el(`<button class="btn danger sm">✕</button>`); del.onclick = () => deleteWithUndo('Регулярний платіж видалено', () => { state.recurring = state.recurring.filter(x=>x.id!==r.id); });
+    const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick = () => openRecurringForm(r);
+    const del = el(`<button class="btn danger sm">${ic('close')}</button>`); del.onclick = () => deleteWithUndo('Регулярний платіж видалено', () => { state.recurring = state.recurring.filter(x=>x.id!==r.id); });
     acts.appendChild(rec); acts.appendChild(tog); acts.appendChild(ed); acts.appendChild(del);
     list.appendChild(card);
   });
@@ -3057,11 +3081,11 @@ views.settings = (app) => {
     <h2>Вигляд і приватність</h2>
     <div class="row" style="align-items:center;justify-content:space-between;margin-top:8px">
       <span class="muted small">Мова</span>
-      <button class="btn" id="langbtn">${lang==='uk'?'🌐 Українська':'🌐 English'}</button>
+      <button class="btn" id="langbtn">${ic('globe')} ${lang==='uk'?'Українська':'English'}</button>
     </div>
     <div class="row" style="align-items:center;justify-content:space-between;margin-top:12px">
       <span class="muted small">Тема оформлення</span>
-      <button class="btn" id="themebtn">${theme==='dark'?'🌙 Темна':'☀️ Світла'}</button>
+      <button class="btn" id="themebtn">${theme==='dark'?ic('moon')+' Темна':ic('sun')+' Світла'}</button>
     </div>
     <div class="row" style="align-items:center;justify-content:space-between;margin-top:12px">
       <span class="muted small">Розташування меню</span>
@@ -3069,11 +3093,11 @@ views.settings = (app) => {
     </div>
     <div class="row" style="align-items:center;justify-content:space-between;margin-top:12px">
       <span class="muted small">Приховати баланси (••••)</span>
-      <button class="btn ${hideBalances?'primary':''}" id="hidebtn">${hideBalances?'🙈 Приховано':'👁️ Показано'}</button>
+      <button class="btn ${hideBalances?'primary':''}" id="hidebtn">${hideBalances?ic('eyeoff')+' Приховано':ic('eye')+' Показано'}</button>
     </div>
     <div class="row" style="align-items:center;justify-content:space-between;margin-top:12px">
       <span class="muted small">Цифри для скріна (демо-суми, реальні дані не змінюються)</span>
-      <button class="btn ${screenshotMode?'primary':''}" id="randbtn">${screenshotMode?'🎲 Увімкнено':'🎲 Вимкнено'}</button>
+      <button class="btn ${screenshotMode?'primary':''}" id="randbtn">${ic('dice')} ${screenshotMode?'Увімкнено':'Вимкнено'}</button>
     </div></section>`);
   $('#langbtn', appearance).onclick = () => setLang(lang === 'uk' ? 'en' : 'uk');
   $('#themebtn', appearance).onclick = () => toggleTheme();
@@ -3093,7 +3117,7 @@ views.settings = (app) => {
     const on = !navHidden.has(v);
     const row = el(`<div class="row" style="align-items:center;justify-content:space-between;margin-top:8px">
       <span class="muted small">${esc(label)}</span>
-      <button class="btn ${on ? 'primary' : ''}">${on ? '👁️ Показано' : '🙈 Сховано'}</button></div>`);
+      <button class="btn ${on ? 'primary' : ''}">${on ? ic('eye')+' Показано' : ic('eyeoff')+' Сховано'}</button></div>`);
     row.querySelector('button').onclick = () => toggleNavView(v);
     navcfgList.appendChild(row);
   });
@@ -3277,8 +3301,8 @@ views.credits = (app) => {
     </section>`);
     const acts = $('.bankacts', card);
     const addLoan = el(`<button class="btn sm">+ Кредит</button>`); addLoan.onclick = () => openLoanForm(null, bank.id);
-    const edB = el(`<button class="btn ghost sm" title="Редагувати банк">✎</button>`); edB.onclick = () => openBankForm(bank);
-    const delB = el(`<button class="btn danger sm" title="Видалити банк">✕</button>`);
+    const edB = el(`<button class="btn ghost sm" title="Редагувати банк">${ic('edit')}</button>`); edB.onclick = () => openBankForm(bank);
+    const delB = el(`<button class="btn danger sm" title="Видалити банк">${ic('close')}</button>`);
     delB.onclick = () => {
       const accN = state.accounts.filter(x => x.bank_id===bank.id).length;
       const loanN = state.loans.filter(l => l.bank_id===bank.id).length;
@@ -3331,8 +3355,8 @@ function loanRow(l, bank) {
     acts.appendChild(pay);
     if (l.has_interest && l.rate > 0) { const po = el(`<button class="btn ghost sm" title="Калькулятор дострокового погашення">Достроково</button>`); po.onclick = () => openPayoff(l, bank); acts.appendChild(po); }
   }
-  const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick = () => openLoanForm(l);
-  const del = el(`<button class="btn danger sm">✕</button>`);
+  const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick = () => openLoanForm(l);
+  const del = el(`<button class="btn danger sm">${ic('close')}</button>`);
   del.onclick = () => {
     const payN = state.transactions.filter(t => t.loan_id===l.id).length;
     const parts = [];
