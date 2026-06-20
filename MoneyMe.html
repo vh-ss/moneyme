@@ -362,7 +362,7 @@ const I18N_EN = {
   'Криптовалюти':'Cryptocurrencies','Загальна вартість портфеля':'Total portfolio value','Активів немає. Натисніть «+ Додати».':'No assets. Tap "+ Add".','Новий крипто-актив':'New crypto asset','Редагувати актив':'Edit asset','Символ':'Symbol','Кількість':'Amount','CoinGecko ID (для авто-ціни)':'CoinGecko ID (for auto price)','Ручна ціна, USD (необовʼязково)':'Manual price, USD (optional)',
   'Автозаповнюється для відомих символів. Якщо монети немає в CoinGecko — лишіть порожнім і вкажіть ручну ціну.':'Auto-filled for known symbols. If the coin is not on CoinGecko — leave empty and set a manual price.',
   'Розподіл портфеля':'Portfolio allocation','Історія портфеля':'Portfolio history','Ручна ціна, USD':'Manual price, USD','Сума закупки, USD':'Purchase cost, USD','Інші':'Other','Очистити криптопортфель':'Clear crypto portfolio',
-  'Операції за карткою':'Account transactions','Біржі / гаманці (через кому)':'Exchanges / wallets (comma-separated)',
+  'Операції за карткою':'Account transactions','Кількість (всього)':'Amount (total)','Розподіл по біржах / гаманцях (необовʼязково)':'Split by exchanges / wallets (optional)','+ Біржа':'+ Exchange','Перенести й видалити':'Move & delete','Перенести в категорію':'Move to category',
   'Сума закупки (необовʼязково) — щоб рахувати прибуток/збиток у %.':'Purchase cost (optional) — to compute profit/loss in %.',
   '📈 Історія портфеля накопичується — графік зʼявиться за кілька днів користування.':'📈 Portfolio history is accumulating — the chart will appear after a few days of use.',
   'Приховати баланси (••••)':'Hide balances (••••)','Цифри для скріна (демо-суми, реальні дані не змінюються)':'Screenshot numbers (demo amounts, real data unchanged)','Автозавантаження бекап-файлу раз на день':'Auto-download backup file once a day',
@@ -585,7 +585,7 @@ function cryptoTotalUAH(){ const r = rateFor('USD'); return r == null ? null : r
 function cryptoTotalCost(){ const xs = (state.crypto || []).filter(h => typeof h.cost === 'number' && h.cost > 0); return xs.length ? round2(xs.reduce((s,h)=>s+h.cost,0)) : null; }
 function hasCrypto(){ return (state.crypto || []).length > 0; }
 // Усі біржі/гаманці зі збережених активів (для підказки при додаванні наступного).
-function cryptoExchanges(){ const s = new Set(); (state.crypto || []).forEach(h => (h.exchanges || []).forEach(x => s.add(x))); return [...s].sort((a, b) => a.localeCompare(b, 'uk')); }
+function cryptoExchanges(){ const s = new Set(); (state.crypto || []).forEach(h => (h.exchanges || []).forEach(x => s.add(typeof x === 'string' ? x : x.name))); return [...s].filter(Boolean).sort((a, b) => a.localeCompare(b, 'uk')); }
 // Знімок вартості портфеля на сьогодні (для історії). Один запис на день.
 function recordCryptoSnapshot(){
   if (!hasCrypto()) return;
@@ -2153,6 +2153,31 @@ function openAccountForm(existing) {
   });
 }
 
+// Видалення категорії: якщо по ній є операції — питаємо, куди їх перенести (інша категорія або «Без категорії»).
+function deleteCategory(c){
+  const used = state.transactions.filter(t => t.category_id === c.id).length;
+  const usedRec = state.recurring.filter(r => r.category_id === c.id).length;
+  if (used === 0 && usedRec === 0) {
+    deleteWithUndo(`Категорію «${c.name}» видалено`, () => { state.categories = state.categories.filter(x => x.id !== c.id); });
+    return;
+  }
+  const others = state.categories.filter(x => x.id !== c.id && x.kind === c.kind);
+  const body = el(`<div>
+    <p class="muted small">Категорію «${esc(c.name)}» використовують <b>${used}</b> операцій${usedRec?` і ${usedRec} регулярних`:''}.<br>Оберіть, куди перенести їх перед видаленням.</p>
+    <div><label class="lab">Перенести в категорію</label>
+      <select id="dc-cat"><option value="">— Без категорії —</option>${others.map(x=>`<option value="${x.id}">${x.icon?x.icon+' ':''}${esc(x.name)}</option>`).join('')}</select></div>
+  </div>`);
+  openModal(`Видалити «${c.name}»`, body, { saveLabel: 'Перенести й видалити', onSave: (close) => {
+    const target = $('#dc-cat', body).value ? parseInt($('#dc-cat', body).value) : null;
+    deleteWithUndo(`Категорію «${c.name}» видалено (${used} операцій перенесено)`, () => {
+      state.transactions.forEach(t => { if (t.category_id === c.id) t.category_id = target; });
+      state.recurring.forEach(r => { if (r.category_id === c.id) r.category_id = target; });
+      state.categories = state.categories.filter(x => x.id !== c.id);
+    });
+    close();
+  }});
+}
+
 //==================== Вигляд: Категорії ====================
 let catKind = 'EXPENSE';
 views.categories = (app) => {
@@ -2200,11 +2225,7 @@ views.categories = (app) => {
     const ops = el(`<button class="btn ghost sm" title="Операції цієї категорії">🧾</button>`); ops.onclick=()=>showTxFor({ category: c.id });
     const ed = el(`<button class="btn ghost sm">✎</button>`); ed.onclick=()=>openCategoryForm(c);
     const del = el(`<button class="btn danger sm">✕</button>`);
-    del.onclick=()=>deleteWithUndo(`Категорію «${c.name}» видалено`, () => {
-      state.categories = state.categories.filter(x=>x.id!==c.id);
-      state.transactions.forEach(t=>{ if(t.category_id===c.id)t.category_id=null; });
-      state.recurring.forEach(r=>{ if(r.category_id===c.id)r.category_id=null; });
-    });
+    del.onclick = () => deleteCategory(c);
     node.appendChild(up); node.appendChild(down); node.appendChild(ops); node.appendChild(ed); node.appendChild(del);
     grid.appendChild(node);
   });
@@ -2469,7 +2490,7 @@ views.crypto = (app) => {
       <div style="flex:1;min-width:0">
         <div style="font-weight:600">${esc(h.symbol)}${unit==null?' <span class="small" style="color:var(--amber)">нема ціни</span>':''}${chgT?` <span class="small tabnum" style="color:${chgT.color}">${chgT.txt}</span>`:''}</div>
         <div class="muted small tabnum">${fmtAmt(h.amount)} × ${unit==null?'—':money(unit,'USD')}</div>
-        ${(h.exchanges&&h.exchanges.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">${h.exchanges.map(x=>`<span class="chip" style="font-size:10px;padding:1px 7px">${esc(x)}</span>`).join('')}</div>`:''}
+        ${(h.exchanges&&h.exchanges.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">${h.exchanges.map(x=>{ const nm=typeof x==='string'?x:x.name; const am=typeof x==='object'?x.amount:0; return `<span class="chip" style="font-size:10px;padding:1px 7px">${esc(nm)}${am>0?' · '+fmtAmt(am):''}</span>`; }).join('')}</div>`:''}
       </div>
       <div style="text-align:right;flex:0 0 auto">
         <div class="tabnum" style="font-weight:700">${money(val,'USD')}</div>
@@ -2495,7 +2516,7 @@ function openCryptoForm(existing){
   const body = el(`<div>
     <div class="row">
       <div style="flex:1"><label class="lab">Символ</label><input id="cr-sym" value="${esc(e.symbol||'')}" placeholder="напр. BTC" style="text-transform:uppercase"></div>
-      <div style="flex:1"><label class="lab">Кількість</label><input id="cr-amt" inputmode="decimal" value="${e.amount ?? ''}"></div>
+      <div style="flex:1"><label class="lab">Кількість (всього)</label><input id="cr-amt" inputmode="decimal" value="${e.amount ?? ''}"></div>
     </div>
     <div><label class="lab">CoinGecko ID (для авто-ціни)</label><input id="cr-cg" value="${esc(e.cg||'')}" placeholder="напр. bitcoin"></div>
     <div class="muted small" style="margin-top:-2px">Автозаповнюється для відомих символів. Якщо монети немає в CoinGecko — лишіть порожнім і вкажіть ручну ціну.</div>
@@ -2504,8 +2525,10 @@ function openCryptoForm(existing){
       <div style="flex:1"><label class="lab">Сума закупки, USD</label><input id="cr-cost" inputmode="decimal" value="${e.cost ?? ''}" placeholder="скільки вклали"></div>
     </div>
     <div class="muted small" style="margin-top:-2px">Сума закупки (необовʼязково) — щоб рахувати прибуток/збиток у %.</div>
-    <div><label class="lab">Біржі / гаманці (через кому)</label>
-      <input id="cr-exch" value="${esc((e.exchanges||[]).join(', '))}" placeholder="напр. Binance, WhiteBIT" list="cr-exch-list" autocomplete="off">
+    <div style="margin-top:4px"><label class="lab">Розподіл по біржах / гаманцях (необовʼязково)</label>
+      <div id="cr-exch-rows"></div>
+      <button type="button" class="btn ghost sm" id="cr-exch-add" style="margin-top:6px">+ Біржа</button>
+      <div class="muted small" style="margin-top:4px">Вкажете кількість по біржах — «Кількість (всього)» порахується як сума.</div>
       <datalist id="cr-exch-list">${cryptoExchanges().map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
     <div class="err hidden" id="cr-err"></div>
   </div>`);
@@ -2514,17 +2537,40 @@ function openCryptoForm(existing){
     const cgEl = $('#cr-cg', body);
     if (CRYPTO_CG[s] && (!cgEl.value || cgEl.dataset.auto)) { cgEl.value = CRYPTO_CG[s]; cgEl.dataset.auto = '1'; }
   });
+  // розподіл по біржах: рядки «назва + кількість»; сума оновлює «Кількість (всього)»
+  const rowsBox = $('#cr-exch-rows', body);
+  function recompute(){
+    const amtEl = $('#cr-amt', body);
+    const inputs = [...rowsBox.querySelectorAll('.ex-amt')];
+    const anyAmt = inputs.some(i => i.value.trim() !== '');
+    if (anyAmt) { const sum = inputs.reduce((s,i)=>s+(num(i.value)||0),0); amtEl.value = String(Math.round(sum*1e8)/1e8); amtEl.readOnly = true; amtEl.style.opacity = .65; }
+    else { amtEl.readOnly = false; amtEl.style.opacity = ''; }
+  }
+  function addExchRow(name, amt){
+    const r = el(`<div class="exrow" style="display:flex;gap:6px;margin-top:6px">
+      <input class="ex-name" list="cr-exch-list" placeholder="Біржа / гаманець" value="${esc(name||'')}" autocomplete="off" style="flex:1;min-width:0">
+      <input class="ex-amt" inputmode="decimal" placeholder="к-сть" value="${(amt!=null&&amt!=='')?amt:''}" style="flex:0 0 96px">
+      <button type="button" class="btn ghost sm ex-del" title="Прибрати">✕</button></div>`);
+    r.querySelector('.ex-amt').addEventListener('input', recompute);
+    r.querySelector('.ex-del').onclick = () => { r.remove(); recompute(); };
+    rowsBox.appendChild(r);
+  }
+  (e.exchanges||[]).forEach(x => { if (typeof x === 'string') addExchRow(x, ''); else addExchRow(x.name, x.amount); });
+  $('#cr-exch-add', body).onclick = () => addExchRow('', '');
+  recompute();
   openModal(existing?'Редагувати актив':'Новий крипто-актив', body, { onSave:(close)=>{
     const symbol = $('#cr-sym', body).value.trim().toUpperCase(); const err = $('#cr-err', body);
     if (!symbol) { err.textContent='Введіть символ'; err.classList.remove('hidden'); return; }
-    const amount = num($('#cr-amt', body).value);
-    if (!(amount > 0)) { err.textContent='Введіть кількість більше 0'; err.classList.remove('hidden'); return; }
     const cg = $('#cr-cg', body).value.trim().toLowerCase() || null;
     const priceStr = $('#cr-price', body).value.trim();
     const price = priceStr ? num(priceStr) : null;
     const costStr = $('#cr-cost', body).value.trim();
     const cost = costStr ? num(costStr) : null;
-    const exchanges = [...new Set(($('#cr-exch', body).value || '').split(',').map(s => s.trim()).filter(Boolean))];
+    const exchanges = [...rowsBox.querySelectorAll('.exrow')].map(r => ({ name: r.querySelector('.ex-name').value.trim(), amount: num(r.querySelector('.ex-amt').value) }))
+      .filter(x => x.name || x.amount > 0);
+    const anyExAmt = exchanges.some(x => x.amount > 0);
+    const amount = anyExAmt ? Math.round(exchanges.reduce((s,x)=>s+(x.amount||0),0)*1e8)/1e8 : num($('#cr-amt', body).value);
+    if (!(amount > 0)) { err.textContent='Введіть кількість більше 0'; err.classList.remove('hidden'); return; }
     const rec = { symbol, amount, cg, price, cost, exchanges };
     if (existing) Object.assign(existing, rec);
     else { rec.id = nextId('cry'); state.crypto.push(rec); }
