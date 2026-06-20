@@ -269,7 +269,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '9148528aa4';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '5308cd5fd0';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1774,7 +1774,7 @@ views.transactions = (app) => {
     <div><label class="lab">Пошук (нотатка, категорія, рахунок, сума)</label><input id="ff-q" placeholder="🔍 шукати…" value="${esc(txFilter.q)}"></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-top:10px">
       <div><label class="lab">Рахунок</label><select id="ff-acc"><option value="">Усі</option>${state.accounts.map(a=>`<option value="${a.id}" ${txFilter.account==a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
-      <div><label class="lab">Категорія</label><select id="ff-cat"><option value="">Усі</option>${state.categories.map(c=>`<option value="${c.id}" ${txFilter.category==c.id?'selected':''}>${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select></div>
+      <div><label class="lab">Категорія</label><select id="ff-cat"><option value="">Усі</option>${[['EXPENSE','➖ Витрати'],['INCOME','➕ Надходження']].map(([k,lbl])=>{ const cs=state.categories.filter(c=>c.kind===k); return cs.length?`<optgroup label="${lbl}">${cs.map(c=>`<option value="${c.id}" ${txFilter.category==c.id?'selected':''}>${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</optgroup>`:''; }).join('')}</select></div>
       <div><label class="lab">Тип</label><select id="ff-kind">
         <option value="">Усі</option><option value="EXPENSE">Витрати</option><option value="INCOME">Надходження</option><option value="TRANSFER">Перекази</option></select></div>
       <div><label class="lab">Від</label><input id="ff-from" type="date" value="${txFilter.from}"></div>
