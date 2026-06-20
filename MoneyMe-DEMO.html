@@ -1033,10 +1033,14 @@ document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', e =
 // Свайпи вліво/вправо — перехід між вкладками (тач).
 const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','crypto','goals','recurring','categories','settings'];
 applyNavMenu();   // застосувати збережені налаштування меню (приховані розділи → під «…»)
+// Порядок свайпу = видимі розділи меню (приховані під «…» пропускаємо). Поточний
+// розділ лишаємо в послідовності, навіть якщо він прихований — щоб можна було «вийти» з нього свайпом.
+function navOrder(){ return VIEW_ORDER.filter(v => !navHidden.has(v) || v === currentView); }
 function swipeNavigate(dir){
-  const i = VIEW_ORDER.indexOf(currentView), ni = i + dir;
-  if (i < 0 || ni < 0 || ni >= VIEW_ORDER.length) return;
-  navigate(VIEW_ORDER[ni]);
+  const order = navOrder();
+  const i = order.indexOf(currentView), ni = i + dir;
+  if (i < 0 || ni < 0 || ni >= order.length) return;
+  navigate(order[ni]);
 }
 (function setupSwipe(){
   let sx=0, sy=0, on=false;
