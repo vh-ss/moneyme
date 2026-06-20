@@ -47,6 +47,10 @@
   .brand .logo { width: 30px; height: 30px; border-radius: 9px; object-fit: cover; display: block; }
   .nav a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; color: var(--muted); text-decoration: none; font-weight: 500; white-space: nowrap; font-size: 14px; }
   .nav a.active { background: var(--accent); color: #fff; }
+  /* Опція: меню внизу екрана (data-nav="bottom" на <html>) */
+  html[data-nav="bottom"] header { position: fixed; top: auto; bottom: 0; left: 0; right: 0; border-bottom: none; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  html[data-nav="bottom"] .wrap { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+  html[data-nav="bottom"] #toasts { bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
   .nav a:hover:not(.active) { background: var(--hover); }
   .nav a .ni { font-size: 15px; line-height: 1; display: inline-flex; align-items: center; }
   .nav a .ni svg { width: 1.35em; height: 1.35em; display: block; }
@@ -268,7 +272,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '56ee56954e';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'a0805e18a1';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -325,6 +329,11 @@ let theme = localStorage.getItem('moneyme.theme') || 'light';
 function applyTheme() { document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light'); }
 function toggleTheme() { theme = theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('moneyme.theme', theme); applyTheme(); render(); }
 applyTheme();
+
+let navpos = localStorage.getItem('moneyme.navpos') || 'top';   // розташування меню (per-device)
+function applyNavPos() { document.documentElement.setAttribute('data-nav', navpos === 'bottom' ? 'bottom' : 'top'); }
+function toggleNavPos() { navpos = navpos === 'bottom' ? 'top' : 'bottom'; localStorage.setItem('moneyme.navpos', navpos); applyNavPos(); render(); }
+applyNavPos();
 
 //==================== Мова (UK / EN) ====================
 let lang = localStorage.getItem('moneyme.lang') || 'uk';
@@ -2716,6 +2725,10 @@ views.settings = (app) => {
       <button class="btn" id="themebtn">${theme==='dark'?'🌙 Темна':'☀️ Світла'}</button>
     </div>
     <div class="row" style="align-items:center;justify-content:space-between;margin-top:12px">
+      <span class="muted small">Розташування меню</span>
+      <button class="btn" id="navposbtn">${navpos==='bottom'?'⬇️ Знизу':'⬆️ Зверху'}</button>
+    </div>
+    <div class="row" style="align-items:center;justify-content:space-between;margin-top:12px">
       <span class="muted small">Приховати баланси (••••)</span>
       <button class="btn ${hideBalances?'primary':''}" id="hidebtn">${hideBalances?'🙈 Приховано':'👁️ Показано'}</button>
     </div>
@@ -2725,6 +2738,7 @@ views.settings = (app) => {
     </div></section>`);
   $('#langbtn', appearance).onclick = () => setLang(lang === 'uk' ? 'en' : 'uk');
   $('#themebtn', appearance).onclick = () => toggleTheme();
+  $('#navposbtn', appearance).onclick = () => toggleNavPos();
   $('#hidebtn', appearance).onclick = () => setHideBalances(!hideBalances);
   $('#randbtn', appearance).onclick = () => toggleScreenshot();
   app.appendChild(appearance);
