@@ -281,7 +281,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '758a849a79';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '40dc40835e';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -2782,17 +2782,13 @@ views.settings = (app) => {
     <p class="muted small" style="margin:4px 0 6px">Які розділи показувати на панелі. Приховані доступні під кнопкою «…».</p>
     <div id="navcfg-list"></div></section>`);
   const navcfgList = $('#navcfg-list', navcfg);
-  VIEW_ORDER.forEach(v => {
+  VIEW_ORDER.filter(v => !NAV_LOCKED.has(v)).forEach(v => {   // заблоковані (завжди видимі) у списку не показуємо
     const label = NAV_LABELS[v] ? (lang === 'en' ? NAV_LABELS[v][1] : NAV_LABELS[v][0]) : v;
-    const locked = NAV_LOCKED.has(v);
     const on = !navHidden.has(v);
-    const ctrl = locked
-      ? `<span class="muted small" style="opacity:.7">🔒 Завжди</span>`
-      : `<button class="btn ${on ? 'primary' : ''}">${on ? '👁️ Показано' : '🙈 Сховано'}</button>`;
     const row = el(`<div class="row" style="align-items:center;justify-content:space-between;margin-top:8px">
-      <span class="muted small">${esc(label)}</span>${ctrl}</div>`);
-    const btn = row.querySelector('button');
-    if (btn) btn.onclick = () => toggleNavView(v);
+      <span class="muted small">${esc(label)}</span>
+      <button class="btn ${on ? 'primary' : ''}">${on ? '👁️ Показано' : '🙈 Сховано'}</button></div>`);
+    row.querySelector('button').onclick = () => toggleNavView(v);
     navcfgList.appendChild(row);
   });
   app.appendChild(navcfg);

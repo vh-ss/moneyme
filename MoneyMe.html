@@ -2782,17 +2782,13 @@ views.settings = (app) => {
     <p class="muted small" style="margin:4px 0 6px">Які розділи показувати на панелі. Приховані доступні під кнопкою «…».</p>
     <div id="navcfg-list"></div></section>`);
   const navcfgList = $('#navcfg-list', navcfg);
-  VIEW_ORDER.forEach(v => {
+  VIEW_ORDER.filter(v => !NAV_LOCKED.has(v)).forEach(v => {   // заблоковані (завжди видимі) у списку не показуємо
     const label = NAV_LABELS[v] ? (lang === 'en' ? NAV_LABELS[v][1] : NAV_LABELS[v][0]) : v;
-    const locked = NAV_LOCKED.has(v);
     const on = !navHidden.has(v);
-    const ctrl = locked
-      ? `<span class="muted small" style="opacity:.7">🔒 Завжди</span>`
-      : `<button class="btn ${on ? 'primary' : ''}">${on ? '👁️ Показано' : '🙈 Сховано'}</button>`;
     const row = el(`<div class="row" style="align-items:center;justify-content:space-between;margin-top:8px">
-      <span class="muted small">${esc(label)}</span>${ctrl}</div>`);
-    const btn = row.querySelector('button');
-    if (btn) btn.onclick = () => toggleNavView(v);
+      <span class="muted small">${esc(label)}</span>
+      <button class="btn ${on ? 'primary' : ''}">${on ? '👁️ Показано' : '🙈 Сховано'}</button></div>`);
+    row.querySelector('button').onclick = () => toggleNavView(v);
     navcfgList.appendChild(row);
   });
   app.appendChild(navcfg);
