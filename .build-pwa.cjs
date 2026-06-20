@@ -7,11 +7,14 @@ const { execFileSync } = require('child_process');
 const d = __dirname;
 
 const src = fs.readFileSync(path.join(d, 'MoneyMe.html'), 'utf8');
-fs.writeFileSync(path.join(d, 'index.html'), src, 'utf8');
-console.log('index.html оновлено (', (Buffer.byteLength(src) / 1024).toFixed(0), 'KB )');
-
-// Штампуємо версію збірки у sw.js (хеш контенту застосунку) — щоб браузер бачив оновлення
+// Версія збірки = хеш контенту застосунку (рахуємо з канонічного src, у якому APP_VERSION='dev' — стабільно).
 const build = crypto.createHash('sha256').update(src).digest('hex').slice(0, 10);
+// index.html — точка входу Pages: підставляємо версію (а в MoneyMe.html лишається 'dev').
+const indexHtml = src.replace(/const APP_VERSION = '[^']*';/, "const APP_VERSION = '" + build + "';");
+fs.writeFileSync(path.join(d, 'index.html'), indexHtml, 'utf8');
+console.log('index.html оновлено (', (Buffer.byteLength(indexHtml) / 1024).toFixed(0), 'KB ), версія', build);
+
+// Штампуємо ту саму версію у sw.js — щоб браузер бачив оновлення
 const swPath = path.join(d, 'sw.js');
 let sw = fs.readFileSync(swPath, 'utf8');
 sw = sw.replace(/const BUILD = '[^']*';/, "const BUILD = '" + build + "';");

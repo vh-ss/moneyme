@@ -269,6 +269,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
+const APP_VERSION = 'dev';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -409,7 +410,7 @@ const I18N_PARTIAL = [
   ['Пошук і фільтри','Search & filters'],[' · застосовано',' · applied'],['Скинути фільтри','Reset filters'],
   ['без витрат цього періоду','with no spending this period'],
   ['ціни CoinGecko на ','CoinGecko prices on '],['ціни недоступні','prices unavailable'],['завантаження цін…','loading prices…'],
-  ['⟳ Ціни','⟳ Prices'],['нема ціни','no price'],['якщо немає авто-ціни','if no auto price'],
+  ['⟳ Ціни','⟳ Prices'],['нема ціни','no price'],['якщо немає авто-ціни','if no auto price'],['версія ','version '],
   ['Розархівувати','Unarchive'],['Архівувати','Archive'],['Сортування за датою','Sort by date'],['Перетягуйте рядки, щоб змінити порядок','Drag rows to reorder'],
   ['Експорт у файл','Export to file'],['Імпорт із файлу','Import from file'],['Операції в CSV','Transactions to CSV'],
   ['Світла','Light'],['Темна','Dark'],['Приховано','Hidden'],['Показано','Shown'],['Увімкнено','On'],['Вимкнено','Off'],
@@ -2801,6 +2802,7 @@ views.settings = (app) => {
 
   app.appendChild(el(`<section class="card" style="padding:18px;margin-top:16px">
     <h2>Про застосунок</h2><p class="muted small">MoneyMe працює у вашому браузері й офлайн: дані зберігаються локально (localStorage) на пристрої. У веб-версії (PWA) їх можна синхронізувати між ПК і телефоном через вашу приховану папку Google Drive. Для перенесення чи бекапу також є експорт у файл.</p></section>`));
+  app.appendChild(el(`<div class="muted tabnum" style="text-align:center;font-size:11px;opacity:.55;margin:14px 0 4px">версія ${esc(APP_VERSION)}</div>`));
 };
 function recalcSeq(data){
   const mx = (arr)=>arr.reduce((m,x)=>Math.max(m,x.id||0),0);
