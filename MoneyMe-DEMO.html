@@ -2007,7 +2007,7 @@ views.analytics = (app) => {
   const sum = el(`<div class="sumcards" style="margin-top:14px">
     <div class="card sumcard"><div class="k">Надходження</div><div class="v tabnum" style="color:var(--green)">${money(inc)}</div>${deltaTag(dInc,false)}</div>
     <div class="card sumcard"><div class="k">Витрати</div><div class="v tabnum" style="color:var(--red)">${money(exp)}</div>${deltaTag(dExp,true)}</div>
-    <div class="card sumcard"><div class="k">Комісії</div><div class="v tabnum" style="color:var(--amber)">${money(fees)}</div><div class="k" style="font-size:10px">окремо від витрат</div></div>
+    <div class="card sumcard"><div class="k">Комісії</div><div class="v tabnum" style="color:var(--amber)">${money(fees)}</div></div>
     <div class="card sumcard"><div class="k">Чистий потік</div><div class="v tabnum" style="color:${net>=0?'var(--green)':'var(--red)'}">${money(net)}</div></div>
   </div>`);
   app.appendChild(sum);

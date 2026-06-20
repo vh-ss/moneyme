@@ -291,7 +291,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '98ab3b1ecd';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '18857e3a81';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1986,7 +1986,7 @@ views.analytics = (app) => {
   const sum = el(`<div class="sumcards" style="margin-top:14px">
     <div class="card sumcard"><div class="k">Надходження</div><div class="v tabnum" style="color:var(--green)">${money(inc)}</div>${deltaTag(dInc,false)}</div>
     <div class="card sumcard"><div class="k">Витрати</div><div class="v tabnum" style="color:var(--red)">${money(exp)}</div>${deltaTag(dExp,true)}</div>
-    <div class="card sumcard"><div class="k">Комісії</div><div class="v tabnum" style="color:var(--amber)">${money(fees)}</div><div class="k" style="font-size:10px">окремо від витрат</div></div>
+    <div class="card sumcard"><div class="k">Комісії</div><div class="v tabnum" style="color:var(--amber)">${money(fees)}</div></div>
     <div class="card sumcard"><div class="k">Чистий потік</div><div class="v tabnum" style="color:${net>=0?'var(--green)':'var(--red)'}">${money(net)}</div></div>
   </div>`);
   app.appendChild(sum);
