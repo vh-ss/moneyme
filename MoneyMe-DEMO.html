@@ -2591,20 +2591,24 @@ views.crypto = (app) => {
 
   if (!list.length) { app.appendChild(el(`<div class="muted" style="margin-top:12px">Активів немає. Натисніть «+ Додати».</div>`)); return; }
 
-  // ——— Графіки розподілу портфеля (donut, топ-8 + інші): за активами і за біржами ———
+  // ——— Графіки розподілу портфеля (donut, топ-8 + інші): за активами і за біржами, в один рядок ———
   if (totalUsd > 0) {
+    const charts = el(`<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;margin-top:12px"></div>`);
     const topA = list.slice(0, 8).map((x, i) => ({ name: x.h.symbol, color: PALETTE[i % PALETTE.length], total: x.val }));
     const restA = list.slice(8).reduce((s, x) => s + x.val, 0);
     if (restA > 0) topA.push({ name: 'Інші', color: '#94a3b8', total: restA });
-    app.appendChild(allocChart('Розподіл за активами', topA, totalUsd));
+    const a = allocChart('Розподіл за активами', topA, totalUsd); a.style.flex = '1 1 320px'; a.style.marginTop = '0';
+    charts.appendChild(a);
 
     const exT = cryptoExchangeTotals();
     if (exT.length) {
       const topE = exT.slice(0, 8).map((x, i) => ({ name: x.name, color: PALETTE[i % PALETTE.length], total: x.total }));
       const restE = exT.slice(8).reduce((s, x) => s + x.total, 0);
       if (restE > 0) topE.push({ name: 'Інші', color: '#94a3b8', total: restE });
-      app.appendChild(allocChart('Розподіл за біржами', topE, totalUsd));
+      const b = allocChart('Розподіл за біржами', topE, totalUsd); b.style.flex = '1 1 320px'; b.style.marginTop = '0';
+      charts.appendChild(b);
     }
+    app.appendChild(charts);
   }
 
   // ——— Історія вартості портфеля (area) ———
