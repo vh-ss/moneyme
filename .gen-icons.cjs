@@ -22,19 +22,31 @@ function png(W, H, rgba) {
   ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 6;
   return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
 }
+// Лінійна іконка на ПРОЗОРОМУ тлі (як іконки меню): монограм «M» + радар-свіп і бліп.
+// Колір — слейт #64748b (як неактивні нав-іконки).
 function build(S) {
-  const buf = Buffer.alloc(S * S * 4);
-  const A = [59, 130, 246];                      // #3b82f6
-  const set = (x, y, r, g, b, a) => { const i = (y * S + x) * 4; buf[i] = r; buf[i + 1] = g; buf[i + 2] = b; buf[i + 3] = a; };
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) set(x, y, A[0], A[1], A[2], 255);  // full-bleed (maskable)
-  const m = 0.22 * S, top = 0.30 * S, bot = 0.70 * S, xc = S / 2, yMid = 0.56 * S, t = 0.11 * S;
+  const INK = [100, 116, 139];                       // #64748b
+  const cx = 0.5 * S, cy = 0.55 * S, R = 0.38 * S, arcW = 0.05 * S;   // радар-дуга
+  const a0 = -150 * Math.PI / 180, a1 = 25 * Math.PI / 180;          // дуга над верхом → правий бік
+  const bAng = -50 * Math.PI / 180, bx = cx + R * Math.cos(bAng), by = cy + R * Math.sin(bAng), bR = 0.05 * S;  // бліп
+  // монограм M
+  const m = 0.31 * S, top = 0.40 * S, bot = 0.72 * S, xc = 0.5 * S, yMid = 0.58 * S, t = 0.075 * S;
   const segs = [[m, top, m, bot], [S - m, top, S - m, bot], [m, top, xc, yMid], [S - m, top, xc, yMid]];
   const distSeg = (px, py, x1, y1, x2, y2) => { const dx = x2 - x1, dy = y2 - y1, L = dx * dx + dy * dy; let tt = L ? ((px - x1) * dx + (py - y1) * dy) / L : 0; tt = Math.max(0, Math.min(1, tt)); return Math.hypot(px - (x1 + tt * dx), py - (y1 + tt * dy)); };
+  const onArc = (px, py) => { const dx = px - cx, dy = py - cy, d = Math.hypot(dx, dy); if (Math.abs(d - R) > arcW / 2) return false; const ang = Math.atan2(dy, dx); return ang >= a0 && ang <= a1; };
+  const isInk = (px, py) => {
+    let d = 1e9; for (const s of segs) d = Math.min(d, distSeg(px, py, s[0], s[1], s[2], s[3])); if (d <= t / 2) return true;
+    if (onArc(px, py)) return true;
+    if (Math.hypot(px - bx, py - by) <= bR) return true;
+    return false;
+  };
+  const SS = 3, buf = Buffer.alloc(S * S * 4);   // прозоро: alpha = покриття, RGB = INK
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    let d = 1e9; for (const s of segs) d = Math.min(d, distSeg(x + .5, y + .5, s[0], s[1], s[2], s[3]));
-    const edge = d - t / 2;
-    if (edge <= 0) set(x, y, 255, 255, 255, 255);
-    else if (edge < 1.2) { const a = Math.max(0, 1 - edge), i = (y * S + x) * 4; buf[i] = Math.round(255 * a + A[0] * (1 - a)); buf[i + 1] = Math.round(255 * a + A[1] * (1 - a)); buf[i + 2] = Math.round(255 * a + A[2] * (1 - a)); buf[i + 3] = 255; }
+    let cov = 0;
+    for (let oy = 0; oy < SS; oy++) for (let ox = 0; ox < SS; ox++) if (isInk(x + (ox + 0.5) / SS, y + (oy + 0.5) / SS)) cov++;
+    cov /= SS * SS;
+    const i = (y * S + x) * 4;
+    buf[i] = INK[0]; buf[i + 1] = INK[1]; buf[i + 2] = INK[2]; buf[i + 3] = Math.round(cov * 255);
   }
   return png(S, S, buf);
 }

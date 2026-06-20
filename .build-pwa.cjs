@@ -7,8 +7,11 @@ const { execFileSync } = require('child_process');
 const d = __dirname;
 
 const src = fs.readFileSync(path.join(d, 'MoneyMe.html'), 'utf8');
-// Версія збірки = хеш контенту застосунку (рахуємо з канонічного src, у якому APP_VERSION='dev' — стабільно).
-const build = crypto.createHash('sha256').update(src).digest('hex').slice(0, 10);
+// Версія збірки = хеш контенту застосунку + статичних ассетів (іконки, manifest) — щоб зміна
+// будь-якого ассета теж бастила кеш service worker. APP_VERSION='dev' у src — стабільно.
+const hash = crypto.createHash('sha256').update(src);
+['icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png', 'manifest.webmanifest'].forEach(f => { try { hash.update(fs.readFileSync(path.join(d, f))); } catch (e) {} });
+const build = hash.digest('hex').slice(0, 10);
 // index.html — точка входу Pages: підставляємо версію (а в MoneyMe.html лишається 'dev').
 const indexHtml = src.replace(/const APP_VERSION = '[^']*';/, "const APP_VERSION = '" + build + "';");
 fs.writeFileSync(path.join(d, 'index.html'), indexHtml, 'utf8');
