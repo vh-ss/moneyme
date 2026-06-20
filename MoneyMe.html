@@ -2604,13 +2604,14 @@ views.crypto = (app) => {
     const icon = img
       ? `<img src="${esc(img)}" alt="" style="width:24px;height:24px;border-radius:50%;flex:0 0 auto" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'crsym',textContent:'${esc((h.symbol||'?').slice(0,3))}'}))">`
       : `<span class="crsym">${esc((h.symbol||'?').slice(0,3))}</span>`;
-    const row = el(`<div class="txrow" style="gap:10px">
+    const row = el(`<div class="txrow" style="gap:10px${h.color?`;border-left:3px solid ${h.color};padding-left:9px;border-radius:8px;background:${h.color}14`:''}">
       <span class="muted small tabnum" style="flex:0 0 18px;text-align:right">${idx+1}</span>
       ${icon}
       <div style="flex:1;min-width:0">
         <div style="font-weight:600">${esc(h.symbol)}${unit==null?' <span class="small" style="color:var(--amber)">нема ціни</span>':''}${chgT?` <span class="small tabnum" style="color:${chgT.color}">${chgT.txt}</span>`:''}</div>
         <div class="muted small tabnum">${fmtAmt(h.amount)} × ${unit==null?'—':money(unit,'USD')}</div>
         ${(h.exchanges&&h.exchanges.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">${h.exchanges.map(x=>{ const nm=typeof x==='string'?x:x.name; const am=typeof x==='object'?x.amount:0; return `<span class="chip" style="font-size:10px;padding:1px 7px">${esc(nm)}${am>0?' · '+fmtAmt(am):''}</span>`; }).join('')}</div>`:''}
+        ${h.note?`<div class="muted small" style="margin-top:3px;white-space:pre-wrap">${esc(h.note)}</div>`:''}
       </div>
       <div style="text-align:right;flex:0 0 auto">
         <div class="tabnum" style="font-weight:700">${money(val,'USD')}</div>
@@ -2650,6 +2651,8 @@ function openCryptoForm(existing){
       <button type="button" class="btn ghost sm" id="cr-exch-add" style="margin-top:6px">+ Біржа</button>
       <div class="muted small" style="margin-top:4px">Вкажете кількість по біржах — «Кількість (всього)» порахується як сума.</div>
       <datalist id="cr-exch-list">${cryptoExchanges().map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
+    <div><label class="lab">Коментар (необовʼязково)</label><input id="cr-note" value="${esc(e.note||'')}" placeholder="нотатка до активу"></div>
+    <div><label class="lab">Виділити рядок кольором (необовʼязково)</label><div id="cr-color" class="swatches"></div></div>
     <div class="err hidden" id="cr-err"></div>
   </div>`);
   $('#cr-sym', body).addEventListener('input', () => {
@@ -2678,6 +2681,13 @@ function openCryptoForm(existing){
   (e.exchanges||[]).forEach(x => { if (typeof x === 'string') addExchRow(x, ''); else addExchRow(x.name, x.amount); });
   $('#cr-exch-add', body).onclick = () => addExchRow('', '');
   recompute();
+  // вибір кольору виділення рядка (з опцією «без кольору»)
+  let crColor = e.color || null;
+  const colorBox = $('#cr-color', body);
+  const noneBtn = el(`<button type="button" class="swatch ${!crColor?'sel':''}" title="Без кольору" style="background:var(--input);border:1px solid var(--inputline);color:var(--muted);display:grid;place-items:center;font-size:14px">✕</button>`);
+  noneBtn.onclick = () => { colorBox.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel')); noneBtn.classList.add('sel'); crColor = null; };
+  colorBox.appendChild(noneBtn);
+  PALETTE.forEach(c => { const b = el(`<button type="button" class="swatch ${c===crColor?'sel':''}" style="background:${c}"></button>`); b.onclick = () => { colorBox.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel')); b.classList.add('sel'); crColor = c; }; colorBox.appendChild(b); });
   openModal(existing?'Редагувати актив':'Новий крипто-актив', body, { onSave:(close)=>{
     const symbol = $('#cr-sym', body).value.trim().toUpperCase(); const err = $('#cr-err', body);
     if (!symbol) { err.textContent='Введіть символ'; err.classList.remove('hidden'); return; }
@@ -2691,7 +2701,7 @@ function openCryptoForm(existing){
     const anyExAmt = exchanges.some(x => x.amount > 0);
     const amount = anyExAmt ? Math.round(exchanges.reduce((s,x)=>s+(x.amount||0),0)*1e8)/1e8 : num($('#cr-amt', body).value);
     if (!(amount > 0)) { err.textContent='Введіть кількість більше 0'; err.classList.remove('hidden'); return; }
-    const rec = { symbol, amount, cg, price, cost, exchanges };
+    const rec = { symbol, amount, cg, price, cost, exchanges, note: $('#cr-note', body).value.trim(), color: crColor };
     if (existing) Object.assign(existing, rec);
     else { rec.id = nextId('cry'); state.crypto.push(rec); }
     save(); close(); render();
