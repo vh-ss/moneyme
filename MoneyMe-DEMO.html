@@ -2591,18 +2591,20 @@ views.crypto = (app) => {
 
   if (!list.length) { app.appendChild(el(`<div class="muted" style="margin-top:12px">Активів немає. Натисніть «+ Додати».</div>`)); return; }
 
-  // ——— Графік розподілу портфеля (donut, топ-8 + інші) ———
+  // ——— Графіки розподілу портфеля (donut, топ-8 + інші): за активами і за біржами ———
   if (totalUsd > 0) {
-    const top = list.slice(0, 8).map((x, i) => ({ name: x.h.symbol, color: PALETTE[i % PALETTE.length], total: x.val }));
-    const restSum = list.slice(8).reduce((s, x) => s + x.val, 0);
-    if (restSum > 0) top.push({ name: 'Інші', color: '#94a3b8', total: restSum });
-    const alloc = el(`<section class="card" style="padding:14px;margin-top:12px"><h2 style="margin-bottom:8px">Розподіл портфеля</h2>
-      <div class="row" style="align-items:center;flex-wrap:wrap;gap:6px 14px"></div></section>`);
-    const wrap = alloc.lastElementChild;
-    const pieBox = el(`<div style="flex:0 0 auto"></div>`); pieBox.appendChild(pieSVG(top, 160)); wrap.appendChild(pieBox);
-    const leg = el(`<ul class="legend" style="flex:1;min-width:160px"></ul>`);
-    top.forEach(d => leg.appendChild(el(`<li><span class="ld" style="background:${d.color}"></span><span class="ln">${esc(d.name)}</span><b class="tabnum">${money(d.total,'USD')}</b><span class="muted" style="width:38px;text-align:right">${Math.round(d.total/totalUsd*100)}%</span></li>`)));
-    wrap.appendChild(leg); app.appendChild(alloc);
+    const topA = list.slice(0, 8).map((x, i) => ({ name: x.h.symbol, color: PALETTE[i % PALETTE.length], total: x.val }));
+    const restA = list.slice(8).reduce((s, x) => s + x.val, 0);
+    if (restA > 0) topA.push({ name: 'Інші', color: '#94a3b8', total: restA });
+    app.appendChild(allocChart('Розподіл за активами', topA, totalUsd));
+
+    const exT = cryptoExchangeTotals();
+    if (exT.length) {
+      const topE = exT.slice(0, 8).map((x, i) => ({ name: x.name, color: PALETTE[i % PALETTE.length], total: x.total }));
+      const restE = exT.slice(8).reduce((s, x) => s + x.total, 0);
+      if (restE > 0) topE.push({ name: 'Інші', color: '#94a3b8', total: restE });
+      app.appendChild(allocChart('Розподіл за біржами', topE, totalUsd));
+    }
   }
 
   // ——— Історія вартості портфеля (area) ———
@@ -2665,6 +2667,30 @@ function clearCryptoBtn(){
   const clear = el(`<div style="margin-top:14px"><button class="btn ghost sm" style="color:var(--red)">Очистити криптопортфель</button></div>`);
   clear.firstElementChild.onclick = () => { if (confirm('Видалити ВСІ крипто-активи? (можна скасувати)')) deleteWithUndo('Криптопортфель очищено', () => { state.crypto = []; }); };
   return clear;
+}
+
+// Донат-блок розподілу: title + кругова діаграма + легенда (для активів/бірж).
+function allocChart(title, data, totalUsd){
+  const sec = el(`<section class="card" style="padding:14px;margin-top:12px"><h2 style="margin-bottom:8px">${esc(title)}</h2>
+    <div class="row" style="align-items:center;flex-wrap:wrap;gap:6px 14px"></div></section>`);
+  const wrap = sec.lastElementChild;
+  const pieBox = el(`<div style="flex:0 0 auto"></div>`); pieBox.appendChild(pieSVG(data, 160)); wrap.appendChild(pieBox);
+  const leg = el(`<ul class="legend" style="flex:1;min-width:160px"></ul>`);
+  data.forEach(d => leg.appendChild(el(`<li><span class="ld" style="background:${d.color}"></span><span class="ln">${esc(d.name)}</span><b class="tabnum">${money(d.total,'USD')}</b><span class="muted" style="width:38px;text-align:right">${totalUsd>0?Math.round(d.total/totalUsd*100):0}%</span></li>`)));
+  wrap.appendChild(leg);
+  return sec;
+}
+
+// Сумарна вартість (USD) по біржах / гаманцях, відсортовано за спаданням.
+function cryptoExchangeTotals(){
+  const t = {};
+  (state.crypto || []).forEach(h => {
+    const unit = cryptoUnitUsd(h);
+    const exs = (h.exchanges || []).filter(x => typeof x === 'object' && x.amount > 0);
+    if (exs.length) exs.forEach(x => { const nm = (x.name || '').trim() || 'Без назви'; t[nm] = (t[nm] || 0) + (unit != null ? x.amount * unit : 0); });
+    else t['Без біржі'] = (t['Без біржі'] || 0) + cryptoValueUsd(h);
+  });
+  return Object.keys(t).map(nm => ({ name: nm, total: round2(t[nm]) })).sort((a, b) => b.total - a.total);
 }
 
 // Перегляд портфеля, згрупований за біржами / гаманцями.
