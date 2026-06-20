@@ -2678,14 +2678,35 @@ function renameExchange(oldName, after){
   });
   save(); showToast(`Біржу перейменовано на «${name}»`, null, null, 2500); if (after) after(); render();
 }
+function exchangePlural(n){ return n === 1 ? 'актив' : (n >= 2 && n <= 4 ? 'активи' : 'активів'); }
 function deleteExchange(name, after){
   const cnt = exchangeUsageCount(name);
-  if (!confirm(`Видалити біржу «${name}» з ${cnt} актив(ів)?\nКількість монет в активах збережеться — зникне лише прив'язка до цієї біржі.`)) return;
-  (state.crypto || []).forEach(h => {
-    if (!h.exchanges) return;
-    h.exchanges = mergeExchanges(h.exchanges.filter(x => (typeof x === 'string' ? x : x.name) !== name));
-  });
-  save(); showToast(`Біржу «${name}» видалено`, null, null, 2500); if (after) after(); render();
+  const others = cryptoExchanges().filter(n => n !== name);
+  const body = el(`<div>
+    <div class="muted small" style="margin-bottom:8px">Біржу «${esc(name)}» використовують <b>${cnt}</b> ${exchangePlural(cnt)}. Куди перенести монети з неї?</div>
+    <label class="lab">Перенести монети на</label>
+    <select id="exm-target">
+      ${others.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+      <option value="">— Без біржі (прибрати прив'язку) —</option>
+    </select>
+    <div class="muted small" style="margin-top:6px">Кількість монет в активах збережеться.</div>
+  </div>`);
+  openModal(`Видалити біржу «${name}»`, body, { saveLabel: 'Перенести й видалити', onSave: (close) => {
+    const target = $('#exm-target', body).value;   // '' = без біржі (просто прибрати)
+    (state.crypto || []).forEach(h => {
+      if (!h.exchanges || !h.exchanges.length) return;
+      const moved = h.exchanges.filter(x => (typeof x === 'string' ? x : x.name) === name)
+        .reduce((s, x) => s + (typeof x === 'object' ? (x.amount || 0) : 0), 0);
+      let rest = h.exchanges.filter(x => (typeof x === 'string' ? x : x.name) !== name);
+      if (target && moved > 0) rest = rest.concat([{ name: target, amount: moved }]);
+      h.exchanges = mergeExchanges(rest);
+    });
+    save(); close();
+    showToast(target ? `Монети перенесено на «${target}», біржу «${name}» видалено` : `Біржу «${name}» видалено`, null, null, 2800);
+    if (after) after(); render();
+  }});
+  const ok = [...document.querySelectorAll('#modal-root .overlay')].pop()?.querySelector('.mfoot .btn.primary');
+  if (ok) { ok.classList.remove('primary'); ok.classList.add('danger'); }
 }
 // Перегляд і керування біржами / гаманцями (перейменування, видалення).
 function openExchangesManager(){
