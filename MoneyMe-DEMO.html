@@ -335,7 +335,9 @@ function normalize() {
     if (c.kind === 'EXPENSE' && !c.budget_period) { c.budget_period = 'monthly'; changed = true; }
   });
   if (state.version !== SCHEMA_VERSION) { state.version = SCHEMA_VERSION; changed = true; }
-  if (changed) save();
+  // ВАЖЛИВО: міграція/дефолти схеми зберігаються БЕЗ оновлення updatedAt (persist, не save),
+  // щоб «технічні» зміни не вигравали конфлікт синхронізації над реальними правками.
+  if (changed) persist();
 }
 function nextOrd() { return state.transactions.reduce((m, t) => Math.max(m, t.ord || 0), 0) + 1; }
 
@@ -611,7 +613,7 @@ function recordCryptoSnapshot(){
   if (last && last.date === t) last.usd = v;
   else state.cryptoHistory.push({ date: t, usd: v });
   state.cryptoHistory = state.cryptoHistory.slice(-180);   // до ~півроку щоденних точок
-  save();
+  persist();   // без оновлення updatedAt — щоб знімок цін не перезаписував реальні правки при синху
 }
 async function ensureCryptoFresh(force){
   const ids = [...new Set((state.crypto || []).map(h => h.cg).filter(Boolean))];
@@ -3073,7 +3075,7 @@ function openLoanForm(existing, presetBankId) {
 // цьому застосунку. Працює тільки з https-хостингу (file:// не дозволяє OAuth Google).
 // Офлайн: усі зміни одразу в localStorage; коли є мережа+з'єднання — вивантажуються у Drive.
 const DRIVE_FILE_NAME = 'moneyme-data.json';
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
 // Google OAuth Client ID застосунку. Це НЕ секрет (захищений прив'язкою до Authorized
 // JavaScript origins у Google Console), тож вшитий у код — користувачі лише входять через Google.
@@ -3126,25 +3128,36 @@ function ensureTokenClient(){
     error_callback: (err) => { if (Sync._tokRej) { Sync._tokRej(new Error((err && err.type) || 'Помилка входу')); Sync._tokRes = Sync._tokRej = null; } },
   });
 }
-// Запит нового токена через вікно Google (prompt: '' — тихо, якщо вхід уже є; 'consent' — з вибором акаунта).
+// Запит нового токена через вікно Google. prompt:'' — ТИХО для збереженого акаунта (через hint —
+// без вибору акаунта); 'consent' — з вибором акаунта (для «Підключити»).
 function acquireToken(prompt){
   return loadGIS().then(() => { ensureTokenClient(); return new Promise((res, rej) => {
     Sync._tokRes = res; Sync._tokRej = rej;
-    try { Sync.tokenClient.requestAccessToken({ prompt: prompt || '' }); }
+    const cfg = { prompt: prompt || '' };
+    if (!prompt) { const hint = localStorage.getItem('moneyme.demo.sync.account'); if (hint) cfg.hint = hint; }   // тихе оновлення того ж акаунта
+    try { Sync.tokenClient.requestAccessToken(cfg); }
     catch (e) { Sync._tokRes = Sync._tokRej = null; rej(e); }
   }); });
 }
-// interactive=false → лише наявний токен (НЕ показуємо вікно у фоні). true → дозволяємо тихий запит.
+// interactive=false → лише наявний токен (НЕ відкриваємо вікно у фоні). true → тихе оновлення (з hint).
 function getToken(interactive){
   const c = getCachedToken(); if (c) return Promise.resolve(c);
   if (!interactive) return Promise.reject(new Error('Потрібен вхід'));
   return acquireToken('');
 }
+// Email підключеного акаунта (для login_hint, щоб тихе оновлення не питало вибір акаунта).
+async function fetchAccountEmail(){
+  try { const tok = getCachedToken(); if (!tok) return null;
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + tok } });
+    if (r.ok) { const j = await r.json(); return j.email || null; }
+  } catch (e) {}
+  return null;
+}
 async function driveFetch(url, opts){
   const tok = await getToken(false);
   const o = Object.assign({}, opts); o.headers = Object.assign({}, o.headers, { Authorization: 'Bearer ' + tok });
   let r = await fetch(url, o);
-  if (r.status === 401) { const t2 = await getToken(true); o.headers.Authorization = 'Bearer ' + t2; r = await fetch(url, o); }
+  if (r.status === 401) { Sync.token = null; localStorage.removeItem(TOKEN_KEY); const t2 = await getToken(true); o.headers.Authorization = 'Bearer ' + t2; r = await fetch(url, o); }   // протух — тихо оновлюємо
   return r;
 }
 async function driveFindFile(){
@@ -3178,7 +3191,9 @@ async function driveUpload(id, payload){
 }
 function cloudPayload(){ return { app: 'MoneyMe', version: SCHEMA_VERSION, updatedAt: state.updatedAt || new Date().toISOString(), data: state }; }
 function markSynced(at){ Sync.base = at || state.updatedAt || null; Sync.last = new Date().toISOString(); Sync.pending = false;
-  localStorage.setItem('moneyme.demo.sync.base', Sync.base || ''); localStorage.setItem('moneyme.demo.sync.last', Sync.last); }
+  localStorage.setItem('moneyme.demo.sync.base', Sync.base || ''); localStorage.setItem('moneyme.demo.sync.last', Sync.last);
+  // якщо акаунт ще не запамʼятовано (старе підключення) — підхопимо його для тихого оновлення надалі
+  if (!localStorage.getItem('moneyme.demo.sync.account')) fetchAccountEmail().then(e => { if (e) localStorage.setItem('moneyme.demo.sync.account', e); }); }
 // Зберегти знімок поточного стану в точки відновлення (щоб нічого не втратити при конфлікті).
 function cloudBackupSnapshot(label){ try { const h = restorePoints(); h.push({ date: todayISO(), at: new Date().toISOString(), label: label || '', data: JSON.parse(JSON.stringify(state)) }); localStorage.setItem('moneyme.demo.history', JSON.stringify(h.slice(-7))); } catch (e) {} }
 function adoptRemote(remote){
@@ -3241,8 +3256,10 @@ async function cloudConnect(){
   if (location.protocol.indexOf('http') !== 0) { alert('Синхронізація працює лише з https-хостингу (GitHub Pages), не з локального файлу.'); return; }
   try {
     setSyncStatus('connecting');
-    Sync.token = null; localStorage.removeItem(TOKEN_KEY);   // свіжий вхід — можна обрати акаунт
+    Sync.token = null; localStorage.removeItem(TOKEN_KEY); localStorage.removeItem('moneyme.demo.sync.account');   // свіжий вхід — можна обрати акаунт
     await acquireToken('consent');
+    const email = await fetchAccountEmail();   // запамʼятовуємо акаунт → подальші оновлення тихі (без вибору)
+    if (email) localStorage.setItem('moneyme.demo.sync.account', email);
     Sync.fileId = await driveFindFile();
     let remote = Sync.fileId ? await driveDownload(Sync.fileId) : null;
     const remoteHasData = !!(remote && remote.updatedAt);
@@ -3276,6 +3293,7 @@ function cloudDisconnect(){
   localStorage.removeItem('moneyme.demo.sync.on');
   localStorage.removeItem('moneyme.demo.sync.base');
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem('moneyme.demo.sync.account');
   if (wipe) { state = seed(); normalize(); persist(); }
   setSyncStatus('off');
 }
