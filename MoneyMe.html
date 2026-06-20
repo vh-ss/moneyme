@@ -254,6 +254,16 @@
     .nav a .ni { font-size: 16px; }
     .navlang { padding: 5px 6px; margin-left: 3px; font-size: 11px; }
   }
+
+  /* Встановлений застосунок (PWA, немає адресного рядка) — повертаємо лого + «MoneyMe» і на мобільному */
+  @media (display-mode: standalone) {
+    .brand { display: flex; }
+    .brand .bt { display: inline; }
+  }
+  @media (display-mode: standalone) and (max-width: 560px) {
+    .brand { margin-right: 6px; font-size: 15px; }
+    .brand .logo { width: 26px; height: 26px; }
+  }
 </style>
 </head>
 <body>
@@ -346,7 +356,7 @@ applyNavPos();
 
 // Налаштовуване меню: вибрані розділи ховаємо з панелі — вони доступні під кнопкою «…».
 // Ці розділи завжди на панелі (вимкнути не можна):
-const NAV_LOCKED = new Set(['dashboard', 'transactions', 'analytics', 'accounts', 'credits', 'settings']);
+const NAV_LOCKED = new Set(['dashboard', 'transactions', 'analytics', 'settings']);
 let navHidden = (() => { try { return new Set(JSON.parse(localStorage.getItem('moneyme.navHidden') || '[]')); } catch (e) { return new Set(); } })();
 [...navHidden].forEach(v => { if (NAV_LOCKED.has(v)) navHidden.delete(v); });   // заблоковані не можуть бути прихованими
 function saveNavHidden() { localStorage.setItem('moneyme.navHidden', JSON.stringify([...navHidden])); }
