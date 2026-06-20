@@ -91,11 +91,11 @@
   html[data-theme="dark"] { --cal-filter: invert(1) brightness(1.4); }
 
   .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
-  .quick button { display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 14px; padding: 13px 14px; font-size: 15px; font-weight: 700; color: #fff; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.10); transition: filter .15s ease, transform .04s ease; }
-  .quick button:hover { filter: brightness(1.06); }
+  .quick button { display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 14px; padding: 13px 14px; font-size: 15px; font-weight: 700; color: #fff; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.06); transition: filter .15s ease, transform .04s ease; }
+  .quick button:hover { filter: brightness(1.05); }
   .quick button:active { transform: translateY(1px); }
-  .quick .exp { background: var(--red); }
-  .quick .inc { background: var(--green); }
+  .quick .exp { background: #c0474c; background: color-mix(in srgb, var(--red) 74%, #64748b); }      /* приглушений червоний */
+  .quick .inc { background: #2f9159; background: color-mix(in srgb, var(--green) 74%, #64748b); }    /* приглушений зелений */
   .quick .dot { width: 24px; height: 24px; border-radius: 999px; background: rgba(255,255,255,.22); display: grid; place-items: center; color: #fff; font-size: 18px; font-weight: 800; line-height: 1; }
   .quick.sm button { padding: 11px 12px; font-size: 14px; }
   .quick.sm .dot { width: 22px; height: 22px; font-size: 16px; }
@@ -1978,7 +1978,7 @@ let anFilter = { from: monthStartISO(), to: todayISO(), preset: 'month' };
 views.analytics = (app) => {
   const presets = [['month','Цей місяць'],['lastmonth','Минулий'],['year','Рік'],['all','Усе']];
   const top = el(`<div>
-    <div class="row" style="justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
       <h1 style="margin:0">Аналітика</h1>
       <div class="row"><div><label class="lab">Від</label><input id="an-from" type="date" value="${anFilter.from}"></div>
       <div><label class="lab">До</label><input id="an-to" type="date" value="${anFilter.to}"></div></div>
