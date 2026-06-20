@@ -281,7 +281,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '40dc40835e';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'edb5d70ae3';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -988,7 +988,7 @@ function navigate(v){
   currentView = v;
   if (('#' + v) !== location.hash) location.hash = v;   // запамʼятовуємо вкладку в URL
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.dataset.view === v));
-  { const more = document.getElementById('navmore'); if (more) more.classList.toggle('active', navHidden.has(v)); }
+  applyNavMenu();   // показ/приховання розділів + стан кнопки «…» (тут views вже визначені — на старті йде через navigate())
   render();
   if (changed) window.scrollTo(0, 0);   // при зміні вкладки — на початок
 }

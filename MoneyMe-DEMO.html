@@ -1009,7 +1009,7 @@ function navigate(v){
   currentView = v;
   if (('#' + v) !== location.hash) location.hash = v;   // запамʼятовуємо вкладку в URL
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.dataset.view === v));
-  { const more = document.getElementById('navmore'); if (more) more.classList.toggle('active', navHidden.has(v)); }
+  applyNavMenu();   // показ/приховання розділів + стан кнопки «…» (тут views вже визначені — на старті йде через navigate())
   render();
   if (changed) window.scrollTo(0, 0);   // при зміні вкладки — на початок
 }
