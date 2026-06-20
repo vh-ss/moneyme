@@ -2628,7 +2628,7 @@ views.crypto = (app) => {
   modePill.querySelectorAll('button').forEach(b => b.onclick = () => { cryptoView = b.dataset.m; render(); });
   app.appendChild(modePill);
 
-  if (cryptoView === 'exchanges') { renderCryptoByExchange(app, totalUsd); app.appendChild(clearCryptoBtn()); return; }
+  if (cryptoView === 'exchanges') { renderCryptoByExchange(app, totalUsd); app.appendChild(cryptoBottomActions()); return; }
 
   // ——— Список активів (з нумерацією, значками, P&L) ———
   const card = el(`<section class="card" style="padding:8px 12px;margin-top:12px"></section>`);
@@ -2664,13 +2664,72 @@ views.crypto = (app) => {
   });
   app.appendChild(card);
 
-  app.appendChild(clearCryptoBtn());
+  app.appendChild(cryptoBottomActions());
 };
 
-function clearCryptoBtn(){
-  const clear = el(`<div style="margin-top:14px"><button class="btn ghost sm" style="color:var(--red)">Очистити криптопортфель</button></div>`);
-  clear.firstElementChild.onclick = () => { if (confirm('Видалити ВСІ крипто-активи? (можна скасувати)')) deleteWithUndo('Криптопортфель очищено', () => { state.crypto = []; }); };
-  return clear;
+function cryptoBottomActions(){
+  const box = el(`<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center"></div>`);
+  if (cryptoExchanges().length) {
+    const exBtn = el(`<button class="btn ghost sm">🏦 Біржі / гаманці</button>`);
+    exBtn.onclick = () => openExchangesManager();
+    box.appendChild(exBtn);
+  }
+  const clr = el(`<button class="btn ghost sm" style="color:var(--red)">Очистити криптопортфель</button>`);
+  clr.onclick = () => { if (confirm('Видалити ВСІ крипто-активи? (можна скасувати)')) deleteWithUndo('Криптопортфель очищено', () => { state.crypto = []; }); };
+  box.appendChild(clr);
+  return box;
+}
+
+// Зводить записи бірж активу до унікальних {name, amount} (однойменні підсумовуються; конвертує старий рядковий формат).
+function mergeExchanges(exs){
+  const m = new Map();
+  (exs || []).forEach(x => { const nm = (typeof x === 'string' ? x : x.name || '').trim(); if (!nm) return; const amt = typeof x === 'object' ? (x.amount || 0) : 0; m.set(nm, (m.get(nm) || 0) + amt); });
+  return [...m].map(([name, amount]) => ({ name, amount }));
+}
+function exchangeUsageCount(name){ return (state.crypto || []).filter(h => (h.exchanges || []).some(x => (typeof x === 'string' ? x : x.name) === name)).length; }
+function renameExchange(oldName, after){
+  const input = prompt('Нова назва біржі / гаманця:', oldName);
+  if (input == null) return;
+  const name = input.trim();
+  if (!name || name === oldName) return;
+  (state.crypto || []).forEach(h => {
+    if (!h.exchanges || !h.exchanges.length) return;
+    const mapped = h.exchanges.map(x => { const nm = typeof x === 'string' ? x : x.name; const amt = typeof x === 'object' ? (x.amount || 0) : 0; return { name: nm === oldName ? name : nm, amount: amt }; });
+    h.exchanges = mergeExchanges(mapped);
+  });
+  save(); showToast(`Біржу перейменовано на «${name}»`, null, null, 2500); if (after) after(); render();
+}
+function deleteExchange(name, after){
+  const cnt = exchangeUsageCount(name);
+  if (!confirm(`Видалити біржу «${name}» з ${cnt} актив(ів)?\nКількість монет в активах збережеться — зникне лише прив'язка до цієї біржі.`)) return;
+  (state.crypto || []).forEach(h => {
+    if (!h.exchanges) return;
+    h.exchanges = mergeExchanges(h.exchanges.filter(x => (typeof x === 'string' ? x : x.name) !== name));
+  });
+  save(); showToast(`Біржу «${name}» видалено`, null, null, 2500); if (after) after(); render();
+}
+// Перегляд і керування біржами / гаманцями (перейменування, видалення).
+function openExchangesManager(){
+  const body = el(`<div><div class="muted small" style="margin-bottom:6px">Біржі та гаманці зі ваших активів. Перейменування й видалення застосовуються до всіх активів.</div><div id="exm-list"></div></div>`);
+  const listBox = $('#exm-list', body);
+  function rebuild(){
+    listBox.innerHTML = '';
+    const names = cryptoExchanges();
+    if (!names.length) { listBox.appendChild(el(`<div class="muted small">Бірж ще немає. Додайте їх у формі активу («Розподіл по біржах»).</div>`)); return; }
+    names.forEach(nm => {
+      const cnt = exchangeUsageCount(nm);
+      const row = el(`<div class="row" style="align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
+        <div style="min-width:0;flex:1"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nm)}</div><div class="muted small">${cnt} актив${cnt===1?'':(cnt>=2&&cnt<=4?'и':'ів')}</div></div>
+        <div class="row" style="gap:6px;flex:0 0 auto"></div></div>`);
+      const acts = row.lastElementChild;
+      const ren = el(`<button class="btn ghost sm" title="Перейменувати">✎</button>`); ren.onclick = () => renameExchange(nm, rebuild);
+      const del = el(`<button class="btn danger sm" title="Видалити">✕</button>`); del.onclick = () => deleteExchange(nm, rebuild);
+      acts.appendChild(ren); acts.appendChild(del);
+      listBox.appendChild(row);
+    });
+  }
+  rebuild();
+  openModal('Біржі / гаманці', body, {});
 }
 
 // Донат-блок розподілу: title + кругова діаграма + легенда (для активів/бірж).
