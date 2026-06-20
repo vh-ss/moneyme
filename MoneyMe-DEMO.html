@@ -486,11 +486,12 @@ function deleteWithUndo(label, mutate) {
   save(); render();
   showToast(label, 'Скасувати', () => { state = snap; save(); render(); });
 }
-// Перед видаленням обʼєкта, який десь використовується — попереджаємо переліком наслідків.
-// parts — масив рядків («N операцій — буде видалено» тощо). Повертає true, якщо можна видаляти.
-function confirmDeleteUsed(name, parts) {
+// Якщо обʼєкт має привʼязки — ЗАБОРОНЯЄМО видалення (показуємо, що саме привʼязане).
+// parts — перелік привʼязок; hint — що зробити, щоб усе ж видалити. Повертає true, якщо видаляти можна.
+function blockDeleteIfUsed(name, parts, hint) {
   if (!parts.length) return true;
-  return confirm(`${name} використовується:\n• ${parts.join('\n• ')}\n\nВсе одно видалити? (можна скасувати)`);
+  alert(`${name} не можна видалити — є привʼязки:\n• ${parts.join('\n• ')}\n\n${hint || 'Спершу приберіть або перенесіть їх.'}`);
+  return false;
 }
 
 //==================== Бекап: завантаження файлу, точки відновлення, автозавантаження ====================
@@ -2093,11 +2094,11 @@ views.accounts = (app) => {
       const goalN = state.goals.filter(g => (g.account_ids||[]).includes(a.id)).length;
       const primary = state.banks.find(b => b.primary_account_id===a.id);
       const parts = [];
-      if (txN) parts.push(`${txN} операцій — буде ВИДАЛЕНО разом із рахунком`);
-      if (recN) parts.push(`${recN} регулярних платежів — буде видалено`);
-      if (goalN) parts.push(`${goalN} цілей — рахунок відвʼяжеться від них`);
-      if (primary) parts.push(`основний рахунок банку «${primary.name}» — скинеться`);
-      if (!confirmDeleteUsed(`Рахунок «${a.name}»`, parts)) return;
+      if (txN) parts.push(`${txN} операцій`);
+      if (recN) parts.push(`${recN} регулярних платежів`);
+      if (goalN) parts.push(`${goalN} цілей (рахунок підвʼязаний)`);
+      if (primary) parts.push(`основний рахунок банку «${primary.name}»`);
+      if (!blockDeleteIfUsed(`Рахунок «${a.name}»`, parts, 'Зазвичай тут краще «Архівувати» — рахунок зникне зі списків, а операції збережуться. Щоб саме видалити, спершу приберіть привʼязки.')) return;
       deleteWithUndo(`Рахунок «${a.name}» видалено`, () => {
         // повертаємо суми кредитів за платежами, що видаляються разом з рахунком
         state.transactions.forEach(t => {
@@ -2935,9 +2936,9 @@ views.credits = (app) => {
       const accN = state.accounts.filter(x => x.bank_id===bank.id).length;
       const loanN = state.loans.filter(l => l.bank_id===bank.id).length;
       const parts = [];
-      if (accN) parts.push(`${accN} рахунків — відвʼяжуться від банку (самі рахунки лишаться)`);
-      if (loanN) parts.push(`${loanN} кредитів — буде ВИДАЛЕНО`);
-      if (!confirmDeleteUsed(`Банк «${bank.name}»`, parts)) return;
+      if (accN) parts.push(`${accN} рахунків (привʼязані до банку)`);
+      if (loanN) parts.push(`${loanN} кредитів`);
+      if (!blockDeleteIfUsed(`Банк «${bank.name}»`, parts, 'Спершу відвʼяжіть рахунки (змініть у них банк) і видаліть кредити цього банку.')) return;
       deleteWithUndo(`Банк «${bank.name}» видалено`, () => {
         state.banks = state.banks.filter(x=>x.id!==bank.id);
         state.loans = state.loans.filter(l=>l.bank_id!==bank.id);
@@ -2989,8 +2990,8 @@ function loanRow(l, bank) {
   del.onclick = () => {
     const payN = state.transactions.filter(t => t.loan_id===l.id).length;
     const parts = [];
-    if (payN) parts.push(`${payN} платежів — операції лишаться, але відвʼяжуться від кредиту`);
-    if (!confirmDeleteUsed(`Кредит «${l.name||'Кредит'}»`, parts)) return;
+    if (payN) parts.push(`${payN} операцій-платежів`);
+    if (!blockDeleteIfUsed(`Кредит «${l.name||'Кредит'}»`, parts, 'Спершу видаліть ці операції-платежі.')) return;
     deleteWithUndo('Кредит видалено', () => { state.loans = state.loans.filter(x=>x.id!==l.id); state.transactions.forEach(t=>{ if(t.loan_id===l.id) t.loan_id=null; }); });
   };
   acts.appendChild(ed); acts.appendChild(del);
