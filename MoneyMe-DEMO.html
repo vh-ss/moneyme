@@ -591,6 +591,40 @@ function downloadBackup(){
   a.href = url; a.download = `moneyme-backup-${todayISO()}.json`; a.click(); URL.revokeObjectURL(url);
   localStorage.setItem('moneyme.demo.lastBackup', todayISO());
 }
+// ——— Шифрування бекап-файлу паролем (WebCrypto: AES-GCM + PBKDF2) ———
+function _b64(u8){ let s = ''; u8.forEach(b => s += String.fromCharCode(b)); return btoa(s); }
+function _ub64(s){ const bin = atob(s); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+async function _deriveKey(password, salt, iter){
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function encryptBackup(obj, password){
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), iter = 210000;
+  const key = await _deriveKey(password, salt, iter);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return { app: 'MoneyMe', enc: 'AES-GCM', kdf: 'PBKDF2-SHA256', iter, salt: _b64(salt), iv: _b64(iv), data: _b64(new Uint8Array(ct)) };
+}
+async function decryptBackup(env, password){
+  const key = await _deriveKey(password, _ub64(env.salt), env.iter || 210000);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: _ub64(env.iv) }, key, _ub64(env.data));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+function isEncryptedBackup(o){ return !!(o && o.enc === 'AES-GCM' && o.data && o.salt && o.iv); }
+async function downloadBackupEncrypted(){
+  if (!(window.crypto && crypto.subtle)) { alertModal('Шифрування працює лише на https-сайті (не з файлу, відкритого подвійним кліком).'); return; }
+  const pw = await promptModal('Зашифрований експорт', 'Пароль для бекапу (запамʼятайте — без нього файл не відкрити!):', '');
+  if (pw == null) return;
+  if (!pw || pw.length < 4) { alertModal('Пароль закороткий — мінімум 4 символи.'); return; }
+  try {
+    const payload = { app: 'MoneyMe', version: SCHEMA_VERSION, exported_at: new Date().toISOString(), data: state };
+    const env = await encryptBackup(payload, pw);
+    const blob = new Blob([JSON.stringify(env)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = url; a.download = `moneyme-backup-${todayISO()}.mmenc`; a.click(); URL.revokeObjectURL(url);
+    localStorage.setItem('moneyme.demo.lastBackup', todayISO());
+    showToast('🔒 Зашифрований бекап збережено', null, null, 2500);
+  } catch (e) { alertModal('Не вдалося зашифрувати: ' + (e.message || e)); }
+}
 // Експорт операцій у CSV (роздільник «;» — зручно для Excel UA).
 function exportCSV(){
   const q = s => `"${String(s ?? '').replace(/"/g,'""')}"`;
@@ -3549,13 +3583,15 @@ views.settings = (app) => {
     <div class="small" style="margin-top:6px;color:${overdue?'var(--amber)':'var(--muted)'}">${overdue?'⚠️ ':''}${esc(lastBackupNote())}</div>
     <div class="row" style="flex-wrap:wrap;margin-top:12px">
       <button class="btn primary" id="exp">⬇ Експорт у файл</button>
+      <button class="btn" id="expenc">🔒 Зашифрований</button>
       <button class="btn" id="imp">⬆ Імпорт із файлу</button>
       <button class="btn" id="expcsv">⬇ Операції в CSV</button>
-      <input type="file" id="impfile" accept="application/json,.json" class="hidden">
+      <input type="file" id="impfile" accept="application/json,.json,.mmenc" class="hidden">
     </div>
     <div id="bk-msg" class="small" style="margin-top:10px"></div>
   </section>`);
   $('#exp', backup).onclick = () => { downloadBackup(); render(); };
+  $('#expenc', backup).onclick = () => downloadBackupEncrypted();
   $('#expcsv', backup).onclick = () => exportCSV();
   $('#imp', backup).onclick = () => $('#impfile', backup).click();
   $('#impfile', backup).onchange = async (ev) => {
@@ -3563,7 +3599,14 @@ views.settings = (app) => {
     const msg = $('#bk-msg', backup);
     try {
       const raw = JSON.parse(await file.text());
-      const data = migrateBackup(raw);   // підтримка старих і нових форматів
+      let parsed = raw;
+      if (isEncryptedBackup(raw)) {   // зашифрований бекап → просимо пароль і розшифровуємо
+        if (!(window.crypto && crypto.subtle)) throw new Error('Розшифрування працює лише на https-сайті');
+        const pw = await promptModal('Зашифрований бекап', 'Введіть пароль для розшифрування:', '');
+        if (pw == null) { ev.target.value = ''; return; }
+        try { parsed = await decryptBackup(raw, pw); } catch (e) { throw new Error('Невірний пароль або пошкоджений файл'); }
+      }
+      const data = migrateBackup(parsed);   // підтримка старих і нових форматів
       if (!Array.isArray(data.accounts) || !Array.isArray(data.transactions)) throw new Error('Файл не схожий на бекап MoneyMe');
       const fixed = sanitizeImport(data);   // прибрати осиротілі посилання (цілісність)
       if (!await confirmModal('Імпорт даних', 'Імпорт ЗАМІНИТЬ усі поточні дані. Продовжити?', { danger: true, okLabel: 'Імпортувати' })) return;
