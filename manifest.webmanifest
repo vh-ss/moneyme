@@ -16,7 +16,7 @@
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "Додати витрату", "short_name": "Витрата", "url": "./?add=expense", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
-    { "name": "Додати надходження", "short_name": "Надходження", "url": "./?add=income", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+    { "name": "Додати витрату", "short_name": "Витрата", "url": "./?add=expense", "icons": [{ "src": "icons/sc-expense.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Додати надходження", "short_name": "Надходження", "url": "./?add=income", "icons": [{ "src": "icons/sc-income.svg", "sizes": "any", "type": "image/svg+xml" }] }
   ]
 }

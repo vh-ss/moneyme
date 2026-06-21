@@ -1,7 +1,7 @@
 /* MoneyMe service worker — офлайн-кеш оболонки застосунку.
    Дані застосунку зберігаються у localStorage (не тут); SW кешує лише статику,
    щоб усе відкривалося без мережі. Cross-origin запити (Google API) не чіпаємо. */
-const BUILD = 'c4dd3ce5c8';   // підставляється збиранням (.build-pwa.cjs) — хеш контенту застосунку
+const BUILD = 'f69ce4231b';   // підставляється збиранням (.build-pwa.cjs) — хеш контенту застосунку
 const CACHE = 'moneyme-shell-' + BUILD;
 const ASSETS = [
   './',
