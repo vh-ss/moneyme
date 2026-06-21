@@ -1214,6 +1214,34 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
   return close;
 }
 
+// Власні діалоги (замість нативних confirm/alert/prompt) — у стилі застосунку, з нижнім листом на мобільному.
+// Повертає Promise: confirm → bool, alert → true, prompt → рядок або null.
+function appDialog({ title = '', message = '', body = null, okLabel = 'OK', cancelLabel = null, danger = false }){
+  return new Promise(resolve => {
+    const root = $('#modal-root'); const prevFocus = document.activeElement;
+    const overlay = el(`<div class="overlay"></div>`);
+    const modal = el(`<div class="card modal" role="dialog" aria-modal="true"></div>`); modal.setAttribute('aria-label', title);
+    const head = el(`<div class="mhead"><h2>${esc(title)}</h2><button class="x" aria-label="Закрити">×</button></div>`);
+    const bd = el(`<div class="mbody"></div>`);
+    bd.appendChild(body || el(`<div style="line-height:1.5;white-space:pre-line">${esc(message)}</div>`));
+    const foot = el(`<div class="mfoot"></div>`);
+    if (cancelLabel) { const c = el(`<button class="btn ghost">${esc(cancelLabel)}</button>`); c.onclick = () => done(false); foot.appendChild(c); }
+    const ok = el(`<button class="btn ${danger ? 'danger' : 'primary'}">${esc(okLabel)}</button>`); ok.onclick = () => done(true); foot.appendChild(ok);
+    modal.appendChild(head); modal.appendChild(bd); modal.appendChild(foot);
+    overlay.appendChild(modal); root.appendChild(overlay); translateTree(modal);
+    let settled = false;
+    function done(v){ if (settled) return; settled = true; overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} } resolve(v); }
+    function onKey(e){ if (e.key === 'Escape') done(false); }
+    overlay.addEventListener('mousedown', e => { if (e.target === overlay) done(false); });
+    head.querySelector('.x').onclick = () => done(false);
+    document.addEventListener('keydown', onKey);
+    (modal.querySelector('input, select') || ok).focus();
+  });
+}
+function confirmModal(title, message, opts = {}){ return appDialog({ title, message, okLabel: opts.okLabel || 'Так', cancelLabel: opts.cancelLabel || 'Скасувати', danger: opts.danger }); }
+function alertModal(message, title = 'Увага'){ return appDialog({ title, message, okLabel: 'OK' }); }
+function promptModal(title, label, value = ''){ const body = el(`<div><label class="lab">${esc(label || '')}</label><input id="pm-in" value="${esc(value)}"></div>`); return appDialog({ title, body, okLabel: 'OK', cancelLabel: 'Скасувати' }).then(okp => okp ? $('#pm-in', body).value : null); }
+
 // Контекстне меню біля курсору. items: [{label, icon, color, onClick} | {sep:true}], title — необовʼязковий заголовок.
 function openContextMenu(x, y, items, title) {
   document.querySelectorAll('.ctxmenu').forEach(m => m.remove());
@@ -1242,7 +1270,7 @@ function openContextMenu(x, y, items, title) {
 // Вибір рахунку-призначення для переказу, далі — звичайний діалог переказу.
 function openTransferPicker(fromId) {
   const others = state.accounts.filter(a => a.id !== fromId);
-  if (others.length === 0) { alert('Потрібен щонайменше ще один рахунок.'); return; }
+  if (others.length === 0) { alertModal('Потрібен щонайменше ще один рахунок.'); return; }
   const body = el(`<div><label class="lab">На який рахунок переказати?</label>
     <select id="tp-to">${others.map(a=>`<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select></div>`);
   openModal('Переказ із «' + accountName(fromId) + '»', body, {
@@ -1337,7 +1365,7 @@ function emojiPicker(inputEl) {
 
 //==================== Форма витрати/надходження ====================
 function openEntryForm(kind, existing, presetAccountId, prefill) {
-  if (state.accounts.length === 0) { alert('Спершу додайте хоча б один рахунок.'); navigate('accounts'); return; }
+  if (state.accounts.length === 0) { alertModal('Спершу додайте хоча б один рахунок.'); navigate('accounts'); return; }
   const isInc = kind === 'INCOME';
   const cats = state.categories.filter(c => c.kind === kind);
   const e = existing || prefill || {};   // prefill — нова операція з підставленими даними (напр. дублювання)
@@ -1620,7 +1648,7 @@ function openTransferDialog(fromId, toId, opts) {
 
 //==================== Редагування переказу ====================
 function openTransferEdit(tx) {
-  if (state.accounts.length < 2) { alert('Для переказу потрібно щонайменше два рахунки.'); return; }
+  if (state.accounts.length < 2) { alertModal('Для переказу потрібно щонайменше два рахунки.'); return; }
   const opts = (sel) => state.accounts.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('');
   const body = el(`<div>
     <div class="row">
@@ -2772,7 +2800,7 @@ function goalTopUp(g){
   const toList = goalAccounts(g).filter(a => !a.archived);
   if (!toList.length) return;
   const fromList = state.accounts.filter(a => !a.archived && accountBalance(a.id) > 0 && !(g.account_ids||[]).includes(a.id));
-  if (!fromList.length) { alert('Немає рахунків з додатним балансом для поповнення.'); return; }
+  if (!fromList.length) { alertModal('Немає рахунків з додатним балансом для поповнення.'); return; }
   openTransferDialog(fromList[0].id, toList[0].id, { fromList, toList, title: 'Поповнити «' + (g.name||'Ціль') + '»', saveLabel: 'Поповнити' });
 }
 
@@ -2961,7 +2989,7 @@ function cryptoBottomActions(){
     box.appendChild(exBtn);
   }
   const clr = el(`<button class="btn ghost sm" style="color:var(--red)">Очистити криптопортфель</button>`);
-  clr.onclick = () => { if (confirm('Видалити ВСІ крипто-активи? (можна скасувати)')) deleteWithUndo('Криптопортфель очищено', () => { state.crypto = []; }); };
+  clr.onclick = () => { confirmModal('Очистити криптопортфель?', 'Видалити ВСІ крипто-активи? (можна скасувати)', { danger: true, okLabel: 'Очистити' }).then(ok => { if (ok) deleteWithUndo('Криптопортфель очищено', () => { state.crypto = []; }); }); };
   box.appendChild(clr);
   return box;
 }
@@ -2974,16 +3002,17 @@ function mergeExchanges(exs){
 }
 function exchangeUsageCount(name){ return (state.crypto || []).filter(h => (h.exchanges || []).some(x => (typeof x === 'string' ? x : x.name) === name)).length; }
 function renameExchange(oldName, after){
-  const input = prompt('Нова назва біржі / гаманця:', oldName);
-  if (input == null) return;
-  const name = input.trim();
-  if (!name || name === oldName) return;
-  (state.crypto || []).forEach(h => {
-    if (!h.exchanges || !h.exchanges.length) return;
-    const mapped = h.exchanges.map(x => { const nm = typeof x === 'string' ? x : x.name; const amt = typeof x === 'object' ? (x.amount || 0) : 0; return { name: nm === oldName ? name : nm, amount: amt }; });
-    h.exchanges = mergeExchanges(mapped);
+  promptModal('Перейменувати біржу', 'Нова назва біржі / гаманця:', oldName).then(input => {
+    if (input == null) return;
+    const name = input.trim();
+    if (!name || name === oldName) return;
+    (state.crypto || []).forEach(h => {
+      if (!h.exchanges || !h.exchanges.length) return;
+      const mapped = h.exchanges.map(x => { const nm = typeof x === 'string' ? x : x.name; const amt = typeof x === 'object' ? (x.amount || 0) : 0; return { name: nm === oldName ? name : nm, amount: amt }; });
+      h.exchanges = mergeExchanges(mapped);
+    });
+    save(); showToast(`Біржу перейменовано на «${name}»`, null, null, 2500); if (after) after(); render();
   });
-  save(); showToast(`Біржу перейменовано на «${name}»`, null, null, 2500); if (after) after(); render();
 }
 function exchangePlural(n){ return n === 1 ? 'актив' : (n >= 2 && n <= 4 ? 'активи' : 'активів'); }
 function deleteExchange(name, after){
@@ -3216,7 +3245,7 @@ function loanSchedule(l){
 }
 function openLoanSchedule(l, bank){
   const cur = bank.currency, rows = loanSchedule(l);
-  if (!rows.length) { alert('Платіж не покриває відсотки — графік неможливо порахувати.'); return; }
+  if (!rows.length) { alertModal('Платіж не покриває відсотки — графік неможливо порахувати.'); return; }
   const totalInt = round2(rows.reduce((s, r) => s + r.interest, 0));
   const startISO = l.due_date || todayISO();
   const body = el(`<div>
@@ -3282,7 +3311,7 @@ views.recurring = (app) => {
 };
 
 function openRecurringForm(existing){
-  if (state.accounts.length === 0) { alert('Спершу додайте рахунок.'); navigate('accounts'); return; }
+  if (state.accounts.length === 0) { alertModal('Спершу додайте рахунок.'); navigate('accounts'); return; }
   const e = existing || { kind:'EXPENSE', freq:'monthly', next_date: todayISO(), active:true };
   const cats = state.categories.filter(c => c.kind === (e.kind||'EXPENSE'));
   const body = el(`<div>
@@ -3405,7 +3434,7 @@ views.settings = (app) => {
       const data = migrateBackup(raw);   // підтримка старих і нових форматів
       if (!Array.isArray(data.accounts) || !Array.isArray(data.transactions)) throw new Error('Файл не схожий на бекап MoneyMe');
       const fixed = sanitizeImport(data);   // прибрати осиротілі посилання (цілісність)
-      if (!confirm('Імпорт ЗАМІНИТЬ усі поточні дані. Продовжити?')) return;
+      if (!await confirmModal('Імпорт даних', 'Імпорт ЗАМІНИТЬ усі поточні дані. Продовжити?', { danger: true, okLabel: 'Імпортувати' })) return;
       state = data;
       normalize();
       save(); msg.style.color='var(--green)'; msg.textContent='Дані успішно відновлено.' + (fixed ? ` Виправлено ${fixed} некоректних посилань.` : ''); render();
@@ -3459,9 +3488,7 @@ views.settings = (app) => {
     const row = el(`<div class="row" style="align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--softline)">
       <span class="small">${fmtDate(p.date)}${p.date===todayISO()?' (сьогодні)':''}</span><span></span></div>`);
     const b = el(`<button class="btn ghost sm">Відновити</button>`);
-    b.onclick = () => { if (confirm(`Відновити дані станом на ${fmtDate(p.date)}? Поточні буде замінено (з можливістю скасувати).`)) {
-      deleteWithUndo(`Відновлено стан на ${fmtDate(p.date)}`, () => { state = migrateBackup({ data: p.data }); normalize(); });
-    }};
+    b.onclick = () => { confirmModal('Відновити точку?', `Відновити дані станом на ${fmtDate(p.date)}? Поточні буде замінено (з можливістю скасувати).`, { okLabel: 'Відновити' }).then(ok => { if (ok) deleteWithUndo(`Відновлено стан на ${fmtDate(p.date)}`, () => { state = migrateBackup({ data: p.data }); normalize(); }); }); };
     row.lastElementChild.appendChild(b); rpList.appendChild(row);
   });
   app.appendChild(rp);
@@ -3469,7 +3496,7 @@ views.settings = (app) => {
   const danger = el(`<section class="card" style="padding:18px;margin-top:16px">
     <h2>Очистити дані</h2><p class="muted small">Видалити всі рахунки, операції та категорії й почати з нуля.</p>
     <button class="btn danger" id="wipe" style="margin-top:8px">Скинути все</button></section>`);
-  $('#wipe', danger).onclick = () => { if(confirm('Видалити ВСІ дані без відновлення?')){ localStorage.removeItem(STORE_KEY); state = seed(); save(); navigate('dashboard'); } };
+  $('#wipe', danger).onclick = () => { confirmModal('Видалити всі дані?', 'Це назавжди видалить усі дані без можливості відновлення.', { danger: true, okLabel: 'Видалити все' }).then(ok => { if (ok) { localStorage.removeItem(STORE_KEY); state = seed(); save(); navigate('dashboard'); } }); };
   app.appendChild(danger);
 
   app.appendChild(el(`<section class="card" style="padding:18px;margin-top:16px">
@@ -3734,9 +3761,7 @@ function openLoanPayment(l, bank) {
     onSave: (close) => apply(round2(num($$('#pp-amt').value)), close),
   });
   $$('#pp-full').onclick = () => {
-    if (confirm(`Закрити кредит «${l.name || 'Кредит'}» повністю? Залишок ${money(loanOutstanding(l), bank.currency)} буде погашено${$$('#pp-acc').value ? ' і створено операцію «витрата»' : ''}.`)) {
-      apply(loanOutstanding(l), close);
-    }
+    confirmModal('Закрити кредит повністю?', `Кредит «${l.name || 'Кредит'}»: залишок ${money(loanOutstanding(l), bank.currency)} буде погашено${$$('#pp-acc').value ? ' і створено операцію «витрата»' : ''}.`, { okLabel: 'Закрити кредит' }).then(ok => { if (ok) apply(loanOutstanding(l), close); });
   };
 }
 
@@ -3771,7 +3796,7 @@ function openBankForm(existing) {
 }
 
 function openLoanForm(existing, presetBankId) {
-  if (state.banks.length === 0) { alert('Спершу додайте банк.'); return; }
+  if (state.banks.length === 0) { alertModal('Спершу додайте банк.'); return; }
   const e = existing || { bank_id: presetBankId ?? state.banks[0].id, months:12, has_interest:false, rate:0, paid:0, due_date: todayISO() };
   const body = el(`<div>
     <div><label class="lab">Банк</label><select id="l-bank">${state.banks.map(b=>`<option value="${b.id}">${esc(b.name)} (${curSym(b.currency)})</option>`).join('')}</select></div>
@@ -4083,8 +4108,8 @@ async function cloudPush(){
 // Підключення акаунта з ізоляцією даних: дані кожного Google-акаунта — окремі.
 // На спільному пристрої локальні дані НЕ заливаються в чужий акаунт без підтвердження.
 async function cloudConnect(){
-  if (!syncConfigured()) { alert('Спершу вставте Google Client ID у Налаштуваннях.'); return; }
-  if (location.protocol.indexOf('http') !== 0) { alert('Синхронізація працює лише з https-хостингу (GitHub Pages), не з локального файлу.'); return; }
+  if (!syncConfigured()) { alertModal('Спершу вставте Google Client ID у Налаштуваннях.'); return; }
+  if (location.protocol.indexOf('http') !== 0) { alertModal('Синхронізація працює лише з https-хостингу (GitHub Pages), не з локального файлу.'); return; }
   try {
     setSyncStatus('connecting');
     Sync.token = null; localStorage.removeItem(TOKEN_KEY); localStorage.removeItem('moneyme.sync.account');   // свіжий вхід — можна обрати акаунт
@@ -4102,7 +4127,7 @@ async function cloudConnect(){
       adoptRemote(remote);
     } else if (!everConnected && localHasData) {
       // ПЕРШЕ підключення на цьому пристрої, акаунт порожній, локально є дані → налаштування власника
-      const up = confirm('Перше підключення синхронізації. Акаунт порожній.\n\nOK — завантажити поточні дані з цього пристрою у ваш акаунт.\nСкасувати — почати з чистого.');
+      const up = await confirmModal('Перше підключення', 'Акаунт у хмарі порожній. Завантажити поточні дані з цього пристрою у ваш акаунт — чи почати з чистого?', { okLabel: 'Завантажити мої дані', cancelLabel: 'Почати з чистого' });
       if (!up) { state = seed(); normalize(); persist(); render(); }
       pushLocal = true;
     } else {
@@ -4117,8 +4142,8 @@ async function cloudConnect(){
     setSyncStatus('idle');
   } catch (e) { setSyncStatus('error', e.message || String(e)); }
 }
-function cloudDisconnect(){
-  const wipe = confirm('Відключити Google Drive.\n\nOK — також очистити дані MoneyMe на цьому пристрої (зручно на спільному пристрої; у Drive вони лишаться).\nСкасувати — лишити дані локально для офлайн-роботи.');
+async function cloudDisconnect(){
+  const wipe = await confirmModal('Відключити Google Drive?', 'Дані у Drive лишаться. Чи очистити локальні дані MoneyMe на цьому пристрої (зручно на спільному пристрої)?', { okLabel: 'Очистити локальні', cancelLabel: 'Лишити дані' });
   if (Sync.token && window.google && google.accounts) { try { google.accounts.oauth2.revoke(Sync.token.access_token, function(){}); } catch (e) {} }
   Sync.on = false; Sync.token = null; Sync.fileId = null;
   localStorage.removeItem('moneyme.sync.on');
