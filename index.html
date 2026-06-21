@@ -299,7 +299,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'ce5ac1ef8e';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'fbc1b21d87';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1910,6 +1910,15 @@ views.dashboard = (app) => {
   const bcard = budgetsCard({ hideZero: true });
   if (bcard) { bcard.style.marginTop = '14px'; app.appendChild(bcard); }
 
+  // алерт перевитрати бюджетів
+  const over = overBudgetCats();
+  if (over.length) {
+    const items = over.map(b => `${b.c.icon?b.c.icon+' ':''}${esc(b.c.name)} (${b.pct}%)`).join(', ');
+    const n = el(`<div class="notice" style="margin-top:10px;background:color-mix(in srgb,var(--red) 12%,transparent);border-color:color-mix(in srgb,var(--red) 35%,transparent);color:var(--red);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>⚠️ Перевитрата бюджету: ${items}</span></div>`);
+    const b = el(`<button class="btn sm">Категорії</button>`); b.onclick = () => navigate('categories'); n.appendChild(b);
+    app.appendChild(n);
+  }
+
   // нагадування про регулярні платежі
   const due = dueRecurring();
   if (due.length) {
@@ -2261,6 +2270,22 @@ views.analytics = (app) => {
     </section>`);
     $('#an-rec', rc).onclick = () => navigate('recurring');
     app.appendChild(rc);
+  }
+
+  // ——— Прогноз балансу (лише регулярні + кредити) ———
+  const recIncU = recurringMonthlyUAH('INCOME'), recExpU = recurringMonthlyUAH('EXPENSE'), loanU = loansMonthlyUAH();
+  const monthlyNet = round2(recIncU - recExpU - loanU);
+  if (recIncU || recExpU || loanU) {
+    const start = netWorthAt(todayISO());
+    const pts = [{ label: 'зараз', value: start }];
+    let bal = start;
+    for (let i = 1; i <= 6; i++) { bal = round2(bal + monthlyNet); const ym = addMonthsYM(todayISO().slice(0,7), i); pts.push({ label: new Date(ym + '-01').toLocaleDateString('uk-UA', { month: 'short' }), value: bal }); }
+    const fc = el(`<div class="card" style="padding:14px;margin-top:14px">
+      <div class="row" style="justify-content:space-between;align-items:baseline;gap:8px"><h2 style="margin:0">Прогноз балансу</h2>
+        <b class="tabnum" style="color:${monthlyNet>=0?'var(--green)':'var(--red)'}">${monthlyNet>=0?'+':''}${money(monthlyNet)}/міс</b></div>
+      <div class="muted small" style="margin-top:2px">Лише регулярні платежі та кредити (без разових). Через 6 міс ≈ <b>${money(pts[pts.length-1].value)}</b>.</div></div>`);
+    fc.appendChild(netWorthSVG(pts)); fc.appendChild(chartLabels(pts.map(p => p.label)));
+    app.appendChild(fc);
   }
 
   // графік чистих активів (останні 12 місяців)
@@ -3115,6 +3140,11 @@ function recurringMonthlyByCur(kind){ const m = {}; state.recurring.filter(r => 
 function loansByCur(fn){ const m = {}; state.loans.filter(loanActive).forEach(l => { const c = bankById(l.bank_id)?.currency || 'UAH'; m[c] = (m[c] || 0) + fn(l); }); return m; }
 // «{UAH: 100, USD: 5}» → «100,00 ₴ + 5,00 $» (пропускає ~нульові).
 function curMapStr(m){ const e = Object.entries(m).filter(([c, v]) => Math.abs(v) > 0.005); return e.length ? e.map(([c, v]) => money(round2(v), c)).join(' + ') : '—'; }
+// Місячні регулярні/кредитні потоки, зведені в гривню (для прогнозу балансу).
+function recurringMonthlyUAH(kind){ return round2(state.recurring.filter(r => r.active !== false && r.kind === kind).reduce((s, r) => { const a = recurMonthlyAmt(r); const u = toUAH(a, accountCur(r.account_id)); return s + (u == null ? a : u); }, 0)); }
+function loansMonthlyUAH(){ return round2(state.loans.filter(loanActive).reduce((s, l) => { const a = loanMonthly(l); const u = toUAH(a, bankById(l.bank_id)?.currency || 'UAH'); return s + (u == null ? a : u); }, 0)); }
+// Категорії з перевитратою бюджету в поточному циклі (для алертів).
+function overBudgetCats(){ return state.categories.filter(c => c.kind === 'EXPENSE' && (c.budget || 0) > 0).map(c => { const r = budgetRange(c); const eb = effectiveBudget(c); const spent = categorySpent(c.id, r.from, r.to); return { c, eb, spent, pct: eb > 0 ? Math.round(spent / eb * 100) : 0 }; }).filter(b => b.spent > b.eb).sort((a, b) => b.pct - a.pct); }
 function recordRecurring(r){
   // операцію датуємо днем запису (а прострочену — її запланованою датою), щоб вона була видима «зараз»
   const txDate = (r.next_date && r.next_date <= todayISO()) ? r.next_date : todayISO();
