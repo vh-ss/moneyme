@@ -4168,30 +4168,36 @@ async function cloudSync(interactive){
     if (!Sync.fileId) Sync.fileId = await driveFindFile();
     let remote = null;
     if (Sync.fileId) { try { remote = await driveDownload(Sync.fileId); } catch (e) { Sync.fileId = await driveFindFile(); if (Sync.fileId) remote = await driveDownload(Sync.fileId); } }
-    const localUpd = state.updatedAt || '';
     const remoteUpd = (remote && remote.updatedAt) || '';
-    if (remote && remoteUpd && remoteUpd > localUpd) {
-      if (localChangedSinceBase()) {
-        // справжній конфлікт: і пристрій, і хмара змінювались окремо
-        const baseData = loadSyncBaseData();
-        if (baseData) {
-          // 3-стороннє злиття: обʼєднуємо додавання/зміни з обох сторін (нічого не губимо)
-          cloudBackupSnapshot('Перед обʼєднанням (merge)');
-          const merged = mergeStates(baseData, state, migrateBackup(remote));
-          Sync.applying = true; state = merged; normalize(); sanitizeImport(state); Sync.applying = false;
-          state.updatedAt = new Date().toISOString();   // нова обʼєднана версія — новіша за обидві
-          persist();
-          Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());   // вивантажуємо обʼєднане, щоб хмара зійшлась
-          markSynced(state.updatedAt); render();
-          showToast('🔀 Зміни обʼєднано з хмарою (merge)', null, null, 4000);
-        } else if (interactive) { setSyncStatus('idle'); openSyncConflict(remote); return; }   // немає бази — питаємо
-        else { cloudBackupSnapshot('Версія цього пристрою (конфлікт синхр.)'); adoptRemote(remote); markSynced(state.updatedAt); showToast('⚠️ Конфлікт синхронізації: версію цього пристрою збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 9000); }
-      } else {
-        adoptRemote(remote);
-        markSynced(state.updatedAt);
-      }
+    // ВАЖЛИВО: тригер злиття — «хмара змінилась з останнього синху», а НЕ порівняння міток часу.
+    // (Інакше пристрій із новішою локальною міткою перезаписував би хмару й губив чужі зміни.)
+    const cloudChanged = !!(remote && remoteUpd && remoteUpd !== Sync.base);
+    const localChanged = localChangedSinceBase();
+    if (!remote) {
+      // у хмарі ще немає файлу → створюємо з локального
+      Sync.fileId = await driveUpload(Sync.fileId, cloudPayload()); markSynced(state.updatedAt);
+    } else if (cloudChanged && localChanged) {
+      // конфлікт: і пристрій, і хмара змінювались окремо → 3-стороннє злиття (нічого не губимо)
+      const baseData = loadSyncBaseData();
+      if (baseData) {
+        cloudBackupSnapshot('Перед обʼєднанням (merge)');
+        const merged = mergeStates(baseData, state, migrateBackup(remote));
+        Sync.applying = true; state = merged; normalize(); sanitizeImport(state); Sync.applying = false;
+        state.updatedAt = new Date().toISOString();   // нова обʼєднана версія — новіша за обидві
+        persist();
+        Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());   // вивантажуємо обʼєднане, щоб хмара зійшлась
+        markSynced(state.updatedAt); render();
+        showToast('🔀 Зміни обʼєднано з хмарою (merge)', null, null, 4000);
+      } else if (interactive) { setSyncStatus('idle'); openSyncConflict(remote); return; }   // немає бази — питаємо
+      else { cloudBackupSnapshot('Версія цього пристрою (конфлікт синхр.)'); adoptRemote(remote); markSynced(state.updatedAt); showToast('⚠️ Конфлікт синхронізації: версію цього пристрою збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 9000); }
+    } else if (cloudChanged) {
+      // лише хмара змінилась → приймаємо хмарну
+      adoptRemote(remote); markSynced(state.updatedAt);
+    } else if (localChanged) {
+      // лише локально → вивантажуємо
+      Sync.fileId = await driveUpload(Sync.fileId, cloudPayload()); markSynced(state.updatedAt);
     } else {
-      Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());
+      // нічого не змінилось з останнього синху
       markSynced(state.updatedAt);
     }
     setSyncStatus('idle');
@@ -4208,8 +4214,8 @@ async function cloudPush(){
     if (!Sync.fileId) Sync.fileId = await driveFindFile();
     let remote = null;
     if (Sync.fileId) { try { remote = await driveDownload(Sync.fileId); } catch (e) {} }
-    if (remote && remote.updatedAt && Sync.base && remote.updatedAt > Sync.base && remote.updatedAt > (state.updatedAt || '')) {
-      return cloudSync(false);   // на сервері новіше — зливаємо коректно
+    if (remote && remote.updatedAt && remote.updatedAt !== Sync.base) {
+      return cloudSync(false);   // хмара змінилась з останнього синху — коректна реконсиляція/merge (не дивимось на мітки)
     }
     Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());
     markSynced(state.updatedAt);

@@ -113,6 +113,50 @@ const clone = o => JSON.parse(JSON.stringify(o));
   eq('merge: seq = максимум', m.seq.tx, 11);
 }
 
+// ——— Симуляція синхронізації 2 пристроїв (тригер як у виправленому cloudSync) ———
+// Регресія: пристрій із новішою локальною міткою НЕ має перезаписувати хмару без злиття.
+function simTwoDevice(scenario){
+  let clock = 0; const stamp = () => '2026-06-21T00:00:' + String(clock++).padStart(2, '0') + '.000Z';
+  const cl = o => JSON.parse(JSON.stringify(o));
+  const base = { updatedAt: stamp(), accounts: [{ id: 1, name: 'A' }], categories: [], transactions: [{ id: 100, note: 'base', account_id: 1 }], banks: [], loans: [], recurring: [], goals: [], crypto: [], cryptoHistory: [], seq: { tx: 101 } };
+  let cloud = { data: cl(base), updatedAt: base.updatedAt };
+  const A = { state: cl(base), base: cl(base), syncedUpd: base.updatedAt };
+  const B = { state: cl(base), base: cl(base), syncedUpd: base.updatedAt };
+  function sync(dev){
+    const remote = cl(cloud);
+    const cloudChanged = remote.updatedAt !== dev.syncedUpd;
+    const localChanged = dev.state.updatedAt !== dev.base.updatedAt;
+    if (cloudChanged && localChanged) { const m = S.mergeStates(dev.base, dev.state, remote.data); m.updatedAt = stamp(); dev.state = m; cloud = { data: cl(m), updatedAt: m.updatedAt }; dev.base = cl(m); dev.syncedUpd = m.updatedAt; }
+    else if (cloudChanged) { dev.state = cl(remote.data); dev.base = cl(remote.data); dev.syncedUpd = remote.updatedAt; }
+    else if (localChanged) { cloud = { data: cl(dev.state), updatedAt: dev.state.updatedAt }; dev.base = cl(dev.state); dev.syncedUpd = dev.state.updatedAt; }
+    else { dev.syncedUpd = remote.updatedAt; }
+  }
+  scenario(A, B, stamp);
+  sync(A); sync(B); sync(A);   // A залив → B змержив → A підхопив обʼєднане
+  return { A: A.state.transactions, cloud: cloud.data.transactions };
+}
+{
+  // Сценарій 1: A: +200 та видаляє 100; B: +300 та редагує 100 (B має новішу мітку).
+  const r = simTwoDevice((A, B, stamp) => {
+    A.state.transactions.push({ id: 200, note: 'A', account_id: 1 }); A.state.transactions = A.state.transactions.filter(t => t.id !== 100); A.state.updatedAt = stamp();
+    B.state.transactions.push({ id: 300, note: 'B', account_id: 1 }); B.state.transactions[0].note = 'B-edit'; B.state.updatedAt = stamp();
+  });
+  const ids = r.A.map(t => t.id).sort((a, b) => a - b);
+  ok('sync2: A-додавання (200) не втрачено', ids.includes(200));
+  ok('sync2: B-додавання (300) збережено', ids.includes(300));
+  ok('sync2: редагування перемогло видалення (100 лишилась)', ids.includes(100) && r.A.find(t => t.id === 100).note === 'B-edit');
+  ok('sync2: пристрій A і хмара зійшлись', JSON.stringify(ids) === JSON.stringify(r.cloud.map(t => t.id).sort((a, b) => a - b)));
+}
+{
+  // Сценарій 2: A видаляє 100 (B не чіпає) + дод. 200; B дод. 300 → 100 має зникнути.
+  const r = simTwoDevice((A, B, stamp) => {
+    A.state.transactions = A.state.transactions.filter(t => t.id !== 100); A.state.transactions.push({ id: 200, note: 'A', account_id: 1 }); A.state.updatedAt = stamp();
+    B.state.transactions.push({ id: 300, note: 'B', account_id: 1 }); B.state.updatedAt = stamp();
+  });
+  const ids = r.A.map(t => t.id).sort((a, b) => a - b);
+  ok('sync2: чисте видалення поважено (100 зникла)', !ids.includes(100) && ids.includes(200) && ids.includes(300));
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);
