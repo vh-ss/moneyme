@@ -1014,6 +1014,9 @@ function txCatAmount(t, catId){ return txParts(t).filter(p => (p.category_id ?? 
 // Конвертація частини суми операції у гривню (для зведень).
 function partUAH(t, amount){ const u = toUAH(amount || 0, accountCur(t.account_id)); return u == null ? (amount || 0) : u; }
 function isSplitTx(t){ return !!(t.splits && t.splits.length > 1); }
+// Сума операції, віднесена до тегу (у валюті рахунку). Якщо є явний розподіл t.tagAmounts —
+// беремо його; інакше ділимо суму операції порівну між тегами (щоб не дублювати в аналітиці).
+function tagAmount(t, tag){ if (t.tagAmounts && t.tagAmounts[tag] != null) return t.tagAmounts[tag]; const n = (t.tags || []).length || 1; return round2((t.amount || 0) / n); }
 // Витрачено за категорією у періоді (для бюджетів) — з урахуванням split-операцій.
 function categorySpent(catId, from, to){
   return round2(state.transactions.filter(t => t.kind==='EXPENSE' && inRange(t, from, to)).reduce((s,t)=>s + partUAH(t, txCatAmount(t, catId)), 0));
@@ -1448,6 +1451,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       <div style="flex:1"><label class="lab">Нотатка</label><input id="f-note" value="${esc(e.note||'')}" placeholder="—"></div>
     </div>
     <div><label class="lab">Теги (через кому)</label><input id="f-tags" value="${esc((e.tags||[]).join(', '))}" placeholder="напр. відпустка, робота"></div>
+    <div id="f-tagamts" style="display:none"></div>
     ${(kind==='EXPENSE' && !existing) ? `
     <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:2px"><input type="checkbox" id="f-rfon" style="width:auto"> Частину повернули мені (оплатив за когось)</label>
     <div class="hidden" id="f-rfbox">
@@ -1517,6 +1521,38 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
   if (e.splits && e.splits.length) { splitOn.checked = true; e.splits.forEach(s => addSplitRow(s.category_id, s.amount)); }
   applySplitMode();
 
+  // ——— Розподіл суми за тегами (коли тегів ≥ 2) + перевірка суми ———
+  const tagBox = $('#f-tagamts', body);
+  const tagAmtVals = Object.assign({}, e.tagAmounts || {});
+  function entryTotal(){ return splitOn.checked ? round2([...splitRows.querySelectorAll('.sp-amt')].reduce((s,i)=>s+(num(i.value)||0),0)) : num($('#f-amt', body).value); }
+  function updTagSum(){
+    const sumEl = $('#f-tagsum', body); if (!sumEl) return;
+    const inps = [...tagBox.querySelectorAll('.tag-amt')];
+    const cur = accountCur(parseInt($('#f-acc', body).value) || 0);
+    const total = round2(entryTotal());
+    if (!inps.some(i => i.value.trim() !== '')) { sumEl.innerHTML = `<span class="muted">Не заповнено — сума розділиться між тегами порівну.</span>`; return; }
+    const sum = round2(inps.reduce((s, i) => s + (num(i.value) || 0), 0));
+    const diff = round2(total - sum);
+    if (Math.abs(diff) < 0.005) sumEl.innerHTML = `<span style="color:var(--green)">✓ Сума тегів = ${money(total, cur)}</span>`;
+    else if (diff > 0) sumEl.innerHTML = `<span style="color:var(--amber)">Не розподілено ${money(diff, cur)} · сума тегів ${money(sum, cur)} з ${money(total, cur)}</span>`;
+    else sumEl.innerHTML = `<span style="color:var(--red)">Зайве ${money(-diff, cur)} · сума тегів ${money(sum, cur)} понад ${money(total, cur)}</span>`;
+  }
+  function renderTagSplit(){
+    const tags = parseTags($('#f-tags', body).value);
+    if (tags.length < 2) { tagBox.style.display = 'none'; tagBox.innerHTML = ''; return; }
+    tagBox.style.display = '';
+    const even = round2(round2(entryTotal()) / tags.length);
+    tagBox.innerHTML = `<label class="lab" style="margin-top:2px">Розподіл суми за тегами (необовʼязково)</label>` +
+      tags.map(tg => `<div class="row" style="gap:8px;align-items:center;margin-top:4px"><span class="chip" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">#${esc(tg)}</span><input class="tag-amt" data-tag="${esc(tg)}" inputmode="decimal" style="flex:0 0 120px" value="${tagAmtVals[tg] != null ? esc(String(tagAmtVals[tg])) : ''}" placeholder="${even}"></div>`).join('') +
+      `<div class="small" id="f-tagsum" style="margin-top:6px"></div>`;
+    tagBox.querySelectorAll('.tag-amt').forEach(inp => inp.addEventListener('input', () => { tagAmtVals[inp.dataset.tag] = inp.value; updTagSum(); }));
+    updTagSum();
+  }
+  $('#f-tags', body).addEventListener('change', renderTagSplit);
+  $('#f-tags', body).addEventListener('blur', renderTagSplit);
+  $('#f-amt', body).addEventListener('input', () => { if (tagBox.style.display !== 'none') updTagSum(); });
+  renderTagSplit();
+
   openModal((existing?'Редагувати ':'') + (isInc?'надходження':'витрату'), body, {
     saveLabel: 'Зберегти',
     onSave: (close) => {
@@ -1546,6 +1582,17 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
         tags: parseTags($('#f-tags', body).value),
       };
       if (splits) rec.splits = splits;
+      // розподіл за тегами: якщо тегів ≥2 і заповнено суми — перевіряємо, що їх сума = сумі операції
+      let tagAmounts = null;
+      if (rec.tags.length >= 2) {
+        const tinps = [...tagBox.querySelectorAll('.tag-amt')];
+        if (tinps.some(i => i.value.trim() !== '')) {
+          const tsum = round2(tinps.reduce((s, i) => s + (num(i.value) || 0), 0));
+          if (Math.abs(tsum - rec.amount) > 0.01) { const cur = accountCur(exAccId); err.textContent = `Сума за тегами ${money(tsum, cur)} має дорівнювати сумі операції ${money(rec.amount, cur)}`; err.classList.remove('hidden'); return; }
+          tagAmounts = {}; tinps.forEach(i => { tagAmounts[i.dataset.tag] = round2(num(i.value)); });
+        }
+      }
+      if (tagAmounts) rec.tagAmounts = tagAmounts;
       if (existing) {
         // якщо це платіж за кредитом — синхронізуємо виплачене на різницю суми
         if (existing.loan_id) {
@@ -1557,6 +1604,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
         }
         Object.assign(existing, rec);
         if (!splits) delete existing.splits;   // прибрали розбиття — чистимо старі splits
+        if (!tagAmounts) delete existing.tagAmounts;   // прибрали розподіл за тегами
       }
       else {
         rec.id = nextId('tx'); rec.ord = nextOrd(); state.transactions.push(rec);
@@ -1915,7 +1963,7 @@ function duplicateTx(tx) {
       openTransferDialog(tx.account_id, tx.to_account_id);
     return;
   }
-  openEntryForm(tx.kind, null, null, { amount: tx.amount, account_id: tx.account_id, category_id: tx.category_id, note: tx.note, tags: tx.tags, splits: tx.splits ? tx.splits.map(s => ({ ...s })) : undefined });
+  openEntryForm(tx.kind, null, null, { amount: tx.amount, account_id: tx.account_id, category_id: tx.category_id, note: tx.note, tags: tx.tags, splits: tx.splits ? tx.splits.map(s => ({ ...s })) : undefined, tagAmounts: tx.tagAmounts ? { ...tx.tagAmounts } : undefined });
 }
 
 //==================== SVG-діаграми ====================
@@ -2492,7 +2540,7 @@ views.analytics = (app) => {
   breakdown.appendChild(mkList('Витрати по банках', bankRows, () => 'var(--accent)'));
   // витрати за тегами (операція може мати кілька тегів — сума за тегами може перевищувати загальну)
   const byTag = {};
-  state.transactions.forEach(t => { if (t.kind!=='EXPENSE' || !inR(t) || !(t.tags&&t.tags.length)) return; const v = txUAH(t); t.tags.forEach(tag => { byTag[tag] = (byTag[tag]||0) + v; }); });
+  state.transactions.forEach(t => { if (t.kind!=='EXPENSE' || !inR(t) || !(t.tags&&t.tags.length)) return; t.tags.forEach(tag => { byTag[tag] = (byTag[tag]||0) + partUAH(t, tagAmount(t, tag)); }); });
   const tagRows = Object.entries(byTag).map(([name,total]) => ({ name:'#'+name, total })).sort((a,b)=>b.total-a.total).slice(0,12);
   if (tagRows.length) breakdown.appendChild(mkList('Витрати за тегами', tagRows, () => '#8b5cf6'));
   app.appendChild(breakdown);
