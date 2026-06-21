@@ -113,6 +113,15 @@ const clone = o => JSON.parse(JSON.stringify(o));
   eq('merge: seq = максимум', m.seq.tx, 11);
 }
 
+// ——— Мультирахунковий split (кафе картою, чайові готівкою) ———
+eq('txAccountShare: не-split весь на свій рахунок', S.txAccountShare({ kind: 'EXPENSE', amount: 100, account_id: 1 }, 1), 100);
+eq('txAccountShare: не-split 0 для іншого', S.txAccountShare({ kind: 'EXPENSE', amount: 100, account_id: 1 }, 2), 0);
+{
+  const tx = { kind: 'EXPENSE', amount: 300, account_id: 2, splits: [{ category_id: 1, amount: 200 }, { category_id: 2, amount: 100, account_id: 1 }] };
+  eq('txAccountShare: split основний рахунок (картка 200)', S.txAccountShare(tx, 2), 200);
+  eq('txAccountShare: split інший рахунок (готівка 100)', S.txAccountShare(tx, 1), 100);
+}
+
 // ——— Симуляція синхронізації 2 пристроїв (тригер як у виправленому cloudSync) ———
 // Регресія: пристрій із новішою локальною міткою НЕ має перезаписувати хмару без злиття.
 function simTwoDevice(scenario){

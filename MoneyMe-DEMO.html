@@ -929,7 +929,7 @@ function txInfoNode(tx){
     if (tx.to_amount != null && T !== cur) rows.push(['Зараховано', money(tx.to_amount, T)]);
     if (tx.fee_amount > 0) rows.push(['Комісія', money(tx.fee_amount, cur)]);
   } else if (isSplitTx(tx)) {
-    tx.splits.forEach(p => rows.push([categoryById(p.category_id)?.name || 'Без категорії', money(p.amount, cur)]));
+    tx.splits.forEach(p => rows.push([(categoryById(p.category_id)?.name || 'Без категорії') + (p.account_id ? ' · ' + accountName(p.account_id) : ''), money(p.amount, accountCur(p.account_id != null ? p.account_id : tx.account_id))]));
     rows.push(['Рахунок', accountName(tx.account_id)]);
   } else {
     rows.push(['Категорія', cat ? `${cat.icon ? cat.icon + ' ' : ''}${cat.name}` : 'Без категорії']);
@@ -1024,13 +1024,21 @@ function money(amount, cur='UAH') {
 function fmtDate(iso){ if(!iso) return ''; const [y,m,d] = iso.slice(0,10).split('-'); return `${d}.${m}.${y}`; }
 
 //==================== Доменні обчислення ====================
+// Скільки EXPENSE/INCOME-операція торкається конкретного рахунку. Для split з рахунками
+// по рядках кожна стаття списується зі свого рахунку (split.account_id) або з основного.
+function txAccountShare(t, accId){
+  if ((t.kind === 'EXPENSE' || t.kind === 'INCOME') && t.splits && t.splits.length) {
+    let s = 0; t.splits.forEach(p => { if ((p.account_id != null ? p.account_id : t.account_id) === accId) s += (p.amount || 0); }); return s;
+  }
+  return t.account_id === accId ? (t.amount || 0) : 0;
+}
 function accountBalance(id) {
   const a = state.accounts.find(x => x.id === id);
   if (!a) return 0;
   let bal = a.initial_balance || 0;
   for (const t of state.transactions) {
-    if (t.kind === 'INCOME' && t.account_id === id) bal += t.amount;
-    else if (t.kind === 'EXPENSE' && t.account_id === id) bal -= t.amount;
+    if (t.kind === 'INCOME') bal += txAccountShare(t, id);
+    else if (t.kind === 'EXPENSE') bal -= txAccountShare(t, id);
     else if (t.kind === 'TRANSFER') {
       if (t.account_id === id) bal -= (t.amount + (t.fee_amount||0));
       if (t.to_account_id === id) bal += (t.to_amount||0);
@@ -1553,15 +1561,26 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     const amtEl = $('#f-amt', body); amtEl.value = sum ? String(sum) : '';
     $('#f-split-sum', body).innerHTML = `Разом: <b>${money(sum, accountCur(parseInt($('#f-acc',body).value)||0))}</b>`;
   }
-  function addSplitRow(catId, amt){
-    const r = el(`<div class="exrow" style="display:flex;gap:6px;margin-top:6px">
-      <select class="sp-cat" style="flex:1;min-width:0"><option value="">Без категорії</option>${cats.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select>
-      <input class="sp-amt" inputmode="decimal" placeholder="сума" value="${(amt!=null&&amt!=='')?amt:''}" style="flex:0 0 92px">
+  function splitAccOpts(){ const cur = accountCur(parseInt($('#f-acc', body).value) || 0); return state.accounts.filter(a => !a.archived && a.currency_code === cur); }
+  function addSplitRow(catId, amt, accId){
+    const accs = splitAccOpts();
+    const r = el(`<div class="exrow" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+      <select class="sp-cat" style="flex:1 1 44%;min-width:0"><option value="">Без категорії</option>${cats.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select>
+      <select class="sp-acc" style="flex:1 1 30%;min-width:0" title="Рахунок цієї статті"><option value="">↳ основний</option>${accs.map(a=>`<option value="${a.id}">${a.icon?a.icon+' ':''}${esc(a.name)}</option>`).join('')}</select>
+      <input class="sp-amt" inputmode="decimal" placeholder="сума" value="${(amt!=null&&amt!=='')?amt:''}" style="flex:0 0 84px">
       <button type="button" class="btn ghost sm sp-del" title="Прибрати">${ic('close')}</button></div>`);
     if (catId != null) r.querySelector('.sp-cat').value = String(catId);
+    if (accId != null) r.querySelector('.sp-acc').value = String(accId);
     r.querySelector('.sp-amt').addEventListener('input', recomputeSplit);
     r.querySelector('.sp-del').onclick = () => { r.remove(); recomputeSplit(); };
     splitRows.appendChild(r);
+    enhanceSelects(r);   // кастомні випадайки і для динамічних split-рядків
+  }
+  function rebuildSplitRows(){   // оновити рахунки (валюта основного змінилась), зберігаючи значення
+    const vals = [...splitRows.querySelectorAll('.exrow')].map(r => ({ cat: r.querySelector('.sp-cat').value, amt: r.querySelector('.sp-amt').value, acc: r.querySelector('.sp-acc') ? r.querySelector('.sp-acc').value : '' }));
+    splitRows.innerHTML = '';
+    vals.forEach(v => addSplitRow(v.cat ? parseInt(v.cat) : null, v.amt, v.acc ? parseInt(v.acc) : null));
+    recomputeSplit();
   }
   function applySplitMode(){
     const on = splitOn.checked;
@@ -1573,7 +1592,8 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
   }
   $('#f-split-add', body).onclick = () => addSplitRow(null, '');
   splitOn.onchange = applySplitMode;
-  if (e.splits && e.splits.length) { splitOn.checked = true; e.splits.forEach(s => addSplitRow(s.category_id, s.amount)); }
+  $('#f-acc', body).addEventListener('change', () => { if (splitOn.checked) rebuildSplitRows(); });   // інша валюта → оновити рахунки статей
+  if (e.splits && e.splits.length) { splitOn.checked = true; e.splits.forEach(s => addSplitRow(s.category_id, s.amount, s.account_id)); }
   applySplitMode();
 
   // ——— Розподіл суми за тегами (коли тегів ≥ 2) + перевірка суми ———
@@ -1614,7 +1634,13 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       const err = $('#f-err', body);
       let splits = null;
       if (splitOn.checked) {
-        splits = [...splitRows.querySelectorAll('.exrow')].map(r => ({ category_id: r.querySelector('.sp-cat').value ? parseInt(r.querySelector('.sp-cat').value) : null, amount: round2(num(r.querySelector('.sp-amt').value)) })).filter(s => s.amount > 0);
+        const mainAcc = parseInt($('#f-acc', body).value);
+        splits = [...splitRows.querySelectorAll('.exrow')].map(r => {
+          const s = { category_id: r.querySelector('.sp-cat').value ? parseInt(r.querySelector('.sp-cat').value) : null, amount: round2(num(r.querySelector('.sp-amt').value)) };
+          const ac = r.querySelector('.sp-acc') && r.querySelector('.sp-acc').value;
+          if (ac && parseInt(ac) !== mainAcc) s.account_id = parseInt(ac);   // інший рахунок для цієї статті
+          return s;
+        }).filter(s => s.amount > 0);
         if (!splits.length) { err.textContent = 'Додайте хоча б одну статтю із сумою більше 0'; err.classList.remove('hidden'); return; }
       }
       const amt = splits ? round2(splits.reduce((s,x)=>s+x.amount,0)) : num($('#f-amt', body).value);
@@ -2282,7 +2308,7 @@ views.transactions = (app) => {
     list.innerHTML = '';
     const q = txFilter.q.trim().toLowerCase();
     let rows = state.transactions.filter(t => {
-      if (txFilter.account && t.account_id != txFilter.account && t.to_account_id != txFilter.account) return false;
+      if (txFilter.account && t.account_id != txFilter.account && t.to_account_id != txFilter.account && !((t.splits||[]).some(p => String(p.account_id) === String(txFilter.account)))) return false;
       if (txFilter.category && !txParts(t).some(p => String(p.category_id) === String(txFilter.category))) return false;
       if (txFilter.kind && t.kind !== txFilter.kind) return false;
       if (txFilter.tag && !(t.tags||[]).includes(txFilter.tag)) return false;
@@ -2345,8 +2371,8 @@ function netWorthAt(dateISO){
   state.accounts.forEach(a => {
     let bal = a.initial_balance || 0;
     state.transactions.forEach(t => { if (t.date > dateISO) return;
-      if (t.kind==='INCOME' && t.account_id===a.id) bal += t.amount;
-      else if (t.kind==='EXPENSE' && t.account_id===a.id) bal -= t.amount;
+      if (t.kind==='INCOME') bal += txAccountShare(t, a.id);
+      else if (t.kind==='EXPENSE') bal -= txAccountShare(t, a.id);
       else if (t.kind==='TRANSFER'){ if(t.account_id===a.id) bal -= (t.amount+(t.fee_amount||0)); if(t.to_account_id===a.id) bal += (t.to_amount||0); } });
     const u = toUAH(bal, a.currency_code); total += (u==null ? bal : u);
   });
@@ -2679,6 +2705,7 @@ views.accounts = (app) => {
         });
         state.accounts = state.accounts.filter(x=>x.id!==a.id);
         state.transactions = state.transactions.filter(t=>t.account_id!==a.id && t.to_account_id!==a.id);
+        state.transactions.forEach(t => { if (t.splits) t.splits.forEach(s => { if (s.account_id === a.id) delete s.account_id; }); }); // split-статті на цьому рахунку → на основний
         state.recurring = state.recurring.filter(r=>r.account_id!==a.id);            // регулярні без рахунку — видаляємо
         state.goals.forEach(g => { if (g.account_ids) g.account_ids = g.account_ids.filter(id => id !== a.id); }); // відвʼязуємо від цілей
         state.banks.forEach(b=>{ if(b.primary_account_id===a.id) b.primary_account_id=null; }); // скидаємо «основний рахунок»
@@ -3711,7 +3738,7 @@ function sanitizeImport(d){
   fixed += txBefore - d.transactions.length;
   d.transactions.forEach(t => {
     if (t.category_id != null && !catIds.has(t.category_id)) { t.category_id = null; fixed++; }
-    if (Array.isArray(t.splits)) t.splits.forEach(s => { if (s.category_id != null && !catIds.has(s.category_id)) { s.category_id = null; fixed++; } });
+    if (Array.isArray(t.splits)) t.splits.forEach(s => { if (s.category_id != null && !catIds.has(s.category_id)) { s.category_id = null; fixed++; } if (s.account_id != null && !accIds.has(s.account_id)) { delete s.account_id; fixed++; } });
     if (t.to_account_id != null && !accIds.has(t.to_account_id)) { t.to_account_id = null; fixed++; }
     if (t.loan_id != null && !loanIds.has(t.loan_id)) { t.loan_id = null; fixed++; }
     if (t.recurring_id != null && !recIds.has(t.recurring_id)) { t.recurring_id = null; fixed++; }
