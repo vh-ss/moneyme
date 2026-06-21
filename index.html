@@ -326,7 +326,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'a4bbd7b1b5';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'fa6a8389cb';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3565,6 +3565,7 @@ views.settings = (app) => {
       <button class="btn" id="expenc">🔒 Зашифрований</button>
       <button class="btn" id="imp">⬆ Імпорт із файлу</button>
       <button class="btn" id="expcsv">⬇ Операції в CSV</button>
+      <button class="btn" id="cloudbk">☁ Версії в Drive</button>
       <input type="file" id="impfile" accept="application/json,.json,.mmenc" class="hidden">
     </div>
     <div id="bk-msg" class="small" style="margin-top:10px"></div>
@@ -3572,6 +3573,7 @@ views.settings = (app) => {
   $('#exp', backup).onclick = () => { downloadBackup(); render(); };
   $('#expenc', backup).onclick = () => downloadBackupEncrypted();
   $('#expcsv', backup).onclick = () => exportCSV();
+  $('#cloudbk', backup).onclick = () => openCloudBackups();
   $('#imp', backup).onclick = () => $('#impfile', backup).click();
   $('#impfile', backup).onchange = async (ev) => {
     const file = ev.target.files[0]; if (!file) return;
@@ -4127,10 +4129,64 @@ async function driveUpload(id, payload){
   if (!r.ok) throw new Error('Drive create ' + r.status);
   return (await r.json()).id;
 }
+// ——— Версійні бекапи в Drive (історія знімків в appDataFolder) ———
+async function driveListBackups(){
+  const q = encodeURIComponent("name contains 'moneyme-backup-'");
+  const r = await driveFetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)&pageSize=100&q=' + q);
+  if (!r.ok) throw new Error('Drive list ' + r.status);
+  const j = await r.json();
+  return (j.files || []).filter(f => /^moneyme-backup-/.test(f.name)).sort((a, b) => a.name < b.name ? -1 : 1);
+}
+async function driveCreateBackupFile(payload, name){
+  const boundary = 'mm' + Math.random().toString(16).slice(2);
+  const meta = { name, parents: ['appDataFolder'] };
+  const multipart = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) +
+    '\r\n--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + JSON.stringify(payload) + '\r\n--' + boundary + '--';
+  const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body: multipart });
+  if (!r.ok) throw new Error('Drive backup create ' + r.status);
+  return (await r.json()).id;
+}
+async function driveDeleteFile(id){ const r = await driveFetch('https://www.googleapis.com/drive/v3/files/' + id, { method: 'DELETE' }); return r.ok || r.status === 204; }
+// Best-effort: раз на день кладе версійний знімок у Drive і тримає останні keep (не валить синх при помилці).
+async function cloudVersionedBackup(keep = 10){
+  try {
+    if (!Sync.on || !getCachedToken()) return;
+    const today = todayISO();
+    if (localStorage.getItem('moneyme.sync.lastCloudBackup') === today) return;
+    const name = 'moneyme-backup-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+    await driveCreateBackupFile({ app: 'MoneyMe', version: SCHEMA_VERSION, exported_at: new Date().toISOString(), data: state }, name);
+    localStorage.setItem('moneyme.sync.lastCloudBackup', today);
+    const list = await driveListBackups();
+    if (list.length > keep) for (const f of list.slice(0, list.length - keep)) { try { await driveDeleteFile(f.id); } catch (e) {} }
+  } catch (e) { /* best-effort */ }
+}
+async function openCloudBackups(){
+  if (!syncConfigured() || !Sync.on) { alertModal('Спершу підключіть Google Drive у Налаштуваннях.'); return; }
+  let list;
+  try { await getToken(true); list = await driveListBackups(); } catch (e) { alertModal('Не вдалося отримати список: ' + (e.message || e)); return; }
+  if (!list.length) { alertModal('Хмарних бекапів ще немає — зʼявляться після синхронізації (раз на день).'); return; }
+  const body = el(`<div><div class="muted small" style="margin-bottom:8px">Версійні знімки у вашому Google Drive (останні ${list.length}). Відновлення замінить поточні дані — з можливістю скасувати.</div><div id="cb-list"></div></div>`);
+  const lb = $('#cb-list', body);
+  list.slice().reverse().forEach(f => {
+    const s = f.name.replace('moneyme-backup-', '').replace('.json', '');
+    const label = s.slice(0, 10) + ' ' + s.slice(11, 16).replace('-', ':');
+    const row = el(`<div class="row" style="justify-content:space-between;align-items:center;margin-top:8px;gap:8px"><span class="muted small tabnum">${esc(label)}</span></div>`);
+    const btn = el(`<button class="btn ghost sm">Відновити</button>`);
+    btn.onclick = async () => {
+      if (!await confirmModal('Відновити з Drive?', `Знімок ${label}: поточні дані буде замінено (можна скасувати).`, { okLabel: 'Відновити' })) return;
+      try { const d = await driveDownload(f.id); deleteWithUndo('Відновлено з Drive (' + label + ')', () => { state = migrateBackup(d); normalize(); sanitizeImport(state); }); }
+      catch (e) { alertModal('Помилка відновлення: ' + (e.message || e)); }
+    };
+    row.appendChild(btn); lb.appendChild(row);
+  });
+  openModal('Хмарні точки відновлення', body, {});
+}
 function cloudPayload(){ return { app: 'MoneyMe', version: SCHEMA_VERSION, updatedAt: state.updatedAt || new Date().toISOString(), data: state }; }
 function markSynced(at){ Sync.base = at || state.updatedAt || null; Sync.last = new Date().toISOString(); Sync.pending = false;
   localStorage.setItem('moneyme.sync.base', Sync.base || ''); localStorage.setItem('moneyme.sync.last', Sync.last);
   storeSyncBase();   // знімок узгодженого стану — основа для 3-стороннього merge наступного разу
+  cloudVersionedBackup();   // best-effort версійний знімок у Drive (раз/день)
   // якщо акаунт ще не запамʼятовано (старе підключення) — підхопимо його для тихого оновлення надалі
   if (!localStorage.getItem('moneyme.sync.account')) fetchAccountEmail().then(e => { if (e) localStorage.setItem('moneyme.sync.account', e); }); }
 function storeSyncBase(){ try { localStorage.setItem('moneyme.sync.basedata', JSON.stringify(state)); } catch (e) {} }
