@@ -764,7 +764,10 @@ function seed() {
    ['Інше','#64748b','📥']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'INCOME',color:c,icon:i}));
   return { version: SCHEMA_VERSION, seq: { acc:1, cat:cid, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1 }, accounts: [], categories: cats, transactions: [], banks: [], loans: [], recurring: [], goals: [], crypto: [], cryptoHistory: [] };
 }
-function nextId(kind){ const v = state.seq[kind]++; save(); return v; }
+// Колізійно-стійкі id (час·1000 + random): унікальні між пристроями — щоб merge не плутав
+// дві різні нові операції з однаковим послідовним номером. Лишаються числовими (форми роблять parseInt).
+let _lastGenId = 0;
+function nextId(kind){ if (state.seq) state.seq[kind] = (state.seq[kind] || 1) + 1; let v = Date.now() * 1000 + Math.floor(Math.random() * 1000); if (v <= _lastGenId) v = _lastGenId + 1; _lastGenId = v; save(); return v; }
 
 //==================== Перетягування для зміни порядку ====================
 // Робить елемент draggable; при киданні на інший такого ж типу викликає onReorder(srcId, dstId).
@@ -3954,8 +3957,45 @@ async function driveUpload(id, payload){
 function cloudPayload(){ return { app: 'MoneyMe', version: SCHEMA_VERSION, updatedAt: state.updatedAt || new Date().toISOString(), data: state }; }
 function markSynced(at){ Sync.base = at || state.updatedAt || null; Sync.last = new Date().toISOString(); Sync.pending = false;
   localStorage.setItem('moneyme.demo.sync.base', Sync.base || ''); localStorage.setItem('moneyme.demo.sync.last', Sync.last);
+  storeSyncBase();   // знімок узгодженого стану — основа для 3-стороннього merge наступного разу
   // якщо акаунт ще не запамʼятовано (старе підключення) — підхопимо його для тихого оновлення надалі
   if (!localStorage.getItem('moneyme.demo.sync.account')) fetchAccountEmail().then(e => { if (e) localStorage.setItem('moneyme.demo.sync.account', e); }); }
+function storeSyncBase(){ try { localStorage.setItem('moneyme.demo.sync.basedata', JSON.stringify(state)); } catch (e) {} }
+function loadSyncBaseData(){ try { return JSON.parse(localStorage.getItem('moneyme.demo.sync.basedata') || 'null'); } catch (e) { return null; } }
+// ——— 3-стороннє злиття станів (base = останній спільний синх, local, remote) ———
+function _idMap(arr){ const m = new Map(); (arr || []).forEach(it => { if (it && it.id != null) m.set(it.id, it); }); return m; }
+function mergeArrayType(type, base, local, remote, localNewer){
+  const B = _idMap(base[type]), L = _idMap(local[type]), R = _idMap(remote[type]);
+  const ids = new Set([...L.keys(), ...R.keys()]); const out = [];
+  ids.forEach(id => {
+    const inBase = B.has(id), l = L.get(id), r = R.get(id);
+    const baseStr = inBase ? JSON.stringify(B.get(id)) : null;
+    const editedL = !!l && inBase && JSON.stringify(l) !== baseStr;
+    const editedR = !!r && inBase && JSON.stringify(r) !== baseStr;
+    const deletedL = inBase && !l, deletedR = inBase && !r;
+    if (deletedL && !editedR) return;   // видалено локально, на хмарі не змінено → видаляємо
+    if (deletedR && !editedL) return;   // симетрично
+    let pick;
+    if (l && !r) pick = l; else if (r && !l) pick = r;
+    else if (editedL && !editedR) pick = l; else if (editedR && !editedL) pick = r;
+    else if (editedL && editedR) pick = localNewer ? l : r;   // обидва змінили той самий запис → новіша сторона
+    else pick = l;
+    out.push(pick);
+  });
+  return out;
+}
+function mergeStates(base, local, remote){
+  base = base || {};
+  const localNewer = (local.updatedAt || '') >= (remote.updatedAt || '');
+  const merged = JSON.parse(JSON.stringify(localNewer ? local : remote));   // скалярні поля — з новішої сторони
+  ['accounts','categories','transactions','banks','loans','recurring','goals','crypto'].forEach(type => { merged[type] = mergeArrayType(type, base, local, remote, localNewer); });
+  const ch = {}; [...(base.cryptoHistory||[]), ...(remote.cryptoHistory||[]), ...(local.cryptoHistory||[])].forEach(p => { if (p && p.date) ch[p.date] = p; });
+  merged.cryptoHistory = Object.values(ch).sort((a, b) => a.date < b.date ? -1 : 1).slice(-180);
+  merged.seq = merged.seq || {};
+  ['acc','cat','tx','bank','loan','rec','goal','cry'].forEach(k => merged.seq[k] = Math.max((base.seq && base.seq[k]) || 1, (local.seq && local.seq[k]) || 1, (remote.seq && remote.seq[k]) || 1));
+  merged.version = SCHEMA_VERSION;
+  return merged;
+}
 // Зберегти знімок поточного стану в точки відновлення (щоб нічого не втратити при конфлікті).
 function cloudBackupSnapshot(label, data){ try { const h = restorePoints(); h.push({ date: todayISO(), at: new Date().toISOString(), label: label || '', data: JSON.parse(JSON.stringify(data || state)) }); localStorage.setItem('moneyme.demo.history', JSON.stringify(h.slice(-7))); } catch (e) {} }
 // Чи є на цьому пристрої незасинхронізовані зміни (стан змінювався після останньої синхронізації).
@@ -4003,11 +4043,19 @@ async function cloudSync(interactive){
     if (remote && remoteUpd && remoteUpd > localUpd) {
       if (localChangedSinceBase()) {
         // справжній конфлікт: і пристрій, і хмара змінювались окремо
-        if (interactive) { setSyncStatus('idle'); openSyncConflict(remote); return; }
-        // фон: безпечний дефолт (бекап локальної + прийняти хмарну) АЛЕ з видимим попередженням
-        cloudBackupSnapshot('Версія цього пристрою (конфлікт синхр.)');
-        adoptRemote(remote); markSynced(state.updatedAt);
-        showToast('⚠️ Конфлікт синхронізації: версію цього пристрою збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 9000);
+        const baseData = loadSyncBaseData();
+        if (baseData) {
+          // 3-стороннє злиття: обʼєднуємо додавання/зміни з обох сторін (нічого не губимо)
+          cloudBackupSnapshot('Перед обʼєднанням (merge)');
+          const merged = mergeStates(baseData, state, migrateBackup(remote));
+          Sync.applying = true; state = merged; normalize(); sanitizeImport(state); Sync.applying = false;
+          state.updatedAt = new Date().toISOString();   // нова обʼєднана версія — новіша за обидві
+          persist();
+          Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());   // вивантажуємо обʼєднане, щоб хмара зійшлась
+          markSynced(state.updatedAt); render();
+          showToast('🔀 Зміни обʼєднано з хмарою (merge)', null, null, 4000);
+        } else if (interactive) { setSyncStatus('idle'); openSyncConflict(remote); return; }   // немає бази — питаємо
+        else { cloudBackupSnapshot('Версія цього пристрою (конфлікт синхр.)'); adoptRemote(remote); markSynced(state.updatedAt); showToast('⚠️ Конфлікт синхронізації: версію цього пристрою збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 9000); }
       } else {
         adoptRemote(remote);
         markSynced(state.updatedAt);

@@ -81,6 +81,38 @@ ok('monthRangeOf лютий 2026', S.monthRangeOf('2026-02').from === '2026-02-0
 eq('addMonthsYM 2026-12 +1', S.addMonthsYM('2026-12', 1), '2027-01');
 eq('addMonthsYM 2026-03 -4', S.addMonthsYM('2026-03', -4), '2025-11');
 
+// ——— 3-стороннє злиття (merge) ———
+const mkBase = () => ({ updatedAt: '2026-06-20T10:00:00Z', accounts: [{ id: 1, name: 'A' }], categories: [], transactions: [{ id: 10, note: 'base', account_id: 1 }], banks: [], loans: [], recurring: [], goals: [], crypto: [], cryptoHistory: [], seq: { acc: 2, cat: 1, tx: 11, bank: 1, loan: 1, rec: 1, goal: 1, cry: 1 } });
+const clone = o => JSON.parse(JSON.stringify(o));
+{
+  const base = mkBase();
+  const lAdd = clone(base); lAdd.updatedAt = '2026-06-20T12:00:00Z'; lAdd.transactions.push({ id: 20, note: 'local', account_id: 1 });
+  const rAdd = clone(base); rAdd.updatedAt = '2026-06-20T11:00:00Z'; rAdd.transactions.push({ id: 30, note: 'remote', account_id: 1 });
+  const m = S.mergeStates(base, lAdd, rAdd);
+  ok('merge: додавання з обох сторін збережено', JSON.stringify(m.transactions.map(t => t.id).sort((a,b)=>a-b)) === JSON.stringify([10, 20, 30]));
+}
+{
+  const base = mkBase();
+  const lDel = clone(base); lDel.updatedAt = '2026-06-20T12:00:00Z'; lDel.transactions = [];
+  const rSame = clone(base);
+  ok('merge: видалення поважається (хмара без змін)', S.mergeStates(base, lDel, rSame).transactions.length === 0);
+}
+{
+  const base = mkBase();
+  const lDel = clone(base); lDel.updatedAt = '2026-06-20T12:00:00Z'; lDel.transactions = [];
+  const rEdit = clone(base); rEdit.updatedAt = '2026-06-20T11:30:00Z'; rEdit.transactions[0].note = 'edited';
+  const m = S.mergeStates(base, lDel, rEdit);
+  ok('merge: редагування на хмарі перемагає видалення', m.transactions.length === 1 && m.transactions[0].note === 'edited');
+}
+{
+  const base = mkBase();
+  const lE = clone(base); lE.updatedAt = '2026-06-20T13:00:00Z'; lE.transactions[0].note = 'L';
+  const rE = clone(base); rE.updatedAt = '2026-06-20T11:00:00Z'; rE.transactions[0].note = 'R';
+  const m = S.mergeStates(base, lE, rE);
+  ok('merge: конкурентне редагування → новіша сторона (local)', m.transactions[0].note === 'L');
+  eq('merge: seq = максимум', m.seq.tx, 11);
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);
