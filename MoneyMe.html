@@ -1844,6 +1844,10 @@ views.dashboard = (app) => {
   const burden = {};
   state.loans.filter(loanActive).forEach(l => { const b = bankById(l.bank_id); const c = b?b.currency:'UAH'; burden[c] = (burden[c]||0) + loanMonthly(l); });
   const burdenStr = Object.entries(burden).map(([c,v])=>money(round2(v),c)).join(' + ');
+  // навантаження підписок/регулярних витрат за місяць (за валютами)
+  const subM = recurringMonthlyByCur('EXPENSE');
+  const hasSub = Object.values(subM).some(v => Math.abs(v) > 0.005);
+  const subStr = curMapStr(subM);
 
   // підсумок у UAH за курсом
   let uah = 0, missing = false;
@@ -1871,6 +1875,7 @@ views.dashboard = (app) => {
       <div><span class="muted">Витрати (міс.): </span><b style="color:var(--red)">${money(exp)}</b></div>
       <div><span class="muted">Комісії (міс.): </span><b style="color:var(--amber)">${money(fees)}</b></div>
       ${burdenStr?`<div><span class="muted">Кредити/міс: </span><b style="color:var(--amber)">${burdenStr}</b></div>`:''}
+      ${hasSub?`<div><span class="muted">Підписки/міс: </span><b style="color:var(--amber)">${subStr}</b></div>`:''}
     </div>
   </section>`);
 
@@ -2150,9 +2155,43 @@ views.analytics = (app) => {
   </div>`);
   app.appendChild(sum);
 
-  // бюджети (кожна категорія у своєму циклі — місяць/рік)
-  const bcard = budgetsCard();
+  // бюджети (кожна категорія у своєму циклі); неактивні (0%) згортаємо, як на Огляді
+  const bcard = budgetsCard({ hideZero: true });
   if (bcard) { bcard.style.marginTop = '14px'; app.appendChild(bcard); }
+
+  // ——— Кредити: підсумок ———
+  const activeLoans = state.loans.filter(loanActive);
+  if (activeLoans.length) {
+    const lc = el(`<section class="card" style="padding:14px 16px;margin-top:14px">
+      <div class="row" style="justify-content:space-between;align-items:baseline;gap:8px"><h2 style="margin:0">Кредити</h2><button class="btn ghost sm" id="an-loans">До кредитів</button></div>
+      <div class="row small" style="gap:8px 18px;flex-wrap:wrap;margin-top:8px">
+        <div><span class="muted">Активних: </span><b>${activeLoans.length}</b></div>
+        <div><span class="muted">Залишок боргу: </span><b style="color:var(--red)">${curMapStr(loansByCur(loanOutstanding))}</b></div>
+        <div><span class="muted">Платіж/міс: </span><b style="color:var(--amber)">${curMapStr(loansByCur(loanMonthly))}</b></div>
+      </div>
+      <div style="margin-top:8px">${activeLoans.map(l => { const cur = bankById(l.bank_id)?.currency || 'UAH'; return `<div class="row" style="justify-content:space-between;gap:10px;font-size:13px;margin-top:5px"><span class="ln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.name||'Кредит')}</span><span class="muted tabnum" style="flex:0 0 auto">залишок ${money(loanOutstanding(l),cur)} · ${money(loanMonthly(l),cur)}/міс</span></div>`; }).join('')}</div>
+    </section>`);
+    $('#an-loans', lc).onclick = () => navigate('credits');
+    app.appendChild(lc);
+  }
+
+  // ——— Регулярні платежі: підсумок ———
+  const activeRec = state.recurring.filter(r => r.active !== false);
+  if (activeRec.length) {
+    const incM = recurringMonthlyByCur('INCOME');
+    const hasInc = Object.values(incM).some(v => Math.abs(v) > 0.005);
+    const rc = el(`<section class="card" style="padding:14px 16px;margin-top:14px">
+      <div class="row" style="justify-content:space-between;align-items:baseline;gap:8px"><h2 style="margin:0">Регулярні платежі</h2><button class="btn ghost sm" id="an-rec">До регулярних</button></div>
+      <div class="row small" style="gap:8px 18px;flex-wrap:wrap;margin-top:8px">
+        <div><span class="muted">Активних: </span><b>${activeRec.length}</b></div>
+        <div><span class="muted">Витрати/міс: </span><b style="color:var(--red)">${curMapStr(recurringMonthlyByCur('EXPENSE'))}</b></div>
+        ${hasInc?`<div><span class="muted">Надходження/міс: </span><b style="color:var(--green)">${curMapStr(incM)}</b></div>`:''}
+      </div>
+      <div style="margin-top:8px">${activeRec.map(r => { const cur = accountCur(r.account_id); return `<div class="row" style="justify-content:space-between;gap:10px;font-size:13px;margin-top:5px"><span class="ln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="color:${r.kind==='INCOME'?'var(--green)':'var(--red)'}">${r.kind==='INCOME'?'+':'−'}</b> ${esc(r.name||'Платіж')} <span class="muted" style="font-size:11px">${FREQ_LABEL[r.freq]||''}</span></span><span class="muted tabnum" style="flex:0 0 auto">${money(r.amount,cur)} · ${money(recurMonthlyAmt(r),cur)}/міс</span></div>`; }).join('')}</div>
+    </section>`);
+    $('#an-rec', rc).onclick = () => navigate('recurring');
+    app.appendChild(rc);
+  }
 
   // графік чистих активів (останні 12 місяців)
   const nwPoints = lastMonthEnds(12).map(m => ({ label: m.label, value: netWorthAt(m.iso) }));
@@ -2995,6 +3034,14 @@ function openCryptoForm(existing){
 
 //==================== Регулярні платежі ====================
 function dueRecurring(){ const t = todayISO(); return state.recurring.filter(r => r.active !== false && r.next_date && r.next_date <= t); }
+// Місячний еквівалент суми регулярного (тиждень → ×52/12).
+function recurMonthlyAmt(r){ return round2((r.amount || 0) * (r.freq === 'weekly' ? 52/12 : 1)); }
+// Місячне навантаження регулярних за валютами, для типу (EXPENSE/INCOME).
+function recurringMonthlyByCur(kind){ const m = {}; state.recurring.filter(r => r.active !== false && r.kind === kind).forEach(r => { const c = accountCur(r.account_id); m[c] = (m[c] || 0) + recurMonthlyAmt(r); }); return m; }
+// Агрегат по активних кредитах за валютами (fn — що сумувати: залишок/платіж).
+function loansByCur(fn){ const m = {}; state.loans.filter(loanActive).forEach(l => { const c = bankById(l.bank_id)?.currency || 'UAH'; m[c] = (m[c] || 0) + fn(l); }); return m; }
+// «{UAH: 100, USD: 5}» → «100,00 ₴ + 5,00 $» (пропускає ~нульові).
+function curMapStr(m){ const e = Object.entries(m).filter(([c, v]) => Math.abs(v) > 0.005); return e.length ? e.map(([c, v]) => money(round2(v), c)).join(' + ') : '—'; }
 function recordRecurring(r){
   // операцію датуємо днем запису (а прострочену — її запланованою датою), щоб вона була видима «зараз»
   const txDate = (r.next_date && r.next_date <= todayISO()) ? r.next_date : todayISO();
