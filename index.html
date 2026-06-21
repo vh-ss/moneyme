@@ -299,7 +299,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '7fb91fe267';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'd7022dfced';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3155,6 +3155,36 @@ function curMapStr(m){ const e = Object.entries(m).filter(([c, v]) => Math.abs(v
 // Місячні регулярні/кредитні потоки, зведені в гривню (для прогнозу балансу).
 function recurringMonthlyUAH(kind){ return round2(state.recurring.filter(r => r.active !== false && r.kind === kind).reduce((s, r) => { const a = recurMonthlyAmt(r); const u = toUAH(a, accountCur(r.account_id)); return s + (u == null ? a : u); }, 0)); }
 function loansMonthlyUAH(){ return round2(state.loans.filter(loanActive).reduce((s, l) => { const a = loanMonthly(l); const u = toUAH(a, bankById(l.bank_id)?.currency || 'UAH'); return s + (u == null ? a : u); }, 0)); }
+// Графік амортизації від поточного залишку: помісячно платіж = тіло + відсотки.
+function loanSchedule(l){
+  const M = loanMonthly(l), i = loanMonthlyRate(l);
+  let bal = loanOutstanding(l); const rows = []; let n = 0;
+  while (bal > 0.005 && n < 600) {
+    n++;
+    const interest = round2(bal * i);
+    let principal = round2(M - interest);
+    if (principal <= 0) break;   // платіж не покриває відсотки
+    if (principal > bal) principal = bal;
+    bal = round2(bal - principal);
+    rows.push({ n, interest, principal, pay: round2(principal + interest), bal: Math.max(0, bal) });
+  }
+  return rows;
+}
+function openLoanSchedule(l, bank){
+  const cur = bank.currency, rows = loanSchedule(l);
+  if (!rows.length) { alert('Платіж не покриває відсотки — графік неможливо порахувати.'); return; }
+  const totalInt = round2(rows.reduce((s, r) => s + r.interest, 0));
+  const startISO = l.due_date || todayISO();
+  const body = el(`<div>
+    <div class="muted small" style="margin-bottom:8px">Залишок <b class="tabnum">${money(loanOutstanding(l),cur)}</b> · ${rows.length} платежів · переплата відсотків ≈ <b class="tabnum" style="color:var(--amber)">${money(totalInt,cur)}</b></div>
+    <div style="max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:10px">
+      <table class="tabnum" style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="position:sticky;top:0;background:var(--card)"><th style="text-align:left;padding:7px 9px">Дата</th><th style="text-align:right;padding:7px 9px">Платіж</th><th style="text-align:right;padding:7px 9px">%</th><th style="text-align:right;padding:7px 9px">Тіло</th><th style="text-align:right;padding:7px 9px">Залишок</th></tr></thead>
+        <tbody>${rows.map(r => `<tr style="border-top:1px solid var(--softline)"><td style="padding:6px 9px">${fmtDate(addMonthsISO(startISO, r.n-1))}</td><td style="text-align:right;padding:6px 9px">${money(r.pay,cur)}</td><td style="text-align:right;padding:6px 9px;color:var(--amber)">${money(r.interest,cur)}</td><td style="text-align:right;padding:6px 9px">${money(r.principal,cur)}</td><td style="text-align:right;padding:6px 9px">${money(r.bal,cur)}</td></tr>`).join('')}</tbody>
+      </table>
+    </div></div>`);
+  openModal('Графік платежів — ' + (l.name||'Кредит'), body, { wide: true });
+}
 // Категорії з перевитратою бюджету в поточному циклі (для алертів).
 function overBudgetCats(){ return state.categories.filter(c => c.kind === 'EXPENSE' && (c.budget || 0) > 0).map(c => { const r = budgetRange(c); const eb = effectiveBudget(c); const spent = categorySpent(c.id, r.from, r.to); return { c, eb, spent, pct: eb > 0 ? Math.round(spent / eb * 100) : 0 }; }).filter(b => b.spent > b.eb).sort((a, b) => b.pct - a.pct); }
 function recordRecurring(r){
@@ -3568,6 +3598,7 @@ function loanRow(l, bank) {
     pay.onclick = () => openLoanPayment(l, bank);
     acts.appendChild(pay);
     if (l.has_interest && l.rate > 0) { const po = el(`<button class="btn ghost sm" title="Калькулятор дострокового погашення">Достроково</button>`); po.onclick = () => openPayoff(l, bank); acts.appendChild(po); }
+    const sch = el(`<button class="btn ghost sm" title="Графік платежів (амортизація)">Графік</button>`); sch.onclick = () => openLoanSchedule(l, bank); acts.appendChild(sch);
   }
   const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick = () => openLoanForm(l);
   const del = el(`<button class="btn danger sm">${ic('close')}</button>`);
