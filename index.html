@@ -299,7 +299,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'ec220944b1';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '7fb91fe267';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -2362,6 +2362,11 @@ views.analytics = (app) => {
   };
   breakdown.appendChild(mkList('Витрати по рахунках', accRows, r => r.a.color || 'var(--accent)'));
   breakdown.appendChild(mkList('Витрати по банках', bankRows, () => 'var(--accent)'));
+  // витрати за тегами (операція може мати кілька тегів — сума за тегами може перевищувати загальну)
+  const byTag = {};
+  state.transactions.forEach(t => { if (t.kind!=='EXPENSE' || !inR(t) || !(t.tags&&t.tags.length)) return; const v = txUAH(t); t.tags.forEach(tag => { byTag[tag] = (byTag[tag]||0) + v; }); });
+  const tagRows = Object.entries(byTag).map(([name,total]) => ({ name:'#'+name, total })).sort((a,b)=>b.total-a.total).slice(0,12);
+  if (tagRows.length) breakdown.appendChild(mkList('Витрати за тегами', tagRows, () => '#8b5cf6'));
   app.appendChild(breakdown);
 
   // помісячна динаміка
@@ -4006,6 +4011,8 @@ function cloudDisconnect(){
 
 //==================== Старт ====================
 navigate(hashView() || 'dashboard');   // відкриваємо вкладку з URL (зберігається при F5)
+// PWA-shortcuts: швидке додавання з домашнього екрана (?add=expense|income)
+(function(){ try { const add = new URLSearchParams(location.search).get('add'); if (add === 'expense' || add === 'income') { history.replaceState(null, '', location.pathname + location.hash); openEntryForm(add === 'income' ? 'INCOME' : 'EXPENSE'); } } catch (e) {} })();
 ensureRatesFresh();
 ensureCryptoFresh();   // ціни крипти (раз на день)
 ensureDailySnapshot();   // точка відновлення на сьогодні
