@@ -287,7 +287,7 @@
     <a data-view="goals"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5"/></svg></span><span class="nt">Цілі</span></a>
     <a data-view="recurring"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 0 1 14.4-6.1"/><path d="M18.5 2.5v4h-4"/><path d="M20.5 12a8.5 8.5 0 0 1-14.4 6.1"/><path d="M5.5 21.5v-4h4"/></svg></span><span class="nt">Регулярні</span></a>
     <a data-view="categories"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 11.3 11 3.7a2 2 0 0 1 1.4-.6h5.7A1.9 1.9 0 0 1 20 5v5.7a2 2 0 0 1-.6 1.4l-7.6 7.6a2 2 0 0 1-2.8 0L3.4 14.1a2 2 0 0 1 0-2.8Z"/><circle cx="16" cy="8" r="1.5" fill="currentColor" stroke="none"/></svg></span><span class="nt">Категорії</span></a>
-    <button class="navmore-btn" id="navmore" type="button" title="Більше" style="display:none"><span class="ni"><svg viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg></span><span class="nt">Більше</span></button>
+    <button class="navmore-btn" id="navmore" type="button" title="Більше" aria-label="Більше розділів" style="display:none"><span class="ni"><svg viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg></span><span class="nt">Більше</span></button>
     <a data-view="settings" class="nav-end"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18.34 10.16 L21.12 10.78 L21.12 13.22 L18.34 13.84 L17.78 15.18 L19.31 17.58 L17.58 19.31 L15.18 17.78 L13.84 18.34 L13.22 21.12 L10.78 21.12 L10.16 18.34 L8.82 17.78 L6.42 19.31 L4.69 17.58 L6.22 15.18 L5.66 13.84 L2.88 13.22 L2.88 10.78 L5.66 10.16 L6.22 8.82 L4.69 6.42 L6.42 4.69 L8.82 6.22 L10.16 5.66 L10.78 2.88 L13.22 2.88 L13.84 5.66 L15.18 6.22 L17.58 4.69 L19.31 6.42 L17.78 8.82 Z"/><circle cx="12" cy="12" r="3.1"/></svg></span><span class="nt">Налаштування</span></a>
   </div>
 </header>
@@ -299,7 +299,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'f0d3fb5d49';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'ec220944b1';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -499,7 +499,7 @@ function translateTree(root){
   root.querySelectorAll('option').forEach(o => { const r = tStr(o.textContent); if (r !== o.textContent) o.textContent = r; });
 }
 const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], crypto:['Крипто','Crypto'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
-function setNavLabels(){ document.querySelectorAll('.nav a').forEach(a => { const m = NAV_LABELS[a.dataset.view]; const nt = a.querySelector('.nt'); if (m && nt) nt.textContent = (lang === 'en') ? m[1] : m[0]; }); }
+function setNavLabels(){ document.querySelectorAll('.nav a').forEach(a => { const m = NAV_LABELS[a.dataset.view]; const nt = a.querySelector('.nt'); if (m) { const lbl = (lang === 'en') ? m[1] : m[0]; if (nt) nt.textContent = lbl; a.setAttribute('aria-label', lbl); } }); }
 // #app перебудовується щоразу з українського джерела, тож переклад у EN ставимо поверх; назад у UK — просто не перекладаємо.
 function applyLang(){ setNavLabels(); if (lang === 'en') translateTree(document.getElementById('app')); }
 
@@ -1112,7 +1112,11 @@ function navigate(v){
 function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTML = ''; views[currentView](app); applyLang(); window.scrollTo(0, y); }
 
 window.addEventListener('hashchange', () => { const v = hashView(); if (v && v !== currentView) navigate(v); });
-document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigate(a.dataset.view); }));
+document.querySelectorAll('.nav a').forEach(a => {
+  a.setAttribute('tabindex', '0'); a.setAttribute('role', 'link');   // <a> без href сам не фокусується — робимо доступним з клавіатури
+  a.addEventListener('click', e => { e.preventDefault(); navigate(a.dataset.view); });
+  a.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(a.dataset.view); } });
+});
 { const more = document.getElementById('navmore'); if (more) more.addEventListener('click', e => { e.preventDefault(); openNavMore(); }); }
 
 // Свайпи вліво/вправо — перехід між вкладками (тач).
@@ -1149,8 +1153,10 @@ function swipeNavigate(dir){
 //==================== Модалка ====================
 function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide=false } = {}) {
   const root = $('#modal-root');
+  const prevFocus = document.activeElement;   // щоб повернути фокус після закриття (a11y)
   const overlay = el(`<div class="overlay"></div>`);
-  const modal = el(`<div class="card modal"></div>`);
+  const modal = el(`<div class="card modal" role="dialog" aria-modal="true"></div>`);
+  modal.setAttribute('aria-label', title);
   const head = el(`<div class="mhead"><h2>${esc(title)}</h2><button class="x" aria-label="Закрити">×</button></div>`);
   const body = el(`<div class="mbody"></div>`);
   body.appendChild(bodyNode);
@@ -1164,12 +1170,13 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
   }
   overlay.appendChild(modal); root.appendChild(overlay);
   translateTree(modal);
-  function close(){ overlay.remove(); }
+  function close(){ overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} } }
   overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(); });
   head.querySelector('.x').onclick = close;
-  document.addEventListener('keydown', function onKey(e){ if(e.key==='Escape'){ close(); document.removeEventListener('keydown', onKey);} });
-  const firstInput = modal.querySelector('input, select');
-  if (firstInput) firstInput.focus();
+  function onKey(e){ if (e.key === 'Escape') close(); }
+  document.addEventListener('keydown', onKey);
+  const firstFocus = modal.querySelector('input, select') || head.querySelector('.x');
+  if (firstFocus) firstFocus.focus();
   return close;
 }
 
