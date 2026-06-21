@@ -189,8 +189,9 @@
   .swatch.sel { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
 
   /* modal */
-  .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: grid; place-items: center; padding: 16px; z-index: 50; }
-  .modal { width: 100%; max-width: 430px; max-height: 90vh; overflow-y: auto; padding: 20px; }
+  .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: grid; place-items: center; padding: 16px; z-index: 50; }
+  .modal { width: 100%; max-width: 430px; max-height: 90vh; overflow-y: auto; padding: 20px; box-shadow: 0 16px 48px rgba(0,0,0,.34); }
+  @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
   .modal .mhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
   .modal .mhead h2 { font-size: 18px; }
   .modal .x { border: 0; background: transparent; font-size: 22px; color: var(--muted); line-height: 1; }
@@ -255,8 +256,11 @@
     .row.wrapsm { flex-wrap: wrap; }
     .sechead { flex-direction: column; align-items: flex-start; gap: 2px; }
     .sechead .hint { text-align: left; font-size: 11px; }
-    .modal { max-width: 100%; padding: 16px; border-radius: 16px; }
-    .overlay { padding: 8px; align-items: flex-end; }
+    /* мобільний: охайний нижній лист (bottom sheet) замість центрованого діалогу */
+    .overlay { padding: 0; align-items: end; }
+    .modal { max-width: 100%; width: 100%; max-height: 92vh; border-radius: 22px 22px 0 0; padding: 6px 16px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -12px 44px rgba(0,0,0,.42); animation: sheetUp .2s ease; }
+    .modal::before { content: ''; display: block; width: 42px; height: 4px; border-radius: 99px; background: var(--inputline); margin: 8px auto 12px; }
+    .modal .mhead { margin-bottom: 12px; }
     .accgrid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
   }
 
@@ -306,7 +310,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'f69ce4231b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '5160b57b61';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
