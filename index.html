@@ -296,7 +296,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'c38243348b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '7877a56d21';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -2418,6 +2418,9 @@ function openAccountForm(existing) {
     <div class="err hidden" id="a-err"></div>
   </div>`);
   $('#a-type', body).value = e.type; $('#a-cur', body).value = e.currency_code;
+  // Валюту рахунку не можна змінювати, якщо по ньому вже є операції (інакше суми «попливуть»).
+  const accHasTx = existing && state.transactions.some(t => t.account_id === existing.id || t.to_account_id === existing.id);
+  if (accHasTx) { const sel = $('#a-cur', body); sel.disabled = true; sel.style.opacity = '.6'; sel.insertAdjacentElement('afterend', el(`<div class="muted small" style="margin-top:4px">Валюту не можна змінити — по рахунку вже є операції.</div>`)); }
   $('#a-bank', body).value = e.bank_id ? String(e.bank_id) : '';
   $('#a-emoji', body).appendChild(emojiPicker($('#a-icon', body)));
   $('#a-color', body).appendChild(swatchPicker(color, c => color = c));
@@ -2426,7 +2429,7 @@ function openAccountForm(existing) {
       const name = $('#a-name', body).value.trim();
       const err = $('#a-err', body);
       if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
-      const rec = { name, type:$('#a-type',body).value, currency_code:$('#a-cur',body).value,
+      const rec = { name, type:$('#a-type',body).value, currency_code: accHasTx ? existing.currency_code : $('#a-cur',body).value,
         bank_id: $('#a-bank',body).value ? parseInt($('#a-bank',body).value) : null,
         icon: $('#a-icon',body).value.trim() || null,
         initial_balance: round2(num($('#a-init',body).value)), color };
@@ -3223,10 +3226,11 @@ views.settings = (app) => {
       const raw = JSON.parse(await file.text());
       const data = migrateBackup(raw);   // підтримка старих і нових форматів
       if (!Array.isArray(data.accounts) || !Array.isArray(data.transactions)) throw new Error('Файл не схожий на бекап MoneyMe');
+      const fixed = sanitizeImport(data);   // прибрати осиротілі посилання (цілісність)
       if (!confirm('Імпорт ЗАМІНИТЬ усі поточні дані. Продовжити?')) return;
       state = data;
       normalize();
-      save(); msg.style.color='var(--green)'; msg.textContent='Дані успішно відновлено.'; render();
+      save(); msg.style.color='var(--green)'; msg.textContent='Дані успішно відновлено.' + (fixed ? ` Виправлено ${fixed} некоректних посилань.` : ''); render();
     } catch (e) { msg.style.color='var(--red)'; msg.textContent='Помилка імпорту: '+e.message; }
     ev.target.value='';
   };
@@ -3310,6 +3314,35 @@ function migrateBackup(raw){
   ['acc','cat','tx','bank','loan','rec','goal'].forEach(k => { if (d.seq[k] == null) d.seq[k] = rs[k]; });
   d.version = SCHEMA_VERSION;
   return d;
+}
+// Прибирає «осиротілі» посилання після імпорту (на неіснуючі рахунки/категорії/банки/кредити).
+// Повертає кількість виправлень. Захищає цілісність від зіпсованого/чужого бекапу.
+function sanitizeImport(d){
+  let fixed = 0;
+  const accIds = new Set((d.accounts||[]).map(a=>a.id));
+  const catIds = new Set((d.categories||[]).map(c=>c.id));
+  const bankIds = new Set((d.banks||[]).map(b=>b.id));
+  const loanIds = new Set((d.loans||[]).map(l=>l.id));
+  const recIds = new Set((d.recurring||[]).map(r=>r.id));
+  const txBefore = (d.transactions||[]).length;
+  d.transactions = (d.transactions||[]).filter(t => accIds.has(t.account_id));   // без валідного рахунку-джерела операція непридатна
+  fixed += txBefore - d.transactions.length;
+  d.transactions.forEach(t => {
+    if (t.category_id != null && !catIds.has(t.category_id)) { t.category_id = null; fixed++; }
+    if (Array.isArray(t.splits)) t.splits.forEach(s => { if (s.category_id != null && !catIds.has(s.category_id)) { s.category_id = null; fixed++; } });
+    if (t.to_account_id != null && !accIds.has(t.to_account_id)) { t.to_account_id = null; fixed++; }
+    if (t.loan_id != null && !loanIds.has(t.loan_id)) { t.loan_id = null; fixed++; }
+    if (t.recurring_id != null && !recIds.has(t.recurring_id)) { t.recurring_id = null; fixed++; }
+  });
+  const tx2 = d.transactions.length;
+  d.transactions = d.transactions.filter(t => t.kind !== 'TRANSFER' || t.to_account_id != null);   // переказ без призначення прибираємо
+  fixed += tx2 - d.transactions.length;
+  (d.accounts||[]).forEach(a => { if (a.bank_id != null && !bankIds.has(a.bank_id)) { a.bank_id = null; fixed++; } });
+  (d.loans||[]).forEach(l => { if (l.bank_id != null && !bankIds.has(l.bank_id)) { l.bank_id = null; fixed++; } });
+  (d.banks||[]).forEach(b => { if (b.primary_account_id != null && !accIds.has(b.primary_account_id)) { b.primary_account_id = null; fixed++; } });
+  (d.recurring||[]).forEach(r => { if (r.account_id != null && !accIds.has(r.account_id)) { r.account_id = null; fixed++; } if (r.category_id != null && !catIds.has(r.category_id)) { r.category_id = null; fixed++; } });
+  (d.goals||[]).forEach(g => { if (Array.isArray(g.account_ids)) { const b = g.account_ids.length; g.account_ids = g.account_ids.filter(id => accIds.has(id)); fixed += b - g.account_ids.length; } });
+  return fixed;
 }
 
 //==================== Вигляд: Кредити ====================
