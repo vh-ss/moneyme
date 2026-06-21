@@ -6,6 +6,10 @@ const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const d = __dirname;
 
+// Юніт-тести чистих функцій — збірка падає, якщо доменна логіка зламана.
+try { execFileSync('node', [path.join(d, 'tests.cjs')], { stdio: 'inherit' }); }
+catch (e) { console.error('Юніт-тести впали — збірку зупинено.'); process.exit(1); }
+
 const src = fs.readFileSync(path.join(d, 'MoneyMe.html'), 'utf8');
 // Версія збірки = хеш контенту застосунку + статичних ассетів (іконки, manifest) — щоб зміна
 // будь-якого ассета теж бастила кеш service worker. APP_VERSION='dev' у src — стабільно.
