@@ -2701,7 +2701,7 @@ views.goals = (app) => {
       acts.appendChild(inB); acts.appendChild(outB);
     }
     const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick = () => openGoalForm(g);
-    const del = el(`<button class="btn danger sm">${ic('close')}</button>`); del.onclick = () => deleteWithUndo('Ціль видалено', () => { state.goals = state.goals.filter(x=>x.id!==g.id); });
+    const del = el(`<button class="btn danger sm">${ic('close')}</button>`); del.onclick = () => confirmDeleteImpact(`Ціль «${g.name||'Ціль'}»`, [], { force: true, hint: `Накопичено ${money(goalSaved(g), g.currency)} з ${money(g.target||0, g.currency)}.${(g.account_ids&&g.account_ids.length)?' Підвʼязані рахунки залишаться — лише відвʼяжуться від цілі.':''}`, onConfirm: () => deleteWithUndo('Ціль видалено', () => { state.goals = state.goals.filter(x=>x.id!==g.id); }) });
     acts.appendChild(ed); acts.appendChild(del);
     grid.appendChild(card);
   });
@@ -2894,7 +2894,7 @@ views.crypto = (app) => {
     </div>`);
     const a = row.lastElementChild;
     const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick = () => openCryptoForm(h);
-    const del = el(`<button class="btn danger sm">${ic('close')}</button>`); del.onclick = () => deleteWithUndo(`${h.symbol} видалено`, () => { state.crypto = state.crypto.filter(x => x.id !== h.id); });
+    const del = el(`<button class="btn danger sm">${ic('close')}</button>`); del.onclick = () => confirmDeleteImpact(`${h.symbol}`, [], { force: true, hint: `${fmtAmt(h.amount)} ${h.symbol} ≈ ${money(cryptoValueUsd(h),'USD')}${(h.exchanges&&h.exchanges.length)?' · біржі: '+h.exchanges.map(x=>typeof x==='string'?x:x.name).filter(Boolean).join(', '):''}`, onConfirm: () => deleteWithUndo(`${h.symbol} видалено`, () => { state.crypto = state.crypto.filter(x => x.id !== h.id); }) });
     a.appendChild(ed); a.appendChild(del);
     card.appendChild(row);
   });
