@@ -184,6 +184,22 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ctxmenu .sep { height: 1px; background: var(--line); margin: 4px 6px; }
 
+  /* Кастомний select — кнопка як інпут + випадайка в стилі контекстного меню (замість потворного нативного) */
+  .selbtn { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border: 1px solid var(--inputline); border-radius: 11px; padding: 9px 11px; font-size: 14px; font-family: inherit;
+    background: var(--input); color: var(--ink); cursor: pointer; text-align: left; }
+  .selbtn .seltxt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .selbtn .selcar { color: var(--muted); flex: 0 0 auto; font-size: 11px; }
+  .selbtn:disabled { opacity: .6; cursor: default; }
+  .selmenu { position: fixed; z-index: 70; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 12px 34px rgba(0,0,0,.32); padding: 6px; max-height: 60vh; overflow-y: auto; }
+  .selmenu .ci { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px;
+    border-radius: 9px; font-size: 15px; cursor: pointer; }
+  .selmenu .ci:hover, .selmenu .ci.sel { background: var(--hover); }
+  .selmenu .ci.sel { font-weight: 600; }
+  .selmenu .ci .cichk { color: var(--accent); flex: 0 0 auto; }
+  .selmenu .chead { padding: 8px 12px 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
   .swatch { width: 28px; height: 28px; border-radius: 999px; border: 0; }
   .swatch.sel { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
@@ -1143,7 +1159,7 @@ function navigate(v){
   if (changed) window.scrollTo(0, 0);   // при зміні вкладки — на початок
 }
 // Перемальовує поточну вкладку, зберігаючи позицію прокрутки (щоб зміни оновлювались «на місці»).
-function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTML = ''; views[currentView](app); applyLang(); window.scrollTo(0, y); }
+function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTML = ''; views[currentView](app); applyLang(); enhanceSelects(app); window.scrollTo(0, y); }
 
 window.addEventListener('hashchange', () => { const v = hashView(); if (v && v !== currentView) navigate(v); });
 document.querySelectorAll('.nav a').forEach(a => {
@@ -1203,13 +1219,13 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
     foot.appendChild(cancel); foot.appendChild(ok); modal.appendChild(foot);
   }
   overlay.appendChild(modal); root.appendChild(overlay);
-  translateTree(modal);
+  translateTree(modal); enhanceSelects(modal);   // нативні <select> → кастомні випадайки
   function close(){ overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} } }
   overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(); });
   head.querySelector('.x').onclick = close;
   function onKey(e){ if (e.key === 'Escape') close(); }
   document.addEventListener('keydown', onKey);
-  const firstFocus = modal.querySelector('input, select') || head.querySelector('.x');
+  const firstFocus = modal.querySelector('input, .selbtn') || head.querySelector('.x');
   if (firstFocus) firstFocus.focus();
   return close;
 }
@@ -1228,7 +1244,7 @@ function appDialog({ title = '', message = '', body = null, okLabel = 'OK', canc
     if (cancelLabel) { const c = el(`<button class="btn ghost">${esc(cancelLabel)}</button>`); c.onclick = () => done(false); foot.appendChild(c); }
     const ok = el(`<button class="btn ${danger ? 'danger' : 'primary'}">${esc(okLabel)}</button>`); ok.onclick = () => done(true); foot.appendChild(ok);
     modal.appendChild(head); modal.appendChild(bd); modal.appendChild(foot);
-    overlay.appendChild(modal); root.appendChild(overlay); translateTree(modal);
+    overlay.appendChild(modal); root.appendChild(overlay); translateTree(modal); enhanceSelects(modal);
     let settled = false;
     function done(v){ if (settled) return; settled = true; overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} } resolve(v); }
     function onKey(e){ if (e.key === 'Escape') done(false); }
@@ -1241,6 +1257,51 @@ function appDialog({ title = '', message = '', body = null, okLabel = 'OK', canc
 function confirmModal(title, message, opts = {}){ return appDialog({ title, message, okLabel: opts.okLabel || 'Так', cancelLabel: opts.cancelLabel || 'Скасувати', danger: opts.danger }); }
 function alertModal(message, title = 'Увага'){ return appDialog({ title, message, okLabel: 'OK' }); }
 function promptModal(title, label, value = ''){ const body = el(`<div><label class="lab">${esc(label || '')}</label><input id="pm-in" value="${esc(value)}"></div>`); return appDialog({ title, body, okLabel: 'OK', cancelLabel: 'Скасувати' }).then(okp => okp ? $('#pm-in', body).value : null); }
+
+// ——— Кастомний select: ховаємо нативний <select>, показуємо кнопку + випадайку як меню ———
+function openSelectMenu(anchor, sel){
+  document.querySelectorAll('.ctxmenu, .selmenu').forEach(m => m.remove());
+  const menu = el(`<div class="selmenu"></div>`);
+  const cur = sel.value;
+  const optRow = (o) => {
+    const isSel = o.value === cur;
+    const row = el(`<div class="ci${isSel ? ' sel' : ''}"><span class="cilbl">${o.innerHTML || esc(o.textContent)}</span>${isSel ? '<span class="cichk">✓</span>' : ''}</div>`);
+    row.onclick = () => { close(); if (sel.value !== o.value) { sel.value = o.value; sel.dispatchEvent(new Event('change', { bubbles: true })); } sel._sync && sel._sync(); };
+    return row;
+  };
+  [...sel.children].forEach(node => {
+    if (node.tagName === 'OPTGROUP') { menu.appendChild(el(`<div class="chead">${esc(node.label)}</div>`)); [...node.children].forEach(o => menu.appendChild(optRow(o))); }
+    else if (node.tagName === 'OPTION') menu.appendChild(optRow(node));
+  });
+  document.body.appendChild(menu); translateTree(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.minWidth = Math.max(r.width, 200) + 'px';
+  let mh = menu.getBoundingClientRect();
+  let left = Math.min(r.left, window.innerWidth - mh.width - 8);
+  let top = r.bottom + 4;
+  if (top + mh.height > window.innerHeight - 8) {
+    if (r.top - mh.height - 4 >= 8) top = r.top - mh.height - 4;             // місця внизу нема — відкриваємо вгору
+    else { top = 8; menu.style.maxHeight = (window.innerHeight - 16) + 'px'; } // надто довгий — на весь екран зі скролом
+  }
+  menu.style.left = Math.max(8, left) + 'px'; menu.style.top = Math.max(8, top) + 'px';
+  const selRow = menu.querySelector('.ci.sel'); if (selRow) selRow.scrollIntoView({ block: 'nearest' });
+  function close(){ menu.remove(); document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); }
+  function onDown(e){ if (!menu.contains(e.target)) close(); }
+  function onKey(e){ if (e.key === 'Escape') close(); }
+  setTimeout(() => { document.addEventListener('mousedown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
+}
+function enhanceSelect(sel){
+  if (sel.dataset.enh || sel.multiple) return; sel.dataset.enh = '1';
+  sel.style.display = 'none'; sel.setAttribute('tabindex', '-1'); sel.setAttribute('aria-hidden', 'true');
+  const btn = el(`<button type="button" class="selbtn"><span class="seltxt"></span><span class="selcar">▼</span></button>`);
+  const sync = () => { const o = sel.options[sel.selectedIndex]; btn.querySelector('.seltxt').innerHTML = o ? (o.innerHTML || esc(o.textContent)) : ''; btn.disabled = sel.disabled; };
+  sel._sync = sync;
+  sel.insertAdjacentElement('afterend', btn);
+  btn.onclick = () => { if (!sel.disabled) openSelectMenu(btn, sel); };
+  sel.addEventListener('change', sync);   // ре-синк при програмній зміні (.dispatchEvent('change')) та виборі
+  sync();
+}
+function enhanceSelects(root){ (root || document).querySelectorAll('select').forEach(enhanceSelect); }
 
 // Контекстне меню біля курсору. items: [{label, icon, color, onClick} | {sep:true}], title — необовʼязковий заголовок.
 function openContextMenu(x, y, items, title) {
@@ -1407,6 +1468,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       const prev = $('#f-rfacc', body).value;
       $('#f-rfacc', body).innerHTML = opts.map(a => `<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('');
       $('#f-rfacc', body).value = (opts.some(a => String(a.id) === prev) ? prev : String(exAcc ? exAcc.id : (opts[0] ? opts[0].id : '')));
+      $('#f-rfacc', body)._sync && $('#f-rfacc', body)._sync();   // ре-синк кастомної кнопки
     };
     const updHint = () => {
       const exAcc = state.accounts.find(a => a.id === parseInt($('#f-acc', body).value));
@@ -3337,6 +3399,7 @@ function openRecurringForm(existing){
     const cs = state.categories.filter(c => c.kind === k);
     $$('#r-cat').innerHTML = `<option value="">Без категорії</option>` + cs.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('');
     if (e.category_id) $$('#r-cat').value = String(e.category_id);
+    $$('#r-cat')._sync && $$('#r-cat')._sync();   // ре-синк кастомної кнопки
   }
   $$('#r-kind').addEventListener('change', fillCats); fillCats();
   openModal(existing?'Редагувати регулярний':'Новий регулярний', body, { onSave: (close) => {
