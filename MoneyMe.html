@@ -714,7 +714,6 @@ function cryptoChange24(h){ const m = cryptoMeta(h); return m && typeof m.chg ==
 function cryptoValueUsd(h){ const p = cryptoUnitUsd(h); return p == null ? 0 : (h.amount || 0) * p; }
 function cryptoTotalUsd(){ return round2((state.crypto || []).reduce((s, h) => s + cryptoValueUsd(h), 0)); }
 function cryptoTotalUAH(){ const r = rateFor('USD'); return r == null ? null : round2(cryptoTotalUsd() * r); }
-function cryptoTotalCost(){ const xs = (state.crypto || []).filter(h => typeof h.cost === 'number' && h.cost > 0); return xs.length ? round2(xs.reduce((s,h)=>s+h.cost,0)) : null; }
 function hasCrypto(){ return (state.crypto || []).length > 0; }
 // Усі біржі/гаманці зі збережених активів (для підказки при додаванні наступного).
 function cryptoExchanges(){ const s = new Set(); (state.crypto || []).forEach(h => (h.exchanges || []).forEach(x => s.add(typeof x === 'string' ? x : x.name))); return [...s].filter(Boolean).sort((a, b) => a.localeCompare(b, 'uk')); }
@@ -1024,11 +1023,6 @@ function accountBalance(id) {
     }
   }
   return round2(bal);
-}
-function computeFee(amount, type, val) {
-  if (type === 'PERCENT') return round2(amount * (val||0) / 100);
-  if (type === 'FIXED') return round2(Math.max(0, val||0));
-  return 0;
 }
 // Комісія у валюті рахунку-джерела (для списання). Для FIXED дозволяємо валюту feeCur;
 // якщо це валюта призначення — конвертуємо в джерело за множником mult (T за 1 F).
@@ -2821,7 +2815,6 @@ views.categories = (app) => {
   const grid = el(`<div class="grid" style="grid-template-columns:1fr;max-width:520px;margin-top:8px"></div>`);
   const list = state.categories.filter(c => c.kind === catKind);
   if (list.length === 0) grid.appendChild(el(`<div class="muted">Категорій немає.</div>`));
-  const mFrom = monthStartISO(), mTo = todayISO();
   list.forEach((c, i) => {
     const hasB = c.kind === 'EXPENSE' && (c.budget || 0) > 0;
     const r = hasB ? budgetRange(c) : null;

@@ -46,10 +46,11 @@ function eq(name, a, b) { ok(name + ' (' + JSON.stringify(a) + ' === ' + JSON.st
 function near(name, a, b) { ok(name + ' (' + a + ' ≈ ' + b + ')', approx(a, b)); }
 const S = sandbox;
 
-// ——— computeFee (також непрямо перевіряє round2) ———
-eq('fee PERCENT 2% від 100', S.computeFee(100, 'PERCENT', 2), 2);
-eq('fee FIXED 5', S.computeFee(100, 'FIXED', 5), 5);
-eq('fee NONE', S.computeFee(100, 'NONE', 9), 0);
+// ——— feeSourceAmount (комісія у валюті джерела; також непрямо перевіряє round2) ———
+eq('fee PERCENT 2% від 100', S.feeSourceAmount('PERCENT', 2, null, 'UAH', 100, 1), 2);
+eq('fee FIXED 5 (та сама валюта)', S.feeSourceAmount('FIXED', 5, null, 'UAH', 100, 1), 5);
+eq('fee NONE', S.feeSourceAmount('NONE', 9, null, 'UAH', 100, 1), 0);
+eq('fee FIXED у валюті призначення (10 USD / курс 40)', S.feeSourceAmount('FIXED', 10, 'USD', 'UAH', 100, 40), 0.25);
 
 // ——— Кредити ———
 eq('loanMonthlyRate 24%/рік', S.loanMonthlyRate({ has_interest: true, rate: 24 }), 0.02);
