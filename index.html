@@ -296,7 +296,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '892bef4ea0';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'c38243348b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3742,7 +3742,26 @@ function markSynced(at){ Sync.base = at || state.updatedAt || null; Sync.last = 
   // якщо акаунт ще не запамʼятовано (старе підключення) — підхопимо його для тихого оновлення надалі
   if (!localStorage.getItem('moneyme.sync.account')) fetchAccountEmail().then(e => { if (e) localStorage.setItem('moneyme.sync.account', e); }); }
 // Зберегти знімок поточного стану в точки відновлення (щоб нічого не втратити при конфлікті).
-function cloudBackupSnapshot(label){ try { const h = restorePoints(); h.push({ date: todayISO(), at: new Date().toISOString(), label: label || '', data: JSON.parse(JSON.stringify(state)) }); localStorage.setItem('moneyme.history', JSON.stringify(h.slice(-7))); } catch (e) {} }
+function cloudBackupSnapshot(label, data){ try { const h = restorePoints(); h.push({ date: todayISO(), at: new Date().toISOString(), label: label || '', data: JSON.parse(JSON.stringify(data || state)) }); localStorage.setItem('moneyme.history', JSON.stringify(h.slice(-7))); } catch (e) {} }
+// Чи є на цьому пристрої незасинхронізовані зміни (стан змінювався після останньої синхронізації).
+function localChangedSinceBase(){ return !!(state.updatedAt && state.updatedAt !== Sync.base); }
+function fmtSyncTime(iso){ try { return new Date(iso).toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }); } catch (e) { return iso || '—'; } }
+// Діалог конфлікту: і пристрій, і хмара змінювались окремо — користувач обирає, що лишити (інше → у Точки відновлення).
+function openSyncConflict(remote){
+  const body = el(`<div>
+    <div class="notice">І цей пристрій, і хмара змінювалися після останньої синхронізації. Об'єднати автоматично не можна — оберіть, яку версію лишити. Інша збережеться в «Точках відновлення».</div>
+    <div class="row" style="justify-content:space-between;margin-top:10px;gap:12px"><span class="muted small">Хмарна версія</span><b class="tabnum">${esc(fmtSyncTime(remote && remote.updatedAt))}</b></div>
+    <div class="row" style="justify-content:space-between;margin-top:4px;gap:12px"><span class="muted small">Версія цього пристрою</span><b class="tabnum">${esc(fmtSyncTime(state.updatedAt))}</b></div>
+    <div class="row" style="gap:8px;margin-top:16px;flex-wrap:wrap"></div>
+  </div>`);
+  const acts = body.lastElementChild;
+  const keepLocal = el(`<button class="btn">Залишити цю (залити в хмару)</button>`);
+  const keepCloud = el(`<button class="btn primary">Залишити хмарну</button>`);
+  acts.appendChild(keepLocal); acts.appendChild(keepCloud);
+  const close = openModal('Конфлікт синхронізації', body, {});
+  keepCloud.onclick = () => { close(); cloudBackupSnapshot('Версія цього пристрою (конфлікт синхр.)'); adoptRemote(remote); markSynced(state.updatedAt); setSyncStatus('idle'); showToast('Прийнято хмарну версію; вашу збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 7000); };
+  keepLocal.onclick = async () => { close(); cloudBackupSnapshot('Хмарна версія (конфлікт синхр.)', migrateBackup(remote)); try { setSyncStatus('syncing'); Sync.fileId = await driveUpload(Sync.fileId, cloudPayload()); markSynced(state.updatedAt); setSyncStatus('idle'); showToast('Залито версію цього пристрою; хмарну збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 7000); } catch (e) { setSyncStatus('error', e.message || String(e)); } };
+}
 function adoptRemote(remote){
   const incoming = (remote && remote.data) ? remote : { data: remote };
   Sync.applying = true;
@@ -3767,9 +3786,17 @@ async function cloudSync(interactive){
     const localUpd = state.updatedAt || '';
     const remoteUpd = (remote && remote.updatedAt) || '';
     if (remote && remoteUpd && remoteUpd > localUpd) {
-      if (localUpd && localUpd !== Sync.base) cloudBackupSnapshot('Локальна версія перед синхронізацією');
-      adoptRemote(remote);
-      markSynced(state.updatedAt);
+      if (localChangedSinceBase()) {
+        // справжній конфлікт: і пристрій, і хмара змінювались окремо
+        if (interactive) { setSyncStatus('idle'); openSyncConflict(remote); return; }
+        // фон: безпечний дефолт (бекап локальної + прийняти хмарну) АЛЕ з видимим попередженням
+        cloudBackupSnapshot('Версія цього пристрою (конфлікт синхр.)');
+        adoptRemote(remote); markSynced(state.updatedAt);
+        showToast('⚠️ Конфлікт синхронізації: версію цього пристрою збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 9000);
+      } else {
+        adoptRemote(remote);
+        markSynced(state.updatedAt);
+      }
     } else {
       Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());
       markSynced(state.updatedAt);
