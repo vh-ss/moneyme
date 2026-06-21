@@ -547,7 +547,7 @@ function exportCSV(){
   const head = ['Дата','Тип','Сума','Валюта','Рахунок','На рахунок','Категорія','Курс','Сума зарах.','Комісія','Нотатка','Теги'];
   const rows = [...state.transactions].sort((a,b)=> a.date<b.date?-1 : a.date>b.date?1 : a.id-b.id).map(t => [
     t.date, KL[t.kind]||t.kind, t.amount, accountCur(t.account_id), accountName(t.account_id),
-    t.kind==='TRANSFER'?accountName(t.to_account_id):'', t.category_id?(categoryById(t.category_id)?.name||''):'',
+    t.kind==='TRANSFER'?accountName(t.to_account_id):'', isSplitTx(t)?t.splits.map(s=>(categoryById(s.category_id)?.name||'Без категорії')+' '+s.amount).join(' | '):(t.category_id?(categoryById(t.category_id)?.name||''):''),
     t.kind==='TRANSFER'?(t.exchange_rate||''):'', t.kind==='TRANSFER'?(t.to_amount||''):'', t.fee_amount||0,
     t.note||'', (t.tags||[]).join(' ')
   ].map(q).join(';'));
@@ -2126,6 +2126,61 @@ function chartLabels(labels){
 
 //==================== Вигляд: Аналітика ====================
 let anFilter = { from: monthStartISO(), to: todayISO(), preset: 'month' };
+// ——— Місячний звіт (одним екраном, з друком/PDF) ———
+function monthRangeOf(ym){ const from = ym + '-01'; const [y,m] = ym.split('-').map(Number); const last = new Date(y, m, 0).getDate(); return { from, to: `${ym}-${String(last).padStart(2,'0')}` }; }
+function addMonthsYM(ym, d){ const [y,m] = ym.split('-').map(Number); const dt = new Date(y, m-1+d, 1); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`; }
+function monthlyReportHTML(ym){
+  const { from, to } = monthRangeOf(ym);
+  let inc=0, exp=0, fees=0; const cE={}, cI={};
+  state.transactions.forEach(t => { if(!inRange(t, from, to)) return;
+    if (t.kind==='INCOME'){ inc+=txUAH(t); txParts(t).forEach(p=>{ const n=categoryById(p.category_id)?.name||'Без категорії'; cI[n]=(cI[n]||0)+partUAH(t,p.amount); }); }
+    else if (t.kind==='EXPENSE'){ exp+=txUAH(t); txParts(t).forEach(p=>{ const n=categoryById(p.category_id)?.name||'Без категорії'; cE[n]=(cE[n]||0)+partUAH(t,p.amount); }); }
+    else if (t.kind==='TRANSFER'){ fees+=feeUAH(t); } });
+  inc=round2(inc); exp=round2(exp); fees=round2(fees); const net=round2(inc-exp-fees);
+  const topE=Object.entries(cE).sort((a,b)=>b[1]-a[1]); const topI=Object.entries(cI).sort((a,b)=>b[1]-a[1]);
+  const budgets=state.categories.filter(c=>c.kind==='EXPENSE'&&(c.budget||0)>0).map(c=>({c,spent:categorySpent(c.id,from,to),budget:effectiveBudget(c)})).filter(b=>b.spent>0.005).sort((a,b)=>(b.spent/b.budget)-(a.spent/a.budget));
+  const subM=curMapStr(recurringMonthlyByCur('EXPENSE')); const loanM=curMapStr(loansByCur(loanMonthly));
+  const monthName=new Date(from).toLocaleDateString('uk-UA',{month:'long',year:'numeric'});
+  const C={ink:'#1e293b',mut:'#64748b',grn:'#16a34a',red:'#dc2626',amb:'#d97706',line:'#e2e8f0'};
+  const metric=(label,val,col)=>`<div style="border:1px solid ${C.line};border-radius:10px;padding:10px"><div style="color:${C.mut};font-size:12px">${label}</div><div style="font-weight:800;font-size:18px;color:${col}">${val}</div></div>`;
+  const catRows=(arr,col)=>{ const tot=arr.reduce((s,[,v])=>s+v,0)||1; return arr.map(([n,v])=>`<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:5px"><span style="flex:0 0 42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><div style="flex:1;height:7px;background:${C.line};border-radius:99px;overflow:hidden"><div style="width:${Math.round(v/tot*100)}%;height:100%;background:${col}"></div></div><b style="flex:0 0 auto">${money(v)}</b><span style="color:${C.mut};width:40px;text-align:right">${Math.round(v/tot*100)}%</span></div>`).join(''); };
+  return `<div style="color:${C.ink}">
+    <div style="font-weight:800;font-size:18px">Місячний звіт</div>
+    <div style="color:${C.mut};text-transform:capitalize;margin-bottom:12px">${esc(monthName)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${metric('Надходження',money(inc),C.grn)}${metric('Витрати',money(exp),C.red)}
+      ${metric('Комісії',money(fees),C.amb)}${metric('Чистий потік',money(net),net>=0?C.grn:C.red)}
+    </div>
+    ${topE.length?`<div style="font-weight:700;margin-top:16px">Витрати за статтями</div>${catRows(topE,C.red)}`:''}
+    ${topI.length?`<div style="font-weight:700;margin-top:16px">Надходження за статтями</div>${catRows(topI,C.grn)}`:''}
+    ${budgets.length?`<div style="font-weight:700;margin-top:16px">Бюджети</div>${budgets.map(b=>{const pct=Math.round(b.spent/b.budget*100);const over=b.spent>b.budget;return `<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-top:4px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.c.icon?esc(b.c.icon)+' ':''}${esc(b.c.name)}</span><b style="flex:0 0 auto;color:${over?C.red:C.mut}">${money(b.spent)} / ${money(b.budget)} (${pct}%)</b></div>`;}).join('')}`:''}
+    <div style="margin-top:16px;color:${C.mut};font-size:13px;border-top:1px solid ${C.line};padding-top:10px">Підписки/міс: <b style="color:${C.ink}">${subM}</b> · Кредити/міс: <b style="color:${C.ink}">${loanM}</b></div>
+  </div>`;
+}
+function printMonthlyReport(ym){
+  const html=monthlyReportHTML(ym);
+  const w=window.open('', '_blank', 'width=720,height=920');
+  if(!w){ alert('Дозвольте спливаючі вікна, щоб надрукувати/зберегти PDF.'); return; }
+  w.document.write(`<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>MoneyMe — звіт ${esc(ym)}</title><style>body{font-family:system-ui,'Segoe UI',Roboto,sans-serif;margin:24px;max-width:680px;color:#1e293b}@media print{body{margin:0}}</style></head><body>${html}<scr`+`ipt>window.onload=function(){setTimeout(function(){window.print();},250);};</scr`+`ipt></body></html>`);
+  w.document.close();
+}
+function openMonthlyReport(){
+  let ym = todayISO().slice(0,7);
+  const wrap = el(`<div>
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px">
+      <div class="row" style="gap:6px;align-items:center"><button class="btn ghost sm" id="mr-prev">‹</button><b id="mr-label" class="tabnum"></b><button class="btn ghost sm" id="mr-next">›</button></div>
+      <button class="btn sm" id="mr-print">${ic('receipt')} Друк / PDF</button>
+    </div>
+    <div id="mr-body"></div>
+  </div>`);
+  function refresh(){ $('#mr-body', wrap).innerHTML = monthlyReportHTML(ym); $('#mr-label', wrap).textContent = ym; }
+  $('#mr-prev', wrap).onclick = () => { ym = addMonthsYM(ym, -1); refresh(); };
+  $('#mr-next', wrap).onclick = () => { ym = addMonthsYM(ym, 1); refresh(); };
+  $('#mr-print', wrap).onclick = () => printMonthlyReport(ym);
+  refresh();
+  openModal('Звіт за місяць', wrap, { wide: true });
+}
+
 views.analytics = (app) => {
   const presets = [['month','Цей місяць'],['lastmonth','Минулий'],['year','Рік'],['all','Усе']];
   const top = el(`<div>
@@ -2134,8 +2189,12 @@ views.analytics = (app) => {
       <div class="row"><div><label class="lab">Від</label><input id="an-from" type="date" value="${anFilter.from}"></div>
       <div><label class="lab">До</label><input id="an-to" type="date" value="${anFilter.to}"></div></div>
     </div>
-    <div class="pill" style="margin-top:10px;flex-wrap:wrap">${presets.map(([k,l])=>`<button data-p="${k}">${l}</button>`).join('')}</div>
+    <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
+      <div class="pill" style="flex-wrap:wrap">${presets.map(([k,l])=>`<button data-p="${k}">${l}</button>`).join('')}</div>
+      <button class="btn ghost sm" id="an-report">${ic('receipt')} Звіт за місяць</button>
+    </div>
   </div>`);
+  $('#an-report',top).onclick = () => openMonthlyReport();
   $('#an-from',top).addEventListener('change', () => { anFilter = { from:$('#an-from',top).value, to:$('#an-to',top).value, preset:'custom' }; render(); });
   $('#an-to',top).addEventListener('change', () => { anFilter = { from:$('#an-from',top).value, to:$('#an-to',top).value, preset:'custom' }; render(); });
   top.querySelectorAll('.pill button').forEach(b => { b.classList.toggle('on', b.dataset.p===anFilter.preset);
