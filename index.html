@@ -296,7 +296,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '0c78e28725';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '892bef4ea0';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1041,6 +1041,14 @@ function remainingMonths(O, M, i){
   return Math.abs(n - r) < 0.1 ? r : Math.ceil(n);   // приліплюємо до цілого (нівелюємо округлення платежу)
 }
 function loanMonthlyRate(l){ return (l.has_interest && l.rate > 0) ? (l.rate/100/12) : 0; }
+// Орієнтовно місяців до повного погашення (з урахуванням відсотків). Infinity, якщо платіж не покриває %.
+function loanMonthsLeft(l){
+  const O = loanOutstanding(l), M = loanMonthly(l), i = loanMonthlyRate(l);
+  if (O <= 0 || M <= 0) return 0;
+  if (i <= 0) return Math.ceil(O / M);
+  if (M <= O * i) return Infinity;   // платіж менший за нараховані відсотки — борг не зменшується
+  return Math.ceil(-Math.log(1 - O * i / M) / Math.log(1 + i));
+}
 
 // Калькулятор дострокового погашення кредиту.
 function openPayoff(l, bank){
@@ -2169,7 +2177,7 @@ views.analytics = (app) => {
         <div><span class="muted">Залишок боргу: </span><b style="color:var(--red)">${curMapStr(loansByCur(loanOutstanding))}</b></div>
         <div><span class="muted">Платіж/міс: </span><b style="color:var(--amber)">${curMapStr(loansByCur(loanMonthly))}</b></div>
       </div>
-      <div style="margin-top:8px">${activeLoans.map(l => { const cur = bankById(l.bank_id)?.currency || 'UAH'; return `<div class="row" style="justify-content:space-between;gap:10px;font-size:13px;margin-top:5px"><span class="ln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.name||'Кредит')}</span><span class="muted tabnum" style="flex:0 0 auto">залишок ${money(loanOutstanding(l),cur)} · ${money(loanMonthly(l),cur)}/міс</span></div>`; }).join('')}</div>
+      <div style="margin-top:8px">${activeLoans.map(l => { const cur = bankById(l.bank_id)?.currency || 'UAH'; return `<div class="row" style="justify-content:space-between;gap:10px;font-size:13px;margin-top:5px"><span class="ln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.name||'Кредит')}</span><span class="muted tabnum" style="flex:0 0 auto">залишок ${money(loanOutstanding(l),cur)}${isFinite(loanMonthsLeft(l))?' · ще '+loanMonthsLeft(l)+' міс':''} · ${money(loanMonthly(l),cur)}/міс</span></div>`; }).join('')}</div>
     </section>`);
     $('#an-loans', lc).onclick = () => navigate('credits');
     app.appendChild(lc);
