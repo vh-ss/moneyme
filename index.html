@@ -345,7 +345,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '7773aa684b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '40bff4b06b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -487,9 +487,7 @@ const I18N_PARTIAL = [
   ['Рахунки під ціль (необовʼязково)','Accounts for the goal (optional)'],['Накопичено (вручну)','Saved (manual)'],['↑ Поповнити','↑ Top up'],['Немає рахунків.','No accounts.'],
   ['Видалити всі рахунки, операції та категорії й почати з нуля.','Delete all accounts, transactions and categories and start fresh.'],
   ['Щодня застосунок зберігає знімок даних у браузері (до 7 останніх). Можна відкотитися, якщо щось пішло не так.','The app saves a daily snapshot in the browser (up to 7). You can roll back if something went wrong.'],
-  ['Витрата запишеться на вашу частку, а повернення — переказом на обраний рахунок.','The expense is recorded as your share; the refund as a transfer to the selected account.'],
-  ['Ваша частка (витрата): ','Your share (expense): '],
-  ['повернення оформиться переказом ','refund will be a transfer '],
+  ['Запишемо 2 окремі операції (як у банківській виписці): повну витрату і повернення. У категорію/бюджет піде лише ваша частка.','Two separate transactions will be recorded (as in a bank statement): the full expense and the refund. Only your share goes to the category/budget.'],
   ['Частину повернули мені (оплатив за когось)','Part was returned to me (paid for someone)'],
   ['Це початкове значення. Подальші платежі вносьте кнопкою «Платіж» — тоді створюється операція й оновлюється баланс.','This is the starting value. Make further payments via the “Payment” button — it creates a transaction and updates the balance.'],
   ['Якщо обрано рахунок — створиться операція «витрата» на суму платежу.','If an account is selected — an expense is created for the payment amount.'],
@@ -913,12 +911,12 @@ function reorderBank(srcId, dstId) {
 
 // Деталі операції у вигляді блоку (тип + сума + поля) — спільне для перегляду й підтвердження видалення.
 function txInfoNode(tx){
-  const isT = tx.kind === 'TRANSFER', isInc = tx.kind === 'INCOME';
+  const isT = tx.kind === 'TRANSFER', isReimb = tx.kind === 'EXPENSE' && !!tx.reimbursement, isInc = tx.kind === 'INCOME';
   const cur = accountCur(tx.account_id);
   const cat = tx.category_id ? categoryById(tx.category_id) : null;
-  const typeLabel = isT ? 'Переказ' : isInc ? 'Надходження' : 'Витрата';
-  const typeColor = isT ? '#0ea5e9' : isInc ? 'var(--green)' : 'var(--red)';
-  const amtStr = isT ? money(tx.amount, cur) : (isInc ? '+' : '−') + money(tx.amount, cur);
+  const typeLabel = isT ? 'Переказ' : isReimb ? 'Повернення' : isInc ? 'Надходження' : 'Витрата';
+  const typeColor = isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : 'var(--red)';
+  const amtStr = isT ? money(tx.amount, cur) : isReimb ? '+' + money(Math.abs(tx.amount), cur) : (isInc ? '+' : '−') + money(tx.amount, cur);
   const rows = [];
   if (isT) {
     rows.push(['Напрямок', `${accountName(tx.account_id)} → ${accountName(tx.to_account_id)}`]);
@@ -954,6 +952,7 @@ function deleteTx(tx) {
   const warns = [];
   if (tx.loan_id) warns.push('Це платіж за кредитом — суму буде повернено у залишок боргу.');
   if (tx.recurring_id) warns.push('Це регулярний платіж — дату наступного списання буде відкочено на цикл назад.');
+  if (state.transactions.some(x => x.refund_of === tx.id)) warns.push('Разом із цією витратою буде видалено й повʼязану операцію-повернення.');
   if (warns.length) body.appendChild(el(`<div class="notice" style="margin-top:12px">${warns.map(esc).join('<br>')}</div>`));
   openModal('Видалити операцію?', body, {
     saveLabel: '🗑 Видалити',
@@ -975,7 +974,8 @@ function doDeleteTx(tx) {
       const r = state.recurring.find(x => x.id === tx.recurring_id);
       if (r && r.next_date) r.next_date = prevRecurDate(r.next_date, r.freq);
     }
-    state.transactions = state.transactions.filter(x => x.id !== tx.id);
+    // прибираємо й повʼязану операцію-повернення (якщо була), щоб не лишити «мінус» сиротою
+    state.transactions = state.transactions.filter(x => x.id !== tx.id && x.refund_of !== tx.id);
   });
 }
 
@@ -1619,10 +1619,9 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       const cur = exAcc ? exAcc.currency_code : 'UAH';
       const full = num($('#f-amt', body).value), rf = num($('#f-rfamt', body).value);
       const share = round2(full - rf);
-      const sameAcc = $('#f-rfacc', body).value === $('#f-acc', body).value;
       $('#f-rfhint', body).innerHTML = (rf > 0 && full > 0)
-        ? `Ваша частка (витрата): <b>${money(share, cur)}</b>${share < 0 ? ' ⛔' : ''}${sameAcc ? '' : ` · повернення оформиться переказом ${money(rf, cur)}`}`
-        : 'Витрата запишеться на вашу частку, а повернення — переказом на обраний рахунок.';
+        ? `Запишемо 2 операції (як у виписці): витрата <b>${money(full, cur)}</b> + повернення <b style="color:var(--green)">+${money(rf, cur)}</b>. У категорію піде лише ваша частка: <b>${money(share, cur)}</b>${share < 0 ? ' ⛔' : ''}`
+        : 'Запишемо 2 окремі операції (як у банківській виписці): повну витрату і повернення. У категорію/бюджет піде лише ваша частка.';
     };
     rfon.onchange = () => { const on = rfon.checked; $('#f-rfbox', body).classList.toggle('hidden', !on); if (on) { fillRfAcc(); updHint(); } };
     $('#f-acc', body).addEventListener('change', () => { if (rfon.checked) { fillRfAcc(); updHint(); } });
@@ -1730,10 +1729,10 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       if (rf && rf.checked) {
         refund = round2(num($('#f-rfamt', body).value));
         refundAccId = parseInt($('#f-rfacc', body).value);
-        if (refund > 0 && refund >= amt) { err.textContent = 'Повернення має бути меншим за суму витрати'; err.classList.remove('hidden'); return; }
+        if (refund > 0 && refund > amt) { err.textContent = 'Повернення не може перевищувати суму витрати'; err.classList.remove('hidden'); return; }
       }
       const rec = {
-        kind, amount: round2(refund > 0 ? amt - refund : amt),
+        kind, amount: round2(amt),
         account_id: exAccId,
         category_id: splits ? (splits[0].category_id ?? null) : ($('#f-cat', body).value ? parseInt($('#f-cat', body).value) : null),
         date: $('#f-date', body).value || todayISO(),
@@ -1767,15 +1766,17 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       }
       else {
         rec.id = nextId('tx'); rec.ord = nextOrd(); state.transactions.push(rec);
-        // повернуту частину проводимо переказом з рахунку витрати на рахунок повернення (якщо інший)
-        if (refund > 0 && refundAccId && refundAccId !== exAccId) {
-          const catName = rec.category_id ? (categoryById(rec.category_id)?.name || '') : '';
+        // Повернену частину проводимо ОКРЕМОЮ операцією (як у виписці): зарахування на рахунок повернення.
+        // Зберігаємо як витрату з відʼємною сумою у тій самій категорії — щоб у всіх зведеннях
+        // (категорії, бюджети, теги, рахунки) вона віднімалась: реальна витрата = повна − повернення.
+        if (refund > 0) {
           state.transactions.push({
-            id: nextId('tx'), ord: nextOrd(), kind: 'TRANSFER', date: rec.date,
-            note: 'Повернення' + (rec.note ? ': ' + rec.note : (catName ? ': ' + catName : '')),
-            account_id: exAccId, to_account_id: refundAccId,
-            amount: refund, to_amount: refund, exchange_rate: 1,
-            fee_type: 'NONE', fee_value: 0, fee_amount: 0,
+            id: nextId('tx'), ord: nextOrd(), kind: 'EXPENSE', date: rec.date,
+            account_id: refundAccId || exAccId,
+            category_id: rec.category_id ?? null,
+            amount: round2(-refund), reimbursement: true, refund_of: rec.id,
+            note: rec.note || null,
+            tags: (rec.tags && rec.tags.length) ? rec.tags.slice() : [],
           });
         }
       }
@@ -2063,13 +2064,13 @@ function openTransferEdit(tx) {
 
 //==================== Рядок операції ====================
 function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
-  const isT = t.kind === 'TRANSFER', isInc = t.kind === 'INCOME';
+  const isT = t.kind === 'TRANSFER', isReimb = t.kind === 'EXPENSE' && !!t.reimbursement, isInc = t.kind === 'INCOME';
   const isSplit = isSplitTx(t);
   const cat = (!isT && !isSplit && t.category_id) ? categoryById(t.category_id) : null;
-  const icon = isT ? ic('transfer') : isSplit ? ic('split') : (cat?.icon || (isInc ? ic('plus') : ic('minus')));   // значок категорії (емодзі) або наш SVG
-  const color = isT ? '#0ea5e9' : isInc ? 'var(--green)' : isSplit ? '#8b5cf6' : (cat?.color || 'var(--red)');
+  const icon = isT ? ic('transfer') : isReimb ? ic('plus') : isSplit ? ic('split') : (cat?.icon || (isInc ? ic('plus') : ic('minus')));   // значок категорії (емодзі) або наш SVG
+  const color = isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : isSplit ? '#8b5cf6' : (cat?.color || 'var(--red)');
   const cur = accountCur(t.account_id);
-  const title = isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
+  const title = isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isReimb ? `↩ Повернення${cat ? ' · ' + cat.name : ''}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
   let sub;
   if (isT) {
     const T = accountCur(t.to_account_id);
@@ -2093,7 +2094,9 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
   }
   const amtHtml = isT
     ? `<span class="txamt muted">${money(t.amount,cur)}</span>`
-    : `<span class="txamt" style="color:${isInc?'var(--green)':'var(--red)'}">${isInc?'+':'−'}${money(t.amount,cur)}</span>`;
+    : isReimb
+      ? `<span class="txamt" style="color:var(--green)">+${money(Math.abs(t.amount),cur)}</span>`
+      : `<span class="txamt" style="color:${isInc?'var(--green)':'var(--red)'}">${isInc?'+':'−'}${money(t.amount,cur)}</span>`;
   const row = el(`<div class="txrow">
     <span class="txicon" style="background:${color}22;color:${color}">${icon}</span>
     <div class="txmain"><div class="txtitle">${esc(title)}</div>
@@ -2107,8 +2110,8 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
       const r = b.getBoundingClientRect();
       const items = [];
       if (onView) items.push({ label: 'Переглянути', icon: ic('eye'), color: '#64748b', onClick: () => onView(t) });
-      if (onEdit) items.push({ label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => onEdit(t) });
-      if (onDup) items.push({ label: 'Дублювати', icon: ic('dup'), color: '#8b5cf6', onClick: () => onDup(t) });
+      if (onEdit && !isReimb) items.push({ label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => onEdit(t) });
+      if (onDup && !isReimb) items.push({ label: 'Дублювати', icon: ic('dup'), color: '#8b5cf6', onClick: () => onDup(t) });
       if (onDelete) items.push({ sep: true }, { label: 'Видалити', icon: ic('close'), color: 'var(--red)', onClick: () => onDelete(t) });
       openContextMenu(r.right, r.bottom + 4, items);
     };

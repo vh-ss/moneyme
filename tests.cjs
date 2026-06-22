@@ -87,6 +87,10 @@ ok('txParts зі split', JSON.stringify(S.txParts({ category_id: 1, amount: 300,
 eq('txCatAmount split cat1', S.txCatAmount({ amount: 300, splits: [{ category_id: 1, amount: 200 }, { category_id: 2, amount: 100 }] }, 1), 200);
 eq('txCatAmount split cat2', S.txCatAmount({ amount: 300, splits: [{ category_id: 1, amount: 200 }, { category_id: 2, amount: 100 }] }, 2), 100);
 eq('txCatAmount одна категорія', S.txCatAmount({ category_id: 7, amount: 50 }, 7), 50);
+// повернення (reimbursement) — витрата з відʼємною сумою, нетиться у тій самій категорії
+eq('txCatAmount повернення відʼємне', S.txCatAmount({ category_id: 7, amount: -9000, reimbursement: true }, 7), -9000);
+eq('категорія = повна витрата − повернення (10000 − 9000 = 1000)',
+   S.txCatAmount({ category_id: 7, amount: 10000 }, 7) + S.txCatAmount({ category_id: 7, amount: -9000, reimbursement: true }, 7), 1000);
 eq('isSplitTx true', S.isSplitTx({ splits: [{}, {}] }), true);
 eq('isSplitTx false (одна)', S.isSplitTx({ splits: [{}] }), false);
 
