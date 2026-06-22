@@ -345,7 +345,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'ec803b8e8d';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'cb8fc9a8e4';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -486,6 +486,29 @@ const I18N_EN = {
   'Валюту не можна змінити — по рахунку вже є операції.':'Currency cannot be changed — the account already has transactions.','Біржі / гаманці':'Exchanges / wallets','Біржі та гаманці зі ваших активів. Перейменування й видалення застосовуються до всіх активів.':'Exchanges and wallets from your assets. Renaming and deletion apply to all assets.','Бірж ще немає. Додайте їх у формі активу («Розподіл по біржах»).':'No exchanges yet. Add them in the asset form (Split by exchanges).',
   'Залишок':'Balance','Тіло':'Principal','Після цього платежу кредит буде закрито.':'After this payment the credit will be paid off.','Закрити кредит повністю?':'Pay off credit in full?','Закрити кредит':'Pay off credit',
   'Калькулятор дострокового погашення':'Early payoff calculator','Платежі вже зроблено — перенести на наступний цикл':'Payments already made — move to next cycle',
+  // — round 4: повний аудит усіх рядків коду —
+  'Крипто':'Crypto','Редагувати':'Edit','Це видалення зачепить:':'This deletion will affect:','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
+  'Шифрування працює лише на https-сайті (не з файлу, відкритого подвійним кліком).':'Encryption works only on an https site (not from a file opened by double-click).','Зашифрований експорт':'Encrypted export','Пароль для бекапу (запамʼятайте — без нього файл не відкрити!):':'Backup password (remember it — the file cannot be opened without it!):','Пароль закороткий — мінімум 4 символи.':'Password too short — at least 4 characters.','🔒 Зашифрований бекап збережено':'🔒 Encrypted backup saved',
+  'На рахунок':'To account','Теги':'Tags','не вдалося отримати курси':'failed to fetch rates','не вдалося отримати ціни':'failed to fetch prices',
+  'Напрямок':'Direction','Зараховано':'Credited','Кредит':'Credit','Тип запису':'Record type','Регулярний платіж':'Recurring payment','Операція':'Transaction',
+  'Це платіж за кредитом — суму буде повернено у залишок боргу.':'This is a credit payment — the amount returns to the debt balance.','Це регулярний платіж — дату наступного списання буде відкочено на цикл назад.':'This is a recurring payment — the next charge date rolls back one cycle.','Разом із цією витратою буде видалено й повʼязану операцію-повернення.':'The linked refund transaction will be deleted along with this expense.','Видалити операцію?':'Delete transaction?','Переказ видалено':'Transfer deleted','Операцію видалено':'Transaction deleted',
+  'Закрити':'Close','Так':'Yes','Увага':'Warning','Готово':'Done','Потрібен щонайменше ще один рахунок.':'At least one more account is needed.','На який рахунок переказати?':'Transfer to which account?','Переказ із цього рахунку':'Transfer from this account','Спершу додайте хоча б один рахунок.':'Add at least one account first.',
+  'Разом:':'Total:','Рахунок цієї статті':'Account for this item','↳ основний':'↳ main','сума':'amount','Прибрати':'Remove','Не заповнено — сума розділиться між тегами порівну.':'Not filled — the amount splits equally among tags.','Розподіл суми за тегами (необовʼязково)':'Amount allocation by tags (optional)','Додайте хоча б одну статтю із сумою більше 0':'Add at least one item with an amount above 0','Введіть суму більше 0':'Enter an amount above 0','Повернення не може перевищувати суму витрати':'The refund cannot exceed the expense amount',
+  'Відсоток, %':'Percent, %','Вкажіть курс або суму в валюті призначення':'Set the rate or the amount in the destination currency','Для переказу потрібно щонайменше два рахунки.':'A transfer needs at least two accounts.','З рахунку':'From account','Рахунок-джерело і призначення мають відрізнятися':'Source and destination accounts must differ','Кілька статей':'Several items','Дублювати':'Duplicate',
+  'Місячний звіт':'Monthly report','Друк / PDF':'Print / PDF','Надходження/міс:':'Income/mo:','Банки':'Banks','(архів)':'(archived)',
+  'Порада: зазвичай краще «Архівувати» — рахунок зникне зі списків, а операції збережуться. При видаленні всі його операції підуть разом із ним.':'Tip: usually better to “Archive” — the account disappears from lists but transactions stay. Deleting removes all its transactions with it.','Оберіть, куди перенести їх перед видаленням.':'Choose where to move them before deleting.',
+  'Ціль':'Goal','Підвʼязані рахунки залишаться — лише відвʼяжуться від цілі.':'Linked accounts remain — they only detach from the goal.','Ціль видалено':'Goal deleted','Внести до':'Deposit to','Зняти з':'Withdraw from','Немає рахунків з додатним балансом для поповнення.':'No accounts with a positive balance to top up from.','Поповнити':'Top up',
+  'Розподіл за активами':'Allocation by assets','Розподіл за біржами':'Allocation by exchanges','Очистити криптопортфель?':'Clear crypto portfolio?','Видалити ВСІ крипто-активи? (можна скасувати)':'Delete ALL crypto assets? (can be undone)','Очистити':'Clear','Криптопортфель очищено':'Crypto portfolio cleared','Перейменувати біржу':'Rename exchange','Нова назва біржі / гаманця:':'New exchange / wallet name:','Перенести монети на':'Move coins to','Кількість монет в активах збережеться.':'The coin amount in assets is preserved.','Перейменувати':'Rename','Без назви':'Untitled','Без біржі':'No exchange','Активів немає.':'No assets.','Біржа / гаманець':'Exchange / wallet','к-сть':'qty','Введіть символ':'Enter a symbol','Введіть кількість більше 0':'Enter an amount above 0',
+  'Платіж не покриває відсотки — графік неможливо порахувати.':'The payment does not cover interest — the schedule cannot be computed.','Операцію створено':'Transaction created','Регулярний платіж видалено':'Recurring payment deleted','Спершу додайте рахунок.':'Add an account first.','Введіть суму':'Enter an amount','Українська':'Ukrainian','Сховано':'Hidden',
+  'Розшифрування працює лише на https-сайті':'Decryption works only on an https site','Зашифрований бекап':'Encrypted backup','Введіть пароль для розшифрування:':'Enter the password to decrypt:','Невірний пароль або пошкоджений файл':'Wrong password or corrupted file','Файл не схожий на бекап MoneyMe':'The file does not look like a MoneyMe backup','Імпорт даних':'Import data','Імпорт ЗАМІНИТЬ усі поточні дані. Продовжити?':'Import will REPLACE all current data. Continue?','Імпортувати':'Import',
+  '⚠️ Це локальний файл. Синхронізація доступна лише з веб-версії (GitHub Pages) — див. SETUP.md.':'⚠️ This is a local file. Sync is available only from the web version (GitHub Pages) — see SETUP.md.','Відновити точку?':'Restore point?','Видалити всі дані?':'Delete all data?','Це назавжди видалить усі дані без можливості відновлення.':'This will permanently delete all data with no way to restore.','Видалити все':'Delete all',
+  'Додайте банк, щоб вести кредитні ліміти та кредити.':'Add a bank to track credit limits and loans.','Рахунки відвʼяжуться від банку (самі рахунки залишаться), а кредити цього банку буде видалено.':'Accounts detach from the bank (the accounts stay), and this bank’s credits are deleted.','(закрито)':'(closed)','Кредит видалено':'Credit deleted','Привʼяжіть рахунки до цього банку у вкладці «Рахунки», щоб обрати основний.':'Link accounts to this bank in the “Accounts” tab to pick the main one.','Спершу додайте банк.':'Add a bank first.','Введіть суму кредиту':'Enter the loan amount','Введіть кількість місяців':'Enter the number of months',
+  'Не вдалося завантажити Google Identity (немає мережі?)':'Failed to load Google Identity (no network?)','Доступ не надано':'Access not granted','Помилка входу':'Sign-in error','Потрібен вхід':'Sign-in required','Спершу підключіть Google Drive у Налаштуваннях.':'Connect Google Drive in Settings first.','Хмарних бекапів ще немає — зʼявляться після синхронізації (раз на день).':'No cloud backups yet — they appear after sync (once a day).','Відновити з Drive?':'Restore from Drive?','Хмарні точки відновлення':'Cloud restore points',
+  'Хмарна версія':'Cloud version','Версія цього пристрою':'This device’s version','Залишити цю (залити в хмару)':'Keep this one (upload to cloud)','Залишити хмарну':'Keep the cloud one','Конфлікт синхронізації':'Sync conflict','Версія цього пристрою (конфлікт синхр.)':'This device’s version (sync conflict)','Прийнято хмарну версію; вашу збережено в Точки відновлення':'Accepted the cloud version; yours saved to Restore points','Відкрити':'Open','Хмарна версія (конфлікт синхр.)':'Cloud version (sync conflict)','Залито версію цього пристрою; хмарну збережено в Точки відновлення':'Uploaded this device’s version; the cloud one saved to Restore points','Перед обʼєднанням (merge)':'Before merge','🔀 Зміни обʼєднано з хмарою (merge)':'🔀 Changes merged with the cloud','⚠️ Конфлікт синхронізації: версію цього пристрою збережено в Точки відновлення':'⚠️ Sync conflict: this device’s version saved to Restore points',
+  'І цей пристрій, і хмара змінювалися після останньої синхронізації. Обʼєднати автоматично не можна — оберіть, яку версію лишити. Інша збережеться в «Точках відновлення».':'Both this device and the cloud changed since the last sync. They cannot be merged automatically — choose which version to keep. The other is saved to Restore points.',
+  'Спершу вставте Google Client ID у Налаштуваннях.':'Paste the Google Client ID in Settings first.','Синхронізація працює лише з https-хостингу (GitHub Pages), не з локального файлу.':'Sync works only from https hosting (GitHub Pages), not from a local file.','Перше підключення':'First connection','Акаунт у хмарі порожній. Завантажити поточні дані з цього пристрою у ваш акаунт — чи почати з чистого?':'The cloud account is empty. Upload current data from this device to your account, or start fresh?','Завантажити мої дані':'Upload my data','Почати з чистого':'Start fresh','Відключити Google Drive?':'Disconnect Google Drive?','Дані у Drive лишаться. Чи очистити локальні дані MoneyMe на цьому пристрої (зручно на спільному пристрої)?':'Data in Drive stays. Clear local MoneyMe data on this device (handy on a shared device)?','Очистити локальні':'Clear local','Лишити дані':'Keep data',
+  // дефолтні категорії/теги (надаються застосунком)
+  'Продукти':'Groceries','Кафе':'Cafe','Транспорт':'Transport','Житло':'Housing','Здоровʼя':'Health','Розваги':'Entertainment','Одяг':'Clothing','Інше':'Other','Зарплата':'Salary','Підробіток':'Side income','Подарунки':'Gifts',
 };
 // Підрядкові заміни — для складених рядків (текст склеєний із числами/назвами).
 const I18N_PARTIAL = [
@@ -530,7 +553,7 @@ const I18N_PARTIAL = [
   ['Ще немає рахунків. Додайте у вкладці «Рахунки».','No accounts yet. Add one in the “Accounts” tab.'],
   ['Спишеться з «','Debited from “'],['Зарахується на «','Credited to “'],['Спишеться','Debited'],['Зарахується','Credited'],
   ['Відпустка','Vacation'],['відпустка','vacation'],['робота','work'],['оренда','rent'],
-  ['Виплачено','Paid'],[' з ',' of '],
+  ['Виплачено','Paid'],
   // — складені рядки з числами/валютами (підрядкові заміни) —
   ['Лише регулярні платежі та кредити (без разових). Через ','Only recurring payments and credits (one-offs excluded). In '],
   ['Сума (','Amount ('],['Курс: 1 ','Rate: 1 '],['— зарахується','— credited'],['зарахується','credited'],
@@ -543,13 +566,31 @@ const I18N_PARTIAL = [
   ['Увага: валюта рахунку (','Note: account currency ('],[') відрізняється від ',') differs from '],['; суму спишеться як є.','; the amount will be charged as is.'],
   [' відсотків.',' in interest.'],
   ['Сума платежу (','Payment amount ('],['Дострокове погашення — ','Early payoff — '],['Або разовий додатковий платіж (','Or one-time extra payment ('],['— до ','— until '],
+  // — round 4: фрагменти/множина/динамічні рядки (специфічні — раніше за загальні) —
+  ['(зараз','(now'],['🔔 Крипто-алерт:','🔔 Crypto alert:'],['Не вдалося зашифрувати:','Failed to encrypt:'],
+  ['Запишемо 2 операції (як у виписці): витрата','Two transactions will be recorded (as in a statement): expense'],['+ повернення','+ refund'],['. У категорію піде лише ваша частка:','. Only your share goes to the category:'],
+  ['✓ Сума тегів =','✓ Tag total ='],['Не розподілено ','Unallocated '],['· сума тегів ','· tag total '],['Зайве ','Extra '],['понад ','over '],['Сума за тегами ','Tag total '],['має дорівнювати сумі операції','must equal the transaction amount'],
+  ['⚠️ Перевитрата бюджету:','⚠️ Budget overspend:'],['➖ Витрати','➖ Expenses'],['➕ Надходження','➕ Income'],
+  ['без жодного привʼязаного рахунку:','with no linked account:'],['. Додайте рахунок і вкажіть для нього банк (поле «Банк» у формі рахунку).','. Add an account and set its bank (the “Bank” field in the account form).'],['основний рахунок банку ','main account of bank '],
+  ['операцій-платежів — залишаться, але втратять привʼязку до кредиту','payment transactions — will remain but lose the credit link'],['цілей (рахунок підвʼязаний)','goals (account linked)'],['рахунків (привʼязані до банку)','accounts (linked to the bank)'],['регулярних платежів','recurring payments'],['операцій перенесено','transactions moved'],
+  ['Категорію ','Category '],['» використовують','” is used by'],['Видалити «','Delete “'],['» видалено (','” deleted ('],
+  ['Ціль ','Goal '],['Поповнити «','Top up “'],['Зняти з ','Withdraw from '],['Внести до ','Deposit to '],['⚠️ Банки','⚠️ Banks'],['⚠️ Банк','⚠️ Bank'],
+  ['Біржу перейменовано на ','Exchange renamed to '],['Біржу ','Exchange '],['Монети перенесено на ','Coins moved to '],['. Куди перенести монети з неї?','. Where to move its coins?'],['— Без біржі (прибрати привʼязку) —','— No exchange (remove link) —'],[' · біржі: ',' · exchanges: '],
+  ['Кредит на ','Credit of '],[' · виплачено ',' · paid '],['Кредит «','Credit “'],['»: залишок ','”: balance '],['буде погашено','will be paid off'],[' і створено операцію «витрата»',' and an expense transaction created'],['Рахунок «','Account “'],['Банк «','Bank “'],
+  ['Редагувати ','Edit '],['витрату','expense'],['надходження','income'],['Переказ із ','Transfer from '],['Видалити біржу ','Delete exchange '],['», біржу «','”, exchange “'],
+  ['Виправлено ','Fixed '],[' некоректних посилань.',' invalid references.'],
+  ['Версійні знімки у вашому Google Drive (останні ','Versioned snapshots in your Google Drive (last '],['). Відновлення замінить поточні дані — з можливістю скасувати.','). Restoring replaces current data — can be undone.'],['Знімок ','Snapshot '],[': поточні дані буде замінено (можна скасувати).',': current data will be replaced (can be undone).'],['Відновлено з Drive (','Restored from Drive ('],['Помилка відновлення:','Restore error:'],['Не вдалося отримати список:','Failed to get the list:'],
+  ['Відновити дані станом на ','Restore data as of '],['? Поточні буде замінено (з можливістю скасувати).','? Current data will be replaced (can be undone).'],['Відновлено стан на ','Restored state as of '],
+  // загальні (після специфічних)
+  ['Курс НБУ','NBU rate'],[' міс',' mo'],
+  [' операцій',' transactions'],[' регулярних',' recurring'],['кредитів','credits'],[' видалено',' deleted'],[' з ',' of '],[' і ',' and '],[' із ',' from '],
   // глобально: українські лапки «» → англійські curly quotes (для залишкових складених рядків)
   ['«','“'],['»','”'],
 ];
 // Нормалізація апострофів (ʼ ’ ‘ → '), щоб збіги не залежали від варіанту символу.
 const APO = /[ʼ’‘′]/g;
 const I18N_EN_N = {}; for (const k in I18N_EN) I18N_EN_N[k.replace(APO, "'")] = I18N_EN[k];
-const I18N_PARTIAL_N = I18N_PARTIAL.map(([u, e]) => [u.replace(APO, "'"), e]);
+const I18N_PARTIAL_N = I18N_PARTIAL.map(([u, e]) => [u.replace(APO, "'"), e]).sort((a, b) => b[0].length - a[0].length);   // найдовші збіги першими (специфічні перед загальними)
 function tStr(s){ // переклад рядка (точний збіг або підрядкові заміни)
   if (s == null) return s;
   const norm = s.replace(APO, "'");
@@ -1244,7 +1285,7 @@ function navigate(v){
   if (changed) window.scrollTo(0, 0);   // при зміні вкладки — на початок
 }
 // Перемальовує поточну вкладку, зберігаючи позицію прокрутки (щоб зміни оновлювались «на місці»).
-function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTML = ''; views[currentView](app); applyLang(); enhanceSelects(app); enhanceCalcInputs(app); window.scrollTo(0, y); }
+function render(){ const y = window.scrollY; const app = $('#app'); app.innerHTML = ''; views[currentView](app); enhanceSelects(app); enhanceCalcInputs(app); applyLang(); window.scrollTo(0, y); }   // переклад ПІСЛЯ enhance — щоб кастомні кнопки/калькулятор теж переклались
 
 window.addEventListener('hashchange', () => { const v = hashView(); if (v && v !== currentView) navigate(v); });
 document.querySelectorAll('.nav a').forEach(a => {
@@ -1304,7 +1345,7 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
     foot.appendChild(cancel); foot.appendChild(ok); modal.appendChild(foot);
   }
   overlay.appendChild(modal); root.appendChild(overlay);
-  translateTree(modal); enhanceSelects(modal); enhanceCalcInputs(modal);   // нативні <select> → кастомні випадайки + калькулятор у полях сум
+  enhanceSelects(modal); enhanceCalcInputs(modal); translateTree(modal);   // enhance ДО перекладу — щоб title калькулятора/кнопок переклались
   function close(){ overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} } }
   overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(); });
   head.querySelector('.x').onclick = close;
@@ -1329,7 +1370,7 @@ function appDialog({ title = '', message = '', body = null, okLabel = 'OK', canc
     if (cancelLabel) { const c = el(`<button class="btn ghost">${esc(cancelLabel)}</button>`); c.onclick = () => done(false); foot.appendChild(c); }
     const ok = el(`<button class="btn ${danger ? 'danger' : 'primary'}">${esc(okLabel)}</button>`); ok.onclick = () => done(true); foot.appendChild(ok);
     modal.appendChild(head); modal.appendChild(bd); modal.appendChild(foot);
-    overlay.appendChild(modal); root.appendChild(overlay); translateTree(modal); enhanceSelects(modal); enhanceCalcInputs(modal);
+    overlay.appendChild(modal); root.appendChild(overlay); enhanceSelects(modal); enhanceCalcInputs(modal); translateTree(modal);
     let settled = false;
     function done(v){ if (settled) return; settled = true; overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} } resolve(v); }
     function onKey(e){ if (e.key === 'Escape') done(false); }
@@ -2543,7 +2584,7 @@ function printMonthlyReport(ym){
   // Друкуємо в самому додатку через @media print (нов вікно на iPhone не дає повернутись).
   const old = document.getElementById('print-area'); if (old) old.remove();
   const area = el(`<div id="print-area">${monthlyReportHTML(ym)}</div>`);
-  document.body.appendChild(area);
+  document.body.appendChild(area); translateTree(area);
   const cleanup = () => { const a = document.getElementById('print-area'); if (a) a.remove(); window.removeEventListener('afterprint', cleanup); };
   window.addEventListener('afterprint', cleanup);
   setTimeout(() => { try { window.print(); } catch (e) {} }, 60);
@@ -3063,7 +3104,7 @@ views.goals = (app) => {
     const card = el(`<section class="card" style="padding:14px;border-top:4px solid ${g.color||'var(--accent)'}">
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="min-width:0"><div style="font-weight:600">${g.icon?g.icon+' ':''}${esc(g.name||'Ціль')}${done?' ✅':''}${linked?' <span class="muted small">🔗</span>':''}</div>
-          <div class="muted small">${g.deadline?'до '+fmtDate(g.deadline)+(ml!=null?` · ${ml} міс`:''):'без дедлайну'}</div></div>
+          <div class="muted small">${g.deadline?(lang==='en'?'until ':'до ')+fmtDate(g.deadline)+(ml!=null?` · ${ml} міс`:''):'без дедлайну'}</div></div>
         <div class="tabnum" style="font-weight:800;font-size:18px">${pct}%</div>
       </div>
       <div class="pbar" style="margin-top:10px"><i style="width:${pct}%;background:${done?'var(--green)':'var(--accent)'}"></i></div>
@@ -3317,7 +3358,7 @@ function renameExchange(oldName, after){
     save(); showToast(`Біржу перейменовано на «${name}»`, null, null, 2500); if (after) after(); render();
   });
 }
-function exchangePlural(n){ return n === 1 ? 'актив' : (n >= 2 && n <= 4 ? 'активи' : 'активів'); }
+function exchangePlural(n){ if (lang === 'en') return n === 1 ? 'asset' : 'assets'; return n === 1 ? 'актив' : (n >= 2 && n <= 4 ? 'активи' : 'активів'); }
 function deleteExchange(name, after){
   const cnt = exchangeUsageCount(name);
   const others = cryptoExchanges().filter(n => n !== name);
@@ -3358,7 +3399,7 @@ function openExchangesManager(){
     names.forEach(nm => {
       const cnt = exchangeUsageCount(nm);
       const row = el(`<div class="row" style="align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
-        <div style="min-width:0;flex:1"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nm)}</div><div class="muted small">${cnt} актив${cnt===1?'':(cnt>=2&&cnt<=4?'и':'ів')}</div></div>
+        <div style="min-width:0;flex:1"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nm)}</div><div class="muted small">${cnt} ${lang==='en'?(cnt===1?'asset':'assets'):'актив'+(cnt===1?'':(cnt>=2&&cnt<=4?'и':'ів'))}</div></div>
         <div class="row" style="gap:6px;flex:0 0 auto"></div></div>`);
       const acts = row.lastElementChild;
       const ren = el(`<button class="btn ghost sm" title="Перейменувати">${ic('edit')}</button>`); ren.onclick = () => renameExchange(nm, rebuild);
@@ -4545,7 +4586,7 @@ function showUpdateBar(reg){
   const bar = el(`<div id="upd-bar" style="position:fixed;left:8px;right:8px;bottom:8px;z-index:10000;background:var(--ink2);color:#fff;padding:10px 14px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.28)">
     <span class="small">Доступна нова версія MoneyMe</span>
     <span style="display:flex;gap:8px"><button class="btn primary sm" id="upd-now">Оновити</button><button class="btn sm" id="upd-later">Пізніше</button></span></div>`);
-  document.body.appendChild(bar);
+  document.body.appendChild(bar); translateTree(bar);
   $('#upd-now', bar).onclick = () => {
     bar.remove();
     if (reg.waiting) { navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true }); reg.waiting.postMessage('skipWaiting'); }
