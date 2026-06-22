@@ -345,7 +345,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '40bff4b06b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'ec803b8e8d';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -474,6 +474,18 @@ const I18N_EN = {
   'Доступна нова версія MoneyMe':'A new version of MoneyMe is available','Оновити':'Update','Пізніше':'Later',
   '✓ Синхронізовано':'✓ Synced','Підключення…':'Connecting…','Синхронізація…':'Syncing…','Очікування…':'Waiting…','Вимкнено':'Off',
   'Офлайн — зміни збережено, вивантажаться пізніше':'Offline — changes saved, will upload later',
+  // — повний переклад UI: вкладки, форми, графіки, підказки —
+  'Перетягніть, щоб змінити порядок':'Drag to reorder','Перетягніть, щоб змінити порядок банків':'Drag to reorder banks','Перемістити вище':'Move up','Перемістити нижче':'Move down','Операції цієї категорії':'Transactions of this category','Видалити банк':'Delete bank','Внести платіж за місяць':'Make monthly payment','Графік платежів (амортизація)':'Payment schedule (amortization)','Дії':'Actions','Калькулятор':'Calculator','Без кольору':'No color',
+  'Звіт за місяць':'Monthly report','Активних:':'Active:','Залишок боргу:':'Debt left:','Платіж/міс:':'Payment/mo:','Витрати/міс:':'Expenses/mo:','Підписки/міс:':'Subscriptions/mo:','Регулярні платежі':'Recurring payments','До регулярних':'To recurring','Прогноз балансу':'Balance forecast','Витрати за тегами':'Expenses by tags','зараз':'now',
+  'Графік':'Schedule','Ціни':'Prices','За активами':'By assets','За біржами':'By exchanges','Оновити ціни':'Update prices','Оновити курси':'Update rates','Криптопортфель':'Crypto portfolio',
+  'Тап — меню дій. Перетягніть ручкою ⠿ на іншу картку — переказ.':'Tap — action menu. Drag by the ⠿ handle onto another card — transfer.','Перетягніть на іншу картку — переказ':'Drag onto another card — transfer',
+  'витрата':'expense','термін':'due','Розташування меню':'Menu position','Меню':'Menu','Які розділи показувати на панелі. Приховані доступні під кнопкою «…».':'Which sections to show in the bar. Hidden ones are available under the “…” button.','⬇️ Знизу':'⬇️ Bottom','⬆️ Зверху':'⬆️ Top','🔒 Зашифрований':'🔒 Encrypted','☁ Версії в Drive':'☁ Versions in Drive',
+  'Розділити на кілька статей':'Split into several categories','+ Стаття':'+ Item','Сума кредиту':'Loan amount','Щокварталу':'Quarterly','Щороку':'Yearly',
+  'Сума закупки (необовʼязково) — щоб рахувати прибуток/збиток.':'Purchase cost (optional) — to compute profit/loss.','Сповістити коли ціна ≥, USD':'Notify when price ≥, USD','Сповістити коли ціна ≤, USD':'Notify when price ≤, USD','Вкажете кількість по біржах — «Кількість (всього)» порахується як сума.':'Specify amounts per exchange — “Amount (total)” is computed as the sum.','Коментар (необовʼязково)':'Comment (optional)','Виділити рядок кольором (необовʼязково)':'Highlight row with color (optional)',
+  'скільки вклали':'how much invested','ціль зростання':'target up','ціль падіння':'target down','нотатка до активу':'note for asset',
+  'Валюту не можна змінити — по рахунку вже є операції.':'Currency cannot be changed — the account already has transactions.','Біржі / гаманці':'Exchanges / wallets','Біржі та гаманці зі ваших активів. Перейменування й видалення застосовуються до всіх активів.':'Exchanges and wallets from your assets. Renaming and deletion apply to all assets.','Бірж ще немає. Додайте їх у формі активу («Розподіл по біржах»).':'No exchanges yet. Add them in the asset form (Split by exchanges).',
+  'Залишок':'Balance','Тіло':'Principal','Після цього платежу кредит буде закрито.':'After this payment the credit will be paid off.','Закрити кредит повністю?':'Pay off credit in full?','Закрити кредит':'Pay off credit',
+  'Калькулятор дострокового погашення':'Early payoff calculator','Платежі вже зроблено — перенести на наступний цикл':'Payments already made — move to next cycle',
 };
 // Підрядкові заміни — для складених рядків (текст склеєний із числами/назвами).
 const I18N_PARTIAL = [
@@ -519,6 +531,20 @@ const I18N_PARTIAL = [
   ['Спишеться з «','Debited from “'],['Зарахується на «','Credited to “'],['Спишеться','Debited'],['Зарахується','Credited'],
   ['Відпустка','Vacation'],['відпустка','vacation'],['робота','work'],['оренда','rent'],
   ['Виплачено','Paid'],[' з ',' of '],
+  // — складені рядки з числами/валютами (підрядкові заміни) —
+  ['Лише регулярні платежі та кредити (без разових). Через ','Only recurring payments and credits (one-offs excluded). In '],
+  ['Сума (','Amount ('],['Курс: 1 ','Rate: 1 '],['— зарахується','— credited'],['зарахується','credited'],
+  ['Курс НБУ на ','NBU rate on '],['змініть курс або суму нижче','change the rate or amount below'],
+  [' · ще ',' · '],['Закупка ','Cost '],['сер. ','avg. '],
+  ['щокварталу','quarterly'],['щороку','yearly'],
+  ['ПриватБанк','PrivatBank'],['Розстрочка на холодильник','Fridge installment'],
+  ['Графік платежів — ','Payment schedule — '],['переплата відсотків','interest overpaid'],['платежів','payments'],
+  ['Платіж — ','Payment — '],['Платіж за кредитом ','Credit payment '],
+  ['Увага: валюта рахунку (','Note: account currency ('],[') відрізняється від ',') differs from '],['; суму спишеться як є.','; the amount will be charged as is.'],
+  [' відсотків.',' in interest.'],
+  ['Сума платежу (','Payment amount ('],['Дострокове погашення — ','Early payoff — '],['Або разовий додатковий платіж (','Or one-time extra payment ('],['— до ','— until '],
+  // глобально: українські лапки «» → англійські curly quotes (для залишкових складених рядків)
+  ['«','“'],['»','”'],
 ];
 // Нормалізація апострофів (ʼ ’ ‘ → '), щоб збіги не залежали від варіанту символу.
 const APO = /[ʼ’‘′]/g;
@@ -2496,7 +2522,7 @@ function monthlyReportHTML(ym){
   const topE=Object.entries(cE).sort((a,b)=>b[1]-a[1]); const topI=Object.entries(cI).sort((a,b)=>b[1]-a[1]);
   const budgets=state.categories.filter(c=>c.kind==='EXPENSE'&&(c.budget||0)>0).map(c=>({c,spent:categorySpent(c.id,from,to),budget:effectiveBudget(c)})).filter(b=>b.spent>0.005).sort((a,b)=>(b.spent/b.budget)-(a.spent/a.budget));
   const subM=curMapStr(recurringMonthlyByCur('EXPENSE')); const loanM=curMapStr(loansByCur(loanMonthly));
-  const monthName=new Date(from).toLocaleDateString('uk-UA',{month:'long',year:'numeric'});
+  const monthName=new Date(from).toLocaleDateString(lang==='en'?'en-US':'uk-UA',{month:'long',year:'numeric'});
   const C={ink:'#1e293b',mut:'#64748b',grn:'#16a34a',red:'#dc2626',amb:'#d97706',line:'#e2e8f0'};
   const metric=(label,val,col)=>`<div style="border:1px solid ${C.line};border-radius:10px;padding:10px"><div style="color:${C.mut};font-size:12px">${label}</div><div style="font-weight:800;font-size:18px;color:${col}">${val}</div></div>`;
   const catRows=(arr,col)=>{ const tot=arr.reduce((s,[,v])=>s+v,0)||1; return arr.map(([n,v])=>`<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:5px"><span style="flex:0 0 42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><div style="flex:1;height:7px;background:${C.line};border-radius:99px;overflow:hidden"><div style="width:${Math.round(v/tot*100)}%;height:100%;background:${col}"></div></div><b style="flex:0 0 auto">${money(v)}</b><span style="color:${C.mut};width:40px;text-align:right">${Math.round(v/tot*100)}%</span></div>`).join(''); };
@@ -2626,7 +2652,7 @@ views.analytics = (app) => {
     const start = netWorthAt(todayISO());
     const pts = [{ label: 'зараз', value: start }];
     let bal = start;
-    for (let i = 1; i <= 6; i++) { bal = round2(bal + monthlyNet); const ym = addMonthsYM(todayISO().slice(0,7), i); pts.push({ label: new Date(ym + '-01').toLocaleDateString('uk-UA', { month: 'short' }), value: bal }); }
+    for (let i = 1; i <= 6; i++) { bal = round2(bal + monthlyNet); const ym = addMonthsYM(todayISO().slice(0,7), i); pts.push({ label: new Date(ym + '-01').toLocaleDateString(lang==='en'?'en-US':'uk-UA', { month: 'short' }), value: bal }); }
     const fc = el(`<div class="card" style="padding:14px;margin-top:14px">
       <div class="row" style="justify-content:space-between;align-items:baseline;gap:8px"><h2 style="margin:0">Прогноз балансу</h2>
         <b class="tabnum" style="color:${monthlyNet>=0?'var(--green)':'var(--red)'}">${monthlyNet>=0?'+':''}${money(monthlyNet)}/міс</b></div>
