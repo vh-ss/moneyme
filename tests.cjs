@@ -52,6 +52,19 @@ eq('fee FIXED 5 (та сама валюта)', S.feeSourceAmount('FIXED', 5, nul
 eq('fee NONE', S.feeSourceAmount('NONE', 9, null, 'UAH', 100, 1), 0);
 eq('fee FIXED у валюті призначення (10 USD / курс 40)', S.feeSourceAmount('FIXED', 10, 'USD', 'UAH', 100, 40), 0.25);
 
+// ——— calcEval (калькулятор у полях сум) ———
+eq('calc 2+2', S.calcEval('2+2'), 4);
+eq('calc пріоритет 100-30*2', S.calcEval('100-30*2'), 40);
+eq('calc дужки (10+5)*2', S.calcEval('(10+5)*2'), 30);
+eq('calc унарний -5+3', S.calcEval('-5+3'), -2);
+eq('calc ділення 10/4', S.calcEval('10/4'), 2.5);
+eq('calc кома 100,50+0,5', S.calcEval('100,50+0,5'), 101);
+eq('calc символи 12×3', S.calcEval('12×3'), 36);
+eq('calc невалідний 1+', S.calcEval('1+'), null);
+eq('calc літери', S.calcEval('abc'), null);
+eq('calc порожній', S.calcEval(''), null);
+eq('calc ділення на нуль', S.calcEval('5/0'), null);
+
 // ——— Кредити ———
 eq('loanMonthlyRate 24%/рік', S.loanMonthlyRate({ has_interest: true, rate: 24 }), 0.02);
 eq('loanMonthlyRate без відсотків', S.loanMonthlyRate({ has_interest: false, rate: 24 }), 0);
