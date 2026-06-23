@@ -212,6 +212,33 @@ eq('txAccountShare: не-split 0 для іншого', S.txAccountShare({ kind: 
   eq('exchange: пласка позиція (без біржі) → загальна', f.amount, 0.03);
 }
 
+// ——— Вкладення: id-посилання та план синхронізації (referencedAttIds / attachmentPlan) ———
+{
+  const s = { transactions: [
+    { id: 1, attachments: ['att_a', 'att_b'] },
+    { id: 2, attachments: ['att_b'] },                 // дубль id між операціями
+    { id: 3, attachments: ['data:image/jpeg;base64,xxx'] },  // legacy dataURL — НЕ id
+    { id: 4 },                                         // без вкладень
+  ] };
+  const refd = [...S.referencedAttIds(s)].sort();
+  ok('referencedAttIds: лише att_-id, унікальні', JSON.stringify(refd) === JSON.stringify(['att_a', 'att_b']));
+}
+{
+  const DAY = 24 * 3600 * 1000, now = 1000 * DAY, grace = 14 * DAY;
+  const refd = new Set(['att_x', 'att_y', 'att_z']);
+  const local = ['att_x', 'att_y'];                    // att_z ще не докачано локально
+  const drive = [
+    { id: 'att_x', fileId: 'fx', modifiedAt: now - DAY },        // вже в Drive
+    { id: 'att_old', fileId: 'fo', modifiedAt: now - 30 * DAY }, // сирота, старий → видалити
+    { id: 'att_new', fileId: 'fn', modifiedAt: now - DAY },      // сирота, свіжий → лишити (grace)
+  ];
+  const plan = S.attachmentPlan(refd, local, drive, now, grace);
+  ok('attachmentPlan: вивантажити локальне+не-в-Drive (att_y)', JSON.stringify(plan.toUpload) === JSON.stringify(['att_y']));
+  ok('attachmentPlan: att_z не вивантажуємо (нема локально)', !plan.toUpload.includes('att_z'));
+  ok('attachmentPlan: видалити лише старого сироту (att_old)', JSON.stringify(plan.toDeleteDrive) === JSON.stringify(['att_old']));
+  ok('attachmentPlan: свіжого сироту не чіпаємо (grace)', !plan.toDeleteDrive.includes('att_new'));
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);

@@ -1087,7 +1087,9 @@ function txInfoNode(tx){
   if (tx.attachments && tx.attachments.length) {   // вкладення (чеки/скріни) — мініатюри з повноекранним переглядом
     node.appendChild(el(`<div class="row" style="justify-content:space-between;gap:18px;margin-top:8px"><span class="muted small">Вкладення</span><b>${tx.attachments.length}</b></div>`));
     const grid = el(`<div class="attgrid"></div>`);
-    tx.attachments.forEach((url, i) => { const c = el(`<div class="attthumb"><img src="${url}" alt=""></div>`); c.querySelector('img').onclick = () => openImageViewer(tx.attachments, i); grid.appendChild(c); });
+    tx.attachments.forEach((a, i) => { const c = el(`<div class="attthumb"><img alt=""></div>`); const img = c.querySelector('img');
+      attResolveUrl(a).then(u => { if (u) img.src = u; });   // id → blob URL (лінивий Drive-fetch за потреби)
+      img.onclick = () => openImageViewer(tx.attachments, i); grid.appendChild(c); });
     node.appendChild(grid);
   }
   return node;
@@ -1730,8 +1732,105 @@ function emojiPicker(inputEl) {
   return grid;
 }
 
-// ——— Вкладення до операцій (чеки/скріни): стиснення + поле + перегляд ———
-// Стискає зображення через canvas (resize до maxDim, JPEG) — щоб не роздути localStorage і синхронізацію.
+// ——— Вкладення до операцій (чеки/скріни): IndexedDB-blob + лінива синхронізація ———
+// Архітектура: байти фото лежать у IndexedDB (локальний кеш, ліміт сотні МБ–ГБ, без base64-роздуття),
+// а в операції — лише id-посилання ('att_…'). У Drive кожне фото — окремий незмінний файл att-<id>.jpg.
+// Тому state лишається крихітним (швидкі save/sync), а фото ганяються «раз — і назавжди» (lazy).
+const ATT_DB = 'moneyme-att', ATT_STORE = 'blobs';
+let _attDbPromise = null;
+function attDbOpen(){
+  if (_attDbPromise) return _attDbPromise;
+  _attDbPromise = new Promise((resolve, reject) => {
+    try {
+      if (!('indexedDB' in window)) { reject(new Error('no IndexedDB')); return; }
+      const rq = indexedDB.open(ATT_DB, 1);
+      rq.onupgradeneeded = () => { const db = rq.result; if (!db.objectStoreNames.contains(ATT_STORE)) db.createObjectStore(ATT_STORE, { keyPath: 'id' }); };
+      rq.onsuccess = () => resolve(rq.result);
+      rq.onerror = () => reject(rq.error);
+    } catch (e) { reject(e); }
+  });
+  return _attDbPromise;
+}
+async function attPut(id, blob){ const db = await attDbOpen(); return new Promise((resolve, reject) => { const tx = db.transaction(ATT_STORE, 'readwrite'); tx.objectStore(ATT_STORE).put({ id, blob, ts: Date.now() }); tx.oncomplete = () => resolve(true); tx.onerror = () => reject(tx.error); }); }
+async function attGetBlob(id){ try { const db = await attDbOpen(); return await new Promise((resolve, reject) => { const tx = db.transaction(ATT_STORE, 'readonly'); const rq = tx.objectStore(ATT_STORE).get(id); rq.onsuccess = () => resolve(rq.result ? rq.result.blob : null); rq.onerror = () => reject(rq.error); }); } catch (e) { return null; } }
+async function attDelBlob(id){ try { const db = await attDbOpen(); return await new Promise((resolve) => { const tx = db.transaction(ATT_STORE, 'readwrite'); tx.objectStore(ATT_STORE).delete(id); tx.oncomplete = () => resolve(true); tx.onerror = () => resolve(false); }); } catch (e) { return false; } }
+async function attAllIds(){ try { const db = await attDbOpen(); return await new Promise((resolve) => { const tx = db.transaction(ATT_STORE, 'readonly'); const rq = tx.objectStore(ATT_STORE).getAllKeys(); rq.onsuccess = () => resolve((rq.result || []).map(String)); rq.onerror = () => resolve([]); }); } catch (e) { return []; } }
+function newAttId(){ return 'att_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+function attIsId(v){ return typeof v === 'string' && v.startsWith('att_'); }
+const _attUrlCache = new Map();   // id -> objectURL (щоб не перестворювати на кожен рендер)
+// URL для показу вкладення. Приймає id (IndexedDB→Drive lazy) або legacy dataURL.
+async function attResolveUrl(v){
+  if (typeof v === 'string' && v.startsWith('data:')) return v;   // ще не мігроване — показуємо напряму
+  const id = attIsId(v) ? v : (v && v.id);
+  if (!id) return null;
+  if (_attUrlCache.has(id)) return _attUrlCache.get(id);
+  let blob = await attGetBlob(id);
+  if (!blob) blob = await attFetchFromDrive(id);   // нема локально → тягнемо з Drive один раз і кешуємо
+  if (!blob) return null;
+  const url = URL.createObjectURL(blob); _attUrlCache.set(id, url); return url;
+}
+// Лінива дозавантаження одного фото з Drive у локальний кеш (att-<id>.jpg → IndexedDB).
+async function attFetchFromDrive(id){
+  try {
+    if (!syncAvailable() || !getCachedToken()) return null;
+    const q = encodeURIComponent("name='att-" + id + ".jpg'");
+    const r = await driveFetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id)&q=' + q);
+    if (!r.ok) return null; const j = await r.json(); const f = j.files && j.files[0]; if (!f) return null;
+    const r2 = await driveFetch('https://www.googleapis.com/drive/v3/files/' + f.id + '?alt=media');
+    if (!r2.ok) return null; const blob = await r2.blob();
+    try { await attPut(id, blob); } catch (e) {}
+    return blob;
+  } catch (e) { return null; }
+}
+// Множина id вкладень, на які ще є посилання в живих операціях (для вивантаження / прибирання сиріт).
+function referencedAttIds(s){ const set = new Set(); ((s && s.transactions) || []).forEach(t => { (t.attachments || []).forEach(a => { const id = attIsId(a) ? a : (a && a.id); if (id && /^att_/.test(id)) set.add(id); }); }); return set; }
+// Чистий план синхронізації вкладень: що вивантажити в Drive і яких сиріт прибрати (старші за grace). Покрито тестами.
+function attachmentPlan(referenced, localIds, driveFiles, now, grace){
+  const refd = referenced instanceof Set ? referenced : new Set(referenced);
+  const local = new Set((localIds || []).map(String));
+  driveFiles = driveFiles || [];
+  const drive = new Set(driveFiles.map(f => f.id));
+  const toUpload = [];
+  refd.forEach(id => { if (local.has(id) && !drive.has(id)) toUpload.push(id); });
+  const toDeleteDrive = [];
+  driveFiles.forEach(f => { if (!refd.has(f.id) && (now - (f.modifiedAt || 0)) > grace) toDeleteDrive.push(f.id); });
+  return { toUpload, toDeleteDrive };
+}
+// dataURL → Blob БЕЗ fetch (CSP connect-src не дозволяє data:; декодуємо base64 вручну через atob).
+function dataUrlToBlob(dataUrl){
+  try {
+    const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(dataUrl || '');
+    if (!m) return null;
+    const mime = m[1] || 'image/jpeg';
+    let bytes;
+    if (m[2]) { const bin = atob(m[3]); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); }
+    else { const txt = decodeURIComponent(m[3]); bytes = new Uint8Array(txt.length); for (let i = 0; i < txt.length; i++) bytes[i] = txt.charCodeAt(i); }
+    return new Blob([bytes], { type: mime });
+  } catch (e) { return null; }
+}
+// Одноразова міграція: старі base64-вкладення (у localStorage / стані з Drive) → Blob у IndexedDB + id-посилання.
+// Робить state крихітним, прибирає головну причину переповнення localStorage; нові id потім самі вивантажаться.
+async function migrateAttachmentsToIDB(){
+  try {
+    if (!('indexedDB' in window)) return;
+    let changed = false;
+    for (const t of (state.transactions || [])) {
+      if (!Array.isArray(t.attachments) || !t.attachments.length) continue;
+      const out = [];
+      for (const a of t.attachments) {
+        if (attIsId(a)) { out.push(a); continue; }
+        const dataUrl = (typeof a === 'string' && a.startsWith('data:')) ? a : (a && a.data);
+        const blob = dataUrl ? dataUrlToBlob(dataUrl) : null;
+        if (!blob) { if (dataUrl) out.push(a); continue; }   // не вдалось — лишаємо як є, не губимо
+        try { const id = newAttId(); await attPut(id, blob); out.push(id); changed = true; }
+        catch (e) { out.push(a); }
+      }
+      t.attachments = out;
+    }
+    if (changed) { save(); render(); if (Sync.on && syncAvailable() && navigator.onLine) cloudSync(false); }
+  } catch (e) {}
+}
+// Стискає зображення через canvas (resize до maxDim, JPEG) → Blob (без base64-роздуття у пам'яті/IDB).
 function compressImage(file, maxDim = 1280, quality = 0.6){
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
@@ -1739,26 +1838,32 @@ function compressImage(file, maxDim = 1280, quality = 0.6){
       img.onload = () => { let w = img.width, h = img.height;
         if (Math.max(w, h) > maxDim) { const s = maxDim / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
         const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
-        try { resolve(c.toDataURL('image/jpeg', quality)); } catch (e) { reject(e); } };
+        try { c.toBlob(b => b ? resolve(b) : reject(new Error('toBlob null')), 'image/jpeg', quality); } catch (e) { reject(e); } };
       img.onerror = reject; img.src = fr.result; };
     fr.onerror = reject; fr.readAsDataURL(file);
   });
 }
-// Повноекранний перегляд зображень (з гортанням, якщо їх кілька).
-function openImageViewer(urls, idx){
-  urls = Array.isArray(urls) ? urls : [urls]; if (!urls.length) return; let i = Math.max(0, Math.min(idx || 0, urls.length - 1));
-  const ov = el(`<div class="imgview"><img alt=""><button class="imgclose" aria-label="Закрити">×</button>${urls.length > 1 ? '<button class="imgnav prev" aria-label="Назад">‹</button><button class="imgnav next" aria-label="Далі">›</button>' : ''}</div>`);
-  const img = ov.querySelector('img'); const show = () => img.src = urls[i];
+// Повноекранний перегляд зображень (з гортанням). Елементи списку — id або legacy dataURL; резолвимо ліниво.
+function openImageViewer(list, idx){
+  list = Array.isArray(list) ? list : [list]; if (!list.length) return; let i = Math.max(0, Math.min(idx || 0, list.length - 1));
+  const ov = el(`<div class="imgview"><img alt=""><div class="imgload" style="position:absolute;color:#fff;font-size:14px;opacity:.85">Завантаження…</div><button class="imgclose" aria-label="Закрити">×</button>${list.length > 1 ? '<button class="imgnav prev" aria-label="Назад">‹</button><button class="imgnav next" aria-label="Далі">›</button>' : ''}</div>`);
+  const img = ov.querySelector('img'); const load = ov.querySelector('.imgload'); let token = 0;
+  async function show(){ const my = ++token; img.style.visibility = 'hidden'; load.style.display = ''; load.textContent = 'Завантаження…';
+    const url = await attResolveUrl(list[i]); if (my !== token) return;
+    if (url) { img.src = url; img.style.visibility = ''; load.style.display = 'none'; } else { load.textContent = 'Недоступно'; } }
   const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
-  function onKey(e){ if (e.key === 'Escape') close(); else if (e.key === 'ArrowLeft' && urls.length > 1) { i = (i - 1 + urls.length) % urls.length; show(); } else if (e.key === 'ArrowRight' && urls.length > 1) { i = (i + 1) % urls.length; show(); } }
+  function onKey(e){ if (e.key === 'Escape') close(); else if (e.key === 'ArrowLeft' && list.length > 1) { i = (i - 1 + list.length) % list.length; show(); } else if (e.key === 'ArrowRight' && list.length > 1) { i = (i + 1) % list.length; show(); } }
   ov.querySelector('.imgclose').onclick = close;
   ov.addEventListener('mousedown', e => { if (e.target === ov) close(); });
-  if (urls.length > 1) { ov.querySelector('.prev').onclick = e => { e.stopPropagation(); i = (i - 1 + urls.length) % urls.length; show(); }; ov.querySelector('.next').onclick = e => { e.stopPropagation(); i = (i + 1) % urls.length; show(); }; }
+  if (list.length > 1) { ov.querySelector('.prev').onclick = e => { e.stopPropagation(); i = (i - 1 + list.length) % list.length; show(); }; ov.querySelector('.next').onclick = e => { e.stopPropagation(); i = (i + 1) % list.length; show(); }; }
   document.addEventListener('keydown', onKey); document.body.appendChild(ov); show();
 }
-// Будує поле вкладень у контейнері; повертає геттер поточного масиву dataURL.
+// Будує поле вкладень; повертає геттер масиву id (нові/мігровані) або legacy dataURL.
 function setupAttachments(container, initial){
-  let items = (initial || []).map(a => typeof a === 'string' ? a : (a && a.data)).filter(Boolean);
+  // items: { id?, url? } — id для IndexedDB-вкладень, url для негайного показу (objectURL або legacy dataURL).
+  let items = (initial || []).map(a => attIsId(a) ? { id: a, url: null }
+    : (typeof a === 'string' && a.startsWith('data:')) ? { url: a }
+    : (a && a.data) ? { url: a.data } : null).filter(Boolean);
   container.innerHTML = '';
   container.appendChild(el(`<label class="lab">Вкладення (чек / скрін)</label>`));
   const grid = el(`<div class="attgrid"></div>`); container.appendChild(grid);
@@ -1768,12 +1873,17 @@ function setupAttachments(container, initial){
   const bar = el(`<div class="row" style="gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"></div>`); bar.appendChild(add); bar.appendChild(pasteBtn); bar.appendChild(status); container.appendChild(bar);
   container.appendChild(el(`<div class="muted small" style="margin-top:3px">Або зробіть скрін і натисніть <b>Ctrl+V</b> у цьому вікні.</div>`));
   const input = el(`<input type="file" accept="image/*" multiple style="display:none">`); container.appendChild(input);
+  function thumbList(){ return items.map(it => it.id || it.url); }   // для повноекранного перегляду
   function render(){ grid.style.display = items.length ? '' : 'none'; grid.innerHTML = '';
-    items.forEach((url, i) => { const cell = el(`<div class="attthumb"><img src="${url}" alt=""><button type="button" class="attdel" title="Прибрати">×</button></div>`);
-      cell.querySelector('img').onclick = () => openImageViewer(items, i);
+    items.forEach((it, i) => { const cell = el(`<div class="attthumb"><img alt=""><button type="button" class="attdel" title="Прибрати">×</button></div>`);
+      const img = cell.querySelector('img');
+      if (it.url) img.src = it.url; else attResolveUrl(it.id).then(u => { if (u) img.src = u; });
+      img.onclick = () => openImageViewer(thumbList(), i);
       cell.querySelector('.attdel').onclick = () => { items.splice(i, 1); render(); };
       grid.appendChild(cell); }); }
-  async function addFile(f){ if (!f || !/^image\//.test(f.type)) return false; try { items.push(await compressImage(f)); render(); return true; } catch (e) { return false; } }
+  async function addFile(f){ if (!f || !/^image\//.test(f.type)) return false;
+    try { const blob = await compressImage(f); const id = newAttId(); await attPut(id, blob); items.push({ id, url: URL.createObjectURL(blob) }); render(); return true; }
+    catch (e) { return false; } }
   async function addFiles(files){ if (!files.length) return; status.textContent = 'Стиснення…'; for (const f of files) await addFile(f); status.textContent = ''; }
   add.onclick = () => input.click();
   input.onchange = () => { const files = [...input.files]; input.value = ''; addFiles(files); };
@@ -1800,7 +1910,7 @@ function setupAttachments(container, initial){
     } catch (e) { status.textContent = ''; alertModal('Не вдалося прочитати буфер. Зробіть скрін і натисніть Ctrl+V у вікні.'); }
   };
   render();
-  return () => items.slice();
+  return () => items.map(it => it.id || it.url);
 }
 
 //==================== Форма витрати/надходження ====================
@@ -4764,6 +4874,36 @@ async function driveUploadNamed(id, name, payload){
   if (!r.ok) throw new Error('Drive create ' + r.status);
   return (await r.json()).id;
 }
+// ——— Вкладення в Drive: кожне фото — окремий незмінний файл att-<id>.jpg в appDataFolder ———
+async function driveListAttFiles(){
+  const r = await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1000&fields=files(id,name,modifiedTime)&q=" + encodeURIComponent("name contains 'att-'"));
+  if (!r.ok) throw new Error('Drive list att ' + r.status);
+  const j = await r.json();
+  return (j.files || []).map(f => { const m = /^att-(att_.+)\.jpg$/.exec(f.name || ''); return m ? { id: m[1], fileId: f.id, modifiedAt: Date.parse(f.modifiedTime || '') || 0 } : null; }).filter(Boolean);
+}
+async function driveUploadBlob(name, blob){
+  const boundary = 'mm' + Math.random().toString(16).slice(2);
+  const meta = { name, parents: ['appDataFolder'] };
+  const pre = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n--' + boundary + '\r\nContent-Type: ' + (blob.type || 'image/jpeg') + '\r\n\r\n';
+  const post = '\r\n--' + boundary + '--';
+  const body = new Blob([pre, blob, post]);   // бінарний multipart — Blob-тіло, без base64
+  const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body });
+  if (!r.ok) throw new Error('att upload ' + r.status);
+  return (await r.json()).id;
+}
+// Вивантажує нові локальні фото окремими файлами та прибирає сиріт (старші за grace). Best-effort — не валить синх.
+async function attachmentSync(merged){
+  try {
+    if (!getCachedToken()) return;
+    const refd = referencedAttIds(merged);
+    const driveFiles = await driveListAttFiles();
+    const localIds = await attAllIds();
+    const plan = attachmentPlan(refd, localIds, driveFiles, Date.now(), 14 * 24 * 3600 * 1000);
+    for (const id of plan.toUpload) { try { const blob = await attGetBlob(id); if (blob) await driveUploadBlob('att-' + id + '.jpg', blob); } catch (e) {} }
+    if (plan.toDeleteDrive.length) { const byId = {}; driveFiles.forEach(f => byId[f.id] = f.fileId);
+      for (const id of plan.toDeleteDrive) { try { await driveDeleteFile(byId[id]); } catch (e) {} try { await attDelBlob(id); } catch (e) {} } }
+  } catch (e) { /* best-effort */ }
+}
 // Синхронізація per-device: читаємо файли ВСІХ пристроїв, зливаємо (LWW + надгробки), пишемо ЛИШЕ свій файл.
 // Без конфлікт-вікон і без «правильного порядку» — злиття комутативне. interactive=true дозволяє вікно входу.
 async function cloudSync(interactive){
@@ -4804,6 +4944,7 @@ async function cloudSync(interactive){
     if (legacy) { try { await driveDeleteFile(legacy.id); } catch (e) {} }
     markSynced();
     setSyncStatus('idle');
+    await attachmentSync(merged);   // вивантажити нові фото / прибрати сиріт (окремі файли att-<id>.jpg)
     cloudVersionedBackup(10);
   } catch (e) { setSyncStatus('error', e.message || String(e)); }
   finally { Sync.syncing = false; if (Sync.again) { Sync.again = false; setTimeout(() => cloudSync(false), 400); } }
@@ -4864,6 +5005,7 @@ ensureRatesFresh();
 ensureCryptoFresh();   // ціни крипти (раз на день)
 ensureDailySnapshot();   // точка відновлення на сьогодні
 maybeAutoBackup();       // опційне автозавантаження бекапу
+migrateAttachmentsToIDB();   // старі base64-вкладення → IndexedDB-blob + id (раз)
 
 // PWA: реєстрація service worker + плашка «доступне оновлення» (лише на http/https)
 function showUpdateBar(reg){
