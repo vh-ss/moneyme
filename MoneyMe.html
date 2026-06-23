@@ -360,9 +360,36 @@ const Sync = {
   status: 'off', detail: '', applying: false,
   token: null, tokenClient: null, fileId: null, gisLoading: null,
   pending: false, pushTimer: null,
-  base: localStorage.getItem('moneyme.sync.base') || null,   // updatedAt останньої вдалої синх
   last: localStorage.getItem('moneyme.sync.last') || null,
 };
+// ——— Синхронізація: per-record LWW (Last-Write-Wins) + надгробки видалень ———
+// Кожен запис має updatedAt; видалення лишає «надгробок» {id: updatedAt}. Злиття бере найновіший
+// запис по кожному id (надгробок виграє, якщо не старіший за live) — комутативно, не залежить від порядку.
+const SYNC_TYPES = ['accounts','categories','transactions','banks','loans','recurring','goals','crypto'];
+function deviceId(){ let d = localStorage.getItem('moneyme.sync.deviceId'); if (!d) { d = 'd' + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); localStorage.setItem('moneyme.sync.deviceId', d); } return d; }
+function deviceFileName(){ return 'moneyme-' + deviceId() + '.json'; }
+const TOMBSTONE_TTL = 90 * 24 * 3600 * 1000;   // надгробки живуть ~90 днів, далі чистяться
+// JSON запису без updatedAt — для виявлення реальних змін (а не лише оновлення мітки часу).
+function _recSig(r){ if (!r || typeof r !== 'object') return JSON.stringify(r); const { updatedAt, ...rest } = r; return JSON.stringify(rest); }
+let _syncPrev = null;   // знімок { type: Map(id -> _recSig) } на момент останнього save — для diff
+function _snapSig(){ const m = {}; SYNC_TYPES.forEach(t => { const mm = new Map(); (state[t] || []).forEach(r => { if (r && r.id != null) mm.set(r.id, _recSig(r)); }); m[t] = mm; }); return m; }
+// Проставляє updatedAt на нові/змінені записи та надгробки на видалені (порівнюючи з _syncPrev). Лише локальні правки.
+function stampLocalChanges(){
+  const now = new Date().toISOString();
+  if (!state.tombstones) state.tombstones = {};
+  SYNC_TYPES.forEach(t => {
+    if (!state.tombstones[t]) state.tombstones[t] = {};
+    const prev = _syncPrev ? _syncPrev[t] : new Map();
+    const cur = new Set();
+    (state[t] || []).forEach(r => { if (!r || r.id == null) return; cur.add(r.id);
+      const sig = _recSig(r), p = prev.get(r.id);
+      if (p === undefined || p !== sig || !r.updatedAt) r.updatedAt = now;   // новий / змінений / без мітки
+      if (state.tombstones[t][r.id]) delete state.tombstones[t][r.id];       // воскрес — прибираємо надгробок
+    });
+    prev.forEach((_, id) => { if (!cur.has(id) && !state.tombstones[t][id]) state.tombstones[t][id] = now; });   // зник → надгробок
+  });
+  _syncPrev = _snapSig();
+}
 
 // Криптовалюти: символ → CoinGecko id (для цін у USD). Оголошуємо рано — потрібні в normalize().
 const CRYPTO_CG = {
@@ -373,6 +400,7 @@ const CRYPTO_CG = {
 };
 let state = load();
 normalize();
+_syncPrev = _snapSig();   // базовий знімок для виявлення локальних змін у save()
 
 // Гарантуємо наявність усіх полів (міграція старих даних до поточної схеми).
 function normalize() {
@@ -384,6 +412,10 @@ function normalize() {
   if (!state.goals) { state.goals = []; changed = true; }           // цілі накопичення
   if (state.crypto === undefined) { state.crypto = []; changed = true; }   // крипто-портфель (порожній за замовчуванням)
   if (!Array.isArray(state.cryptoHistory)) { state.cryptoHistory = []; changed = true; }   // історія вартості портфеля
+  if (!state.tombstones || typeof state.tombstones !== 'object') { state.tombstones = {}; changed = true; }   // надгробки видалень для синху (per-record LWW)
+  SYNC_TYPES.forEach(t => { if (!state.tombstones[t]) { state.tombstones[t] = {}; changed = true; } });
+  // міграція: старим записам без updatedAt даємо мітку всього стану (щоб «новіший пристрій виграє» при злитті)
+  { const baseUpd = state.updatedAt || '2020-01-01T00:00:00.000Z'; SYNC_TYPES.forEach(t => (state[t] || []).forEach(r => { if (r && r.id != null && !r.updatedAt) { r.updatedAt = baseUpd; changed = true; } })); }
   if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1 }; changed = true; }
   ['acc','cat','tx','bank','loan','rec','goal','cry'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = (k==='cry') ? ((state.crypto||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : 1; changed = true; } });
   (state.categories || []).forEach(c => {
@@ -487,7 +519,7 @@ const I18N_EN = {
   'Залишок':'Balance','Тіло':'Principal','Після цього платежу кредит буде закрито.':'After this payment the credit will be paid off.','Закрити кредит повністю?':'Pay off credit in full?','Закрити кредит':'Pay off credit',
   'Калькулятор дострокового погашення':'Early payoff calculator','Платежі вже зроблено — перенести на наступний цикл':'Payments already made — move to next cycle',
   // — round 4: повний аудит усіх рядків коду —
-  'Крипто':'Crypto','Редагувати':'Edit','Це видалення зачепить:':'This deletion will affect:','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
+  'Крипто':'Crypto','Редагувати':'Edit','Перед синхронізацією':'Before sync','🔄 Синхронізовано з іншими пристроями':'🔄 Synced with other devices','Це видалення зачепить:':'This deletion will affect:','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
   'Шифрування працює лише на https-сайті (не з файлу, відкритого подвійним кліком).':'Encryption works only on an https site (not from a file opened by double-click).','Зашифрований експорт':'Encrypted export','Пароль для бекапу (запамʼятайте — без нього файл не відкрити!):':'Backup password (remember it — the file cannot be opened without it!):','Пароль закороткий — мінімум 4 символи.':'Password too short — at least 4 characters.','🔒 Зашифрований бекап збережено':'🔒 Encrypted backup saved',
   'На рахунок':'To account','Теги':'Tags','не вдалося отримати курси':'failed to fetch rates','не вдалося отримати ціни':'failed to fetch prices',
   'Напрямок':'Direction','Зараховано':'Credited','Кредит':'Credit','Тип запису':'Record type','Регулярний платіж':'Recurring payment','Операція':'Transaction',
@@ -858,9 +890,9 @@ function load() {
 }
 function persist() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 function save() {
-  if (!Sync.applying) state.updatedAt = new Date().toISOString();   // мітка часу для синхронізації
+  if (!Sync.applying) { stampLocalChanges(); state.updatedAt = new Date().toISOString(); }   // мітки часу записів/надгробки + загальна мітка
   persist();
-  cloudOnLocalChange();   // поставити в чергу вивантаження у Drive (no-op, якщо синх вимкнено)
+  cloudOnLocalChange();   // поставити в чергу синхронізації у Drive (no-op, якщо синх вимкнено)
 }
 
 // Приватність: приховування сум балансів (зберігається між сесіями).
@@ -4384,144 +4416,113 @@ async function openCloudBackups(){
   openModal('Хмарні точки відновлення', body, {});
 }
 function cloudPayload(){ return { app: 'MoneyMe', version: SCHEMA_VERSION, updatedAt: state.updatedAt || new Date().toISOString(), data: state }; }
-function markSynced(at){ Sync.base = at || state.updatedAt || null; Sync.last = new Date().toISOString(); Sync.pending = false;
-  localStorage.setItem('moneyme.sync.base', Sync.base || ''); localStorage.setItem('moneyme.sync.last', Sync.last);
-  storeSyncBase();   // знімок узгодженого стану — основа для 3-стороннього merge наступного разу
-  cloudVersionedBackup();   // best-effort версійний знімок у Drive (раз/день)
+function markSynced(){ Sync.last = new Date().toISOString(); Sync.pending = false;
+  localStorage.setItem('moneyme.sync.last', Sync.last);
+  if (currentView === 'settings') render();
   // якщо акаунт ще не запамʼятовано (старе підключення) — підхопимо його для тихого оновлення надалі
   if (!localStorage.getItem('moneyme.sync.account')) fetchAccountEmail().then(e => { if (e) localStorage.setItem('moneyme.sync.account', e); }); }
-function storeSyncBase(){ try { localStorage.setItem('moneyme.sync.basedata', JSON.stringify(state)); } catch (e) {} }
-function loadSyncBaseData(){ try { return JSON.parse(localStorage.getItem('moneyme.sync.basedata') || 'null'); } catch (e) { return null; } }
-// ——— 3-стороннє злиття станів (base = останній спільний синх, local, remote) ———
-function _idMap(arr){ const m = new Map(); (arr || []).forEach(it => { if (it && it.id != null) m.set(it.id, it); }); return m; }
-function mergeArrayType(type, base, local, remote, localNewer){
-  const B = _idMap(base[type]), L = _idMap(local[type]), R = _idMap(remote[type]);
-  const ids = new Set([...L.keys(), ...R.keys()]); const out = [];
-  ids.forEach(id => {
-    const inBase = B.has(id), l = L.get(id), r = R.get(id);
-    const baseStr = inBase ? JSON.stringify(B.get(id)) : null;
-    const editedL = !!l && inBase && JSON.stringify(l) !== baseStr;
-    const editedR = !!r && inBase && JSON.stringify(r) !== baseStr;
-    const deletedL = inBase && !l, deletedR = inBase && !r;
-    if (deletedL && !editedR) return;   // видалено локально, на хмарі не змінено → видаляємо
-    if (deletedR && !editedL) return;   // симетрично
-    let pick;
-    if (l && !r) pick = l; else if (r && !l) pick = r;
-    else if (editedL && !editedR) pick = l; else if (editedR && !editedL) pick = r;
-    else if (editedL && editedR) pick = localNewer ? l : r;   // обидва змінили той самий запис → новіша сторона
-    else pick = l;
-    out.push(pick);
+// ——— Злиття N станів пристроїв: per-record LWW + надгробки. Комутативне (не залежить від порядку). ———
+function _recTime(r){ return (r && r.updatedAt) || ''; }
+function mergeAll(states){
+  states = (states || []).filter(s => s && typeof s === 'object');
+  if (!states.length) return null;
+  // скалярні поля — зі стану з найновішою загальною міткою (детерміновано)
+  const newest = states.slice().sort((a, b) => (a.updatedAt || '') < (b.updatedAt || '') ? 1 : ((a.updatedAt || '') > (b.updatedAt || '') ? -1 : 0))[0];
+  const out = JSON.parse(JSON.stringify(newest));
+  out.tombstones = {};
+  SYNC_TYPES.forEach(type => {
+    // найновіший надгробок по кожному id
+    const tomb = {};
+    states.forEach(s => { const tt = (s.tombstones && s.tombstones[type]) || {}; for (const id in tt) { if (!tomb[id] || tt[id] > tomb[id]) tomb[id] = tt[id]; } });
+    // найновіший живий запис по кожному id (ефективна мітка = updatedAt запису або мітка його стану;
+    // на рівність — детермінований tie-break за вмістом)
+    const live = new Map(), liveT = new Map();
+    states.forEach(s => { const su = s.updatedAt || ''; (s[type] || []).forEach(r => { if (!r || r.id == null) return;
+      const rt = r.updatedAt || su, et = liveT.get(r.id);
+      if (et === undefined || rt > et || (rt === et && _recSig(r) > _recSig(live.get(r.id)))) { live.set(r.id, r); liveT.set(r.id, rt); } }); });
+    const arr = []; const keptTomb = {};
+    live.forEach((r, id) => { const td = tomb[id];
+      if (td && td >= liveT.get(id)) { keptTomb[id] = td; return; }   // надгробок не старіший за live → запис видалено
+      arr.push(JSON.parse(JSON.stringify(r))); });
+    for (const id in tomb) { if (!live.has(id)) keptTomb[id] = tomb[id]; }   // надгробки без живого запису теж лишаємо
+    out[type] = arr; out.tombstones[type] = keptTomb;
   });
+  const ch = {}; states.forEach(s => (s.cryptoHistory || []).forEach(p => { if (p && p.date) ch[p.date] = p; }));
+  out.cryptoHistory = Object.values(ch).sort((a, b) => a.date < b.date ? -1 : 1).slice(-180);
+  out.seq = out.seq || {};
+  ['acc','cat','tx','bank','loan','rec','goal','cry'].forEach(k => { let mx = 1; states.forEach(s => { mx = Math.max(mx, (s.seq && s.seq[k]) || 1); }); out.seq[k] = mx; });
+  out.version = SCHEMA_VERSION;
   return out;
 }
-function mergeStates(base, local, remote){
-  base = base || {};
-  const localNewer = (local.updatedAt || '') >= (remote.updatedAt || '');
-  const merged = JSON.parse(JSON.stringify(localNewer ? local : remote));   // скалярні поля — з новішої сторони
-  ['accounts','categories','transactions','banks','loans','recurring','goals','crypto'].forEach(type => { merged[type] = mergeArrayType(type, base, local, remote, localNewer); });
-  const ch = {}; [...(base.cryptoHistory||[]), ...(remote.cryptoHistory||[]), ...(local.cryptoHistory||[])].forEach(p => { if (p && p.date) ch[p.date] = p; });
-  merged.cryptoHistory = Object.values(ch).sort((a, b) => a.date < b.date ? -1 : 1).slice(-180);
-  merged.seq = merged.seq || {};
-  ['acc','cat','tx','bank','loan','rec','goal','cry'].forEach(k => merged.seq[k] = Math.max((base.seq && base.seq[k]) || 1, (local.seq && local.seq[k]) || 1, (remote.seq && remote.seq[k]) || 1));
-  merged.version = SCHEMA_VERSION;
-  return merged;
+// Підпис вмісту для синху (живі записи за id + надгробки) — щоб бачити, чи стан реально змінився.
+function syncSig(s){ if (!s) return ''; const parts = [];
+  SYNC_TYPES.forEach(type => { const items = (s[type] || []).slice().sort((a, b) => (a.id < b.id ? -1 : 1)).map(_recSig); parts.push(type + ':' + items.join('|')); parts.push('T' + type + ':' + JSON.stringify((s.tombstones && s.tombstones[type]) || {})); });
+  return parts.join('||');
 }
-// Зберегти знімок поточного стану в точки відновлення (щоб нічого не втратити при конфлікті).
+// Чистка надгробків, старших за TTL (щоб не накопичувались роками).
+function gcTombstones(s, nowMs){ const cutoff = new Date(nowMs - TOMBSTONE_TTL).toISOString();
+  SYNC_TYPES.forEach(type => { const tt = (s.tombstones && s.tombstones[type]) || {}; for (const id in tt) { if (tt[id] < cutoff) delete tt[id]; } }); }
+// Зберегти знімок поточного стану в точки відновлення (страховка — нічого не втрачаємо).
 function cloudBackupSnapshot(label, data){ try { const h = restorePoints(); h.push({ date: todayISO(), at: new Date().toISOString(), label: label || '', data: JSON.parse(JSON.stringify(data || state)) }); localStorage.setItem('moneyme.history', JSON.stringify(h.slice(-7))); } catch (e) {} }
-// Чи є на цьому пристрої незасинхронізовані зміни (стан змінювався після останньої синхронізації).
-function localChangedSinceBase(){ return !!(state.updatedAt && state.updatedAt !== Sync.base); }
 function fmtSyncTime(iso){ try { return new Date(iso).toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }); } catch (e) { return iso || '—'; } }
-// Діалог конфлікту: і пристрій, і хмара змінювались окремо — користувач обирає, що лишити (інше → у Точки відновлення).
-function openSyncConflict(remote){
-  const body = el(`<div>
-    <div class="notice">І цей пристрій, і хмара змінювалися після останньої синхронізації. Об'єднати автоматично не можна — оберіть, яку версію лишити. Інша збережеться в «Точках відновлення».</div>
-    <div class="row" style="justify-content:space-between;margin-top:10px;gap:12px"><span class="muted small">Хмарна версія</span><b class="tabnum">${esc(fmtSyncTime(remote && remote.updatedAt))}</b></div>
-    <div class="row" style="justify-content:space-between;margin-top:4px;gap:12px"><span class="muted small">Версія цього пристрою</span><b class="tabnum">${esc(fmtSyncTime(state.updatedAt))}</b></div>
-    <div class="row" style="gap:8px;margin-top:16px;flex-wrap:wrap"></div>
-  </div>`);
-  const acts = body.lastElementChild;
-  const keepLocal = el(`<button class="btn">Залишити цю (залити в хмару)</button>`);
-  const keepCloud = el(`<button class="btn primary">Залишити хмарну</button>`);
-  acts.appendChild(keepLocal); acts.appendChild(keepCloud);
-  const close = openModal('Конфлікт синхронізації', body, {});
-  keepCloud.onclick = () => { close(); cloudBackupSnapshot('Версія цього пристрою (конфлікт синхр.)'); adoptRemote(remote); markSynced(state.updatedAt); setSyncStatus('idle'); showToast('Прийнято хмарну версію; вашу збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 7000); };
-  keepLocal.onclick = async () => { close(); cloudBackupSnapshot('Хмарна версія (конфлікт синхр.)', migrateBackup(remote)); try { setSyncStatus('syncing'); Sync.fileId = await driveUpload(Sync.fileId, cloudPayload()); markSynced(state.updatedAt); setSyncStatus('idle'); showToast('Залито версію цього пристрою; хмарну збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 7000); } catch (e) { setSyncStatus('error', e.message || String(e)); } };
+// Список файлів синху в appDataFolder: per-device (moneyme-<id>.json) + legacy (moneyme-data.json). Бекапи виключаємо.
+async function driveListSyncFiles(){
+  const r = await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=200&fields=files(id,name,modifiedTime)&q=" + encodeURIComponent("name contains 'moneyme-'"));
+  if (!r.ok) throw new Error('Drive list ' + r.status);
+  const j = await r.json();
+  return (j.files || []).filter(f => f.name === DRIVE_FILE_NAME || /^moneyme-d[0-9a-z]+\.json$/i.test(f.name));   // legacy або per-device, без backup-
 }
-function adoptRemote(remote){
-  const incoming = (remote && remote.data) ? remote : { data: remote };
-  Sync.applying = true;
-  state = migrateBackup(incoming);
-  normalize();
-  persist();
-  Sync.applying = false;
-  render();
+// Створити/оновити файл за іменем у appDataFolder.
+async function driveUploadNamed(id, name, payload){
+  const body = JSON.stringify(payload);
+  if (id) { const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files/' + id + '?uploadType=media', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body }); if (!r.ok) throw new Error('Drive update ' + r.status); return id; }
+  const boundary = 'mm' + Math.random().toString(16).slice(2);
+  const meta = { name, parents: ['appDataFolder'] };
+  const multipart = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + boundary + '--';
+  const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body: multipart });
+  if (!r.ok) throw new Error('Drive create ' + r.status);
+  return (await r.json()).id;
 }
-
-// Повна реконсиляція: тягнемо віддалене, порівнюємо мітки часу, приймаємо новіше.
+// Синхронізація per-device: читаємо файли ВСІХ пристроїв, зливаємо (LWW + надгробки), пишемо ЛИШЕ свій файл.
+// Без конфлікт-вікон і без «правильного порядку» — злиття комутативне. interactive=true дозволяє вікно входу.
 async function cloudSync(interactive){
   if (!syncAvailable()) { setSyncStatus('off'); return; }
   if (!navigator.onLine) { setSyncStatus('offline'); return; }
-  if (!interactive && !getCachedToken()) { setSyncStatus(Sync.on ? 'idle' : 'off'); return; }   // фон без токена — без вікна входу
+  if (!interactive && !getCachedToken()) { setSyncStatus(Sync.on ? 'idle' : 'off'); return; }   // фон без токена — тихо
+  if (Sync.syncing) { Sync.again = true; return; }   // не паралелити синх
+  Sync.syncing = true;
   try {
     setSyncStatus('syncing');
     await getToken(!!interactive);
-    if (!Sync.fileId) Sync.fileId = await driveFindFile();
-    let remote = null;
-    if (Sync.fileId) { try { remote = await driveDownload(Sync.fileId); } catch (e) { Sync.fileId = await driveFindFile(); if (Sync.fileId) remote = await driveDownload(Sync.fileId); } }
-    const remoteUpd = (remote && remote.updatedAt) || '';
-    // ВАЖЛИВО: тригер злиття — «хмара змінилась з останнього синху», а НЕ порівняння міток часу.
-    // (Інакше пристрій із новішою локальною міткою перезаписував би хмару й губив чужі зміни.)
-    const cloudChanged = !!(remote && remoteUpd && remoteUpd !== Sync.base);
-    const localChanged = localChangedSinceBase();
-    if (!remote) {
-      // у хмарі ще немає файлу → створюємо з локального
-      Sync.fileId = await driveUpload(Sync.fileId, cloudPayload()); markSynced(state.updatedAt);
-    } else if (cloudChanged && localChanged) {
-      // конфлікт: і пристрій, і хмара змінювались окремо → 3-стороннє злиття (нічого не губимо)
-      const baseData = loadSyncBaseData();
-      if (baseData) {
-        cloudBackupSnapshot('Перед обʼєднанням (merge)');
-        const merged = mergeStates(baseData, state, migrateBackup(remote));
-        Sync.applying = true; state = merged; normalize(); sanitizeImport(state); Sync.applying = false;
-        state.updatedAt = new Date().toISOString();   // нова обʼєднана версія — новіша за обидві
-        persist();
-        Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());   // вивантажуємо обʼєднане, щоб хмара зійшлась
-        markSynced(state.updatedAt); render();
-        showToast('🔀 Зміни обʼєднано з хмарою (merge)', null, null, 4000);
-      } else if (interactive) { setSyncStatus('idle'); openSyncConflict(remote); return; }   // немає бази — питаємо
-      else { cloudBackupSnapshot('Версія цього пристрою (конфлікт синхр.)'); adoptRemote(remote); markSynced(state.updatedAt); showToast('⚠️ Конфлікт синхронізації: версію цього пристрою збережено в Точки відновлення', 'Відкрити', () => navigate('settings'), 9000); }
-    } else if (cloudChanged) {
-      // лише хмара змінилась → приймаємо хмарну
-      adoptRemote(remote); markSynced(state.updatedAt);
-    } else if (localChanged) {
-      // лише локально → вивантажуємо
-      Sync.fileId = await driveUpload(Sync.fileId, cloudPayload()); markSynced(state.updatedAt);
-    } else {
-      // нічого не змінилось з останнього синху
-      markSynced(state.updatedAt);
-    }
+    const myName = deviceFileName();
+    const files = await driveListSyncFiles();
+    const downloads = await Promise.all(files.map(async f => { try { return { f, j: await driveDownload(f.id) }; } catch (e) { return null; } }));
+    const remoteStates = downloads.filter(Boolean).map(d => migrateBackup(d.j)).filter(Boolean);
+    const localSig = syncSig(state);
+    const merged = mergeAll([JSON.parse(JSON.stringify(state))].concat(remoteStates));
+    gcTombstones(merged, Date.now());
+    const mergedSig = syncSig(merged);
+    if (mergedSig !== localSig) {   // прийшли зміни з інших пристроїв → застосовуємо локально
+      cloudBackupSnapshot('Перед синхронізацією');
+      Sync.applying = true; state = merged; normalize(); sanitizeImport(state); Sync.applying = false;
+      _syncPrev = _snapSig(); persist(); render();
+      showToast('🔄 Синхронізовано з іншими пристроями', null, null, 2500);
+    } else { state.tombstones = merged.tombstones; persist(); }   // підтягуємо/чистимо надгробки навіть без видимих змін
+    // пишемо СВІЙ файл, якщо в ньому ще не той самий стан (щоб інші пристрої побачили наш внесок)
+    const mine = downloads.find(d => d && d.f.name === myName);
+    Sync.fileId = mine ? mine.f.id : null;
+    const myRemoteSig = mine ? syncSig(migrateBackup(mine.j)) : null;
+    if (myRemoteSig !== mergedSig) Sync.fileId = await driveUploadNamed(Sync.fileId, myName, cloudPayload());
+    // міграція: legacy-файл уже влитий у merged → видаляємо, щоб не плодити гонитву одного файлу
+    const legacy = files.find(f => f.name === DRIVE_FILE_NAME && f.name !== myName);
+    if (legacy) { try { await driveDeleteFile(legacy.id); } catch (e) {} }
+    markSynced();
     setSyncStatus('idle');
+    cloudVersionedBackup(10);
   } catch (e) { setSyncStatus('error', e.message || String(e)); }
+  finally { Sync.syncing = false; if (Sync.again) { Sync.again = false; setTimeout(() => cloudSync(false), 400); } }
 }
-// Вивантаження локальних змін; якщо інший пристрій випередив — повна реконсиляція.
-async function cloudPush(){
-  if (!Sync.on || !syncAvailable()) return;
-  if (!navigator.onLine) { setSyncStatus('offline'); return; }
-  if (!getCachedToken()) { setSyncStatus('idle'); return; }   // нема токена — відкладаємо (зміни лишаються в черзі), без вікна
-  try {
-    setSyncStatus('syncing');
-    await getToken(false);
-    if (!Sync.fileId) Sync.fileId = await driveFindFile();
-    let remote = null;
-    if (Sync.fileId) { try { remote = await driveDownload(Sync.fileId); } catch (e) {} }
-    if (remote && remote.updatedAt && remote.updatedAt !== Sync.base) {
-      return cloudSync(false);   // хмара змінилась з останнього синху — коректна реконсиляція/merge (не дивимось на мітки)
-    }
-    Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());
-    markSynced(state.updatedAt);
-    setSyncStatus('idle');
-  } catch (e) { setSyncStatus('error', e.message || String(e)); }
-}
+function cloudPush(){ return cloudSync(false); }   // вивантаження = повна (але комутативна) синхронізація
 // Підключення акаунта з ізоляцією даних: дані кожного Google-акаунта — окремі.
 // На спільному пристрої локальні дані НЕ заливаються в чужий акаунт без підтвердження.
 async function cloudConnect(){
@@ -4533,30 +4534,28 @@ async function cloudConnect(){
     await acquireToken('consent');
     const email = await fetchAccountEmail();   // запамʼятовуємо акаунт → подальші оновлення тихі (без вибору)
     if (email) localStorage.setItem('moneyme.sync.account', email);
-    Sync.fileId = await driveFindFile();
-    let remote = Sync.fileId ? await driveDownload(Sync.fileId) : null;
-    const remoteHasData = !!(remote && remote.updatedAt);
+    const files = await driveListSyncFiles();
+    const downloads = await Promise.all(files.map(async f => { try { return migrateBackup(await driveDownload(f.id)); } catch (e) { return null; } }));
+    const remoteStates = downloads.filter(Boolean);
+    const remoteHasData = remoteStates.some(s => (s.accounts||[]).length || (s.transactions||[]).length);
     const localHasData = !!(((state.accounts||[]).length) || ((state.transactions||[]).length));
     const everConnected = localStorage.getItem('moneyme.sync.everConnected') === '1';
-    let pushLocal = false;
     if (remoteHasData) {
-      // на цьому акаунті вже є дані → ЗАВЖДИ підтягуємо їх (локальні з пристрою НЕ заливаємо)
-      adoptRemote(remote);
+      // на цьому акаунті вже є дані → підтягуємо ЛИШЕ хмарні (локальні з пристрою НЕ заливаємо — ізоляція акаунтів)
+      const merged = mergeAll(remoteStates); gcTombstones(merged, Date.now());
+      Sync.applying = true; state = merged; normalize(); sanitizeImport(state); Sync.applying = false; _syncPrev = _snapSig(); persist(); render();
     } else if (!everConnected && localHasData) {
-      // ПЕРШЕ підключення на цьому пристрої, акаунт порожній, локально є дані → налаштування власника
+      // ПЕРШЕ підключення, акаунт порожній, локально є дані → питаємо власника
       const up = await confirmModal('Перше підключення', 'Акаунт у хмарі порожній. Завантажити поточні дані з цього пристрою у ваш акаунт — чи почати з чистого?', { okLabel: 'Завантажити мої дані', cancelLabel: 'Почати з чистого' });
-      if (!up) { state = seed(); normalize(); persist(); render(); }
-      pushLocal = true;
-    } else {
-      // зміна акаунта на порожній → беремо «чисто» з сервера, локальне НЕ заливаємо (щоб дані не перетікали)
-      if (localHasData) { state = seed(); normalize(); persist(); render(); }
-      pushLocal = true;
+      if (!up) { state = seed(); normalize(); persist(); _syncPrev = _snapSig(); render(); }
+    } else if (localHasData) {
+      // зміна акаунта на порожній → беремо «чисто», локальне НЕ заливаємо (щоб дані не перетікали між акаунтами)
+      state = seed(); normalize(); persist(); _syncPrev = _snapSig(); render();
     }
-    if (pushLocal) Sync.fileId = await driveUpload(Sync.fileId, cloudPayload());
-    markSynced(state.updatedAt);
-    localStorage.setItem('moneyme.sync.everConnected', '1');
-    Sync.on = true; localStorage.setItem('moneyme.sync.on', '1');
+    Sync.on = true; localStorage.setItem('moneyme.sync.on', '1'); localStorage.setItem('moneyme.sync.everConnected', '1');
+    Sync.fileId = null;
     setSyncStatus('idle');
+    await cloudSync(true);   // запише наш device-файл і дозливає (дані вже «наші»)
   } catch (e) { setSyncStatus('error', e.message || String(e)); }
 }
 async function cloudDisconnect(){
@@ -4567,7 +4566,7 @@ async function cloudDisconnect(){
   localStorage.removeItem('moneyme.sync.base');
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem('moneyme.sync.account');
-  if (wipe) { state = seed(); normalize(); persist(); }
+  if (wipe) { state = seed(); normalize(); persist(); _syncPrev = _snapSig(); render(); }
   setSyncStatus('off');
 }
 
@@ -4618,6 +4617,9 @@ else if (!navigator.onLine && Sync.on) { setSyncStatus('offline'); }
 window.addEventListener('online', () => { if (Sync.on && syncAvailable()) cloudSync(false); });
 window.addEventListener('offline', () => { if (Sync.on) setSyncStatus('offline'); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && Sync.on && syncAvailable() && navigator.onLine) cloudSync(false); });
+// Періодична фонова синхронізація (раз на ~90 с), поки вкладка активна — щоб зміни з інших пристроїв
+// підтягувались самі, без ручного «Синхронізувати».
+setInterval(() => { if (Sync.on && syncAvailable() && navigator.onLine && !document.hidden) cloudSync(false); }, 90 * 1000);
 </script>
 </body>
 </html>

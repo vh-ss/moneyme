@@ -99,36 +99,48 @@ ok('monthRangeOf лютий 2026', S.monthRangeOf('2026-02').from === '2026-02-0
 eq('addMonthsYM 2026-12 +1', S.addMonthsYM('2026-12', 1), '2027-01');
 eq('addMonthsYM 2026-03 -4', S.addMonthsYM('2026-03', -4), '2025-11');
 
-// ——— 3-стороннє злиття (merge) ———
-const mkBase = () => ({ updatedAt: '2026-06-20T10:00:00Z', accounts: [{ id: 1, name: 'A' }], categories: [], transactions: [{ id: 10, note: 'base', account_id: 1 }], banks: [], loans: [], recurring: [], goals: [], crypto: [], cryptoHistory: [], seq: { acc: 2, cat: 1, tx: 11, bank: 1, loan: 1, rec: 1, goal: 1, cry: 1 } });
-const clone = o => JSON.parse(JSON.stringify(o));
+// ——— Злиття N пристроїв: per-record LWW + надгробки (mergeAll) ———
+const mkDev = (upd, txs, tomb) => ({ updatedAt: upd, accounts: [], categories: [], transactions: txs || [], banks: [], loans: [], recurring: [], goals: [], crypto: [], cryptoHistory: [], tombstones: { transactions: tomb || {} }, seq: { tx: 1 } });
+const T = (id, note, upd) => ({ id, note, account_id: 1, updatedAt: upd });
 {
-  const base = mkBase();
-  const lAdd = clone(base); lAdd.updatedAt = '2026-06-20T12:00:00Z'; lAdd.transactions.push({ id: 20, note: 'local', account_id: 1 });
-  const rAdd = clone(base); rAdd.updatedAt = '2026-06-20T11:00:00Z'; rAdd.transactions.push({ id: 30, note: 'remote', account_id: 1 });
-  const m = S.mergeStates(base, lAdd, rAdd);
-  ok('merge: додавання з обох сторін збережено', JSON.stringify(m.transactions.map(t => t.id).sort((a,b)=>a-b)) === JSON.stringify([10, 20, 30]));
+  const A = mkDev('t2', [T(10, 'x', 't1'), T(20, 'a', 't2')]);
+  const B = mkDev('t1', [T(10, 'x', 't1'), T(30, 'b', 't1')]);
+  const m = S.mergeAll([A, B]);
+  ok('mergeAll: union усіх записів', JSON.stringify(m.transactions.map(t => t.id).sort((a, b) => a - b)) === JSON.stringify([10, 20, 30]));
 }
 {
-  const base = mkBase();
-  const lDel = clone(base); lDel.updatedAt = '2026-06-20T12:00:00Z'; lDel.transactions = [];
-  const rSame = clone(base);
-  ok('merge: видалення поважається (хмара без змін)', S.mergeStates(base, lDel, rSame).transactions.length === 0);
+  const A = mkDev('t3', [], { 100: 't2' });          // A видалив 100 у t2
+  const B = mkDev('t1', [T(100, 'old', 't1')]);      // B має 100 з t1 (старіше за надгробок)
+  const m = S.mergeAll([A, B]);
+  ok('mergeAll: надгробок (новіший) видаляє запис', m.transactions.length === 0 && m.tombstones.transactions[100] === 't2');
 }
 {
-  const base = mkBase();
-  const lDel = clone(base); lDel.updatedAt = '2026-06-20T12:00:00Z'; lDel.transactions = [];
-  const rEdit = clone(base); rEdit.updatedAt = '2026-06-20T11:30:00Z'; rEdit.transactions[0].note = 'edited';
-  const m = S.mergeStates(base, lDel, rEdit);
-  ok('merge: редагування на хмарі перемагає видалення', m.transactions.length === 1 && m.transactions[0].note === 'edited');
+  const A = mkDev('t1', [], { 100: 't1' });           // delete у t1
+  const B = mkDev('t3', [T(100, 'edited', 't2')]);    // edit у t2 > t1
+  const m = S.mergeAll([A, B]);
+  ok('mergeAll: редагування (новіше) перемагає надгробок', m.transactions.length === 1 && m.transactions[0].note === 'edited');
 }
 {
-  const base = mkBase();
-  const lE = clone(base); lE.updatedAt = '2026-06-20T13:00:00Z'; lE.transactions[0].note = 'L';
-  const rE = clone(base); rE.updatedAt = '2026-06-20T11:00:00Z'; rE.transactions[0].note = 'R';
-  const m = S.mergeStates(base, lE, rE);
-  ok('merge: конкурентне редагування → новіша сторона (local)', m.transactions[0].note === 'L');
-  eq('merge: seq = максимум', m.seq.tx, 11);
+  const A = mkDev('t3', [T(100, 'L', 't3')]);
+  const B = mkDev('t2', [T(100, 'R', 't2')]);
+  eq('mergeAll: конкурентне редагування → новіший запис', S.mergeAll([A, B]).transactions[0].note, 'L');
+}
+{
+  // 3 пристрої + воскресіння + перевірка КОМУТАТИВНОСТІ (порядок не впливає на результат)
+  const A = mkDev('t2', [T(10, 'a', 't2')], { 30: 't2' });
+  const B = mkDev('t3', [T(20, 'b', 't3'), T(30, 'res', 't3')]);   // 30 воскресло у t3 > надгробок t2
+  const C = mkDev('t1', [T(10, 'old', 't1')]);
+  const m1 = S.mergeAll([A, B, C]), m2 = S.mergeAll([C, B, A]);
+  ok('mergeAll: комутативність merge(A,B,C)==merge(C,B,A)', S.syncSig(m1) === S.syncSig(m2));
+  ok('mergeAll: воскресіння 30 (edit t3 > надгробок t2)', !!m1.transactions.find(t => t.id === 30) && m1.transactions.find(t => t.id === 30).note === 'res');
+  eq('mergeAll: 10 = новіша версія (a)', m1.transactions.find(t => t.id === 10).note, 'a');
+}
+{
+  const A = mkDev('t1', []); A.seq.tx = 5; A.cryptoHistory = [{ date: '2026-06-01', v: 1 }];
+  const B = mkDev('t1', []); B.seq.tx = 9; B.cryptoHistory = [{ date: '2026-06-02', v: 2 }];
+  const m = S.mergeAll([A, B]);
+  eq('mergeAll: seq = максимум', m.seq.tx, 9);
+  eq('mergeAll: cryptoHistory union за датою', m.cryptoHistory.length, 2);
 }
 
 // ——— Мультирахунковий split (кафе картою, чайові готівкою) ———
@@ -140,48 +152,28 @@ eq('txAccountShare: не-split 0 для іншого', S.txAccountShare({ kind: 
   eq('txAccountShare: split інший рахунок (готівка 100)', S.txAccountShare(tx, 1), 100);
 }
 
-// ——— Симуляція синхронізації 2 пристроїв (тригер як у виправленому cloudSync) ———
-// Регресія: пристрій із новішою локальною міткою НЕ має перезаписувати хмару без злиття.
-function simTwoDevice(scenario){
-  let clock = 0; const stamp = () => '2026-06-21T00:00:' + String(clock++).padStart(2, '0') + '.000Z';
+// ——— Симуляція 5 пристроїв через повторне застосування mergeAll (порядок випадковий) ———
+// Кожен пристрій тримає свій стан; «синх» = mergeAll(усі стани). Має збігтись незалежно від порядку.
+{
   const cl = o => JSON.parse(JSON.stringify(o));
-  const base = { updatedAt: stamp(), accounts: [{ id: 1, name: 'A' }], categories: [], transactions: [{ id: 100, note: 'base', account_id: 1 }], banks: [], loans: [], recurring: [], goals: [], crypto: [], cryptoHistory: [], seq: { tx: 101 } };
-  let cloud = { data: cl(base), updatedAt: base.updatedAt };
-  const A = { state: cl(base), base: cl(base), syncedUpd: base.updatedAt };
-  const B = { state: cl(base), base: cl(base), syncedUpd: base.updatedAt };
-  function sync(dev){
-    const remote = cl(cloud);
-    const cloudChanged = remote.updatedAt !== dev.syncedUpd;
-    const localChanged = dev.state.updatedAt !== dev.base.updatedAt;
-    if (cloudChanged && localChanged) { const m = S.mergeStates(dev.base, dev.state, remote.data); m.updatedAt = stamp(); dev.state = m; cloud = { data: cl(m), updatedAt: m.updatedAt }; dev.base = cl(m); dev.syncedUpd = m.updatedAt; }
-    else if (cloudChanged) { dev.state = cl(remote.data); dev.base = cl(remote.data); dev.syncedUpd = remote.updatedAt; }
-    else if (localChanged) { cloud = { data: cl(dev.state), updatedAt: dev.state.updatedAt }; dev.base = cl(dev.state); dev.syncedUpd = dev.state.updatedAt; }
-    else { dev.syncedUpd = remote.updatedAt; }
-  }
-  scenario(A, B, stamp);
-  sync(A); sync(B); sync(A);   // A залив → B змержив → A підхопив обʼєднане
-  return { A: A.state.transactions, cloud: cloud.data.transactions };
-}
-{
-  // Сценарій 1: A: +200 та видаляє 100; B: +300 та редагує 100 (B має новішу мітку).
-  const r = simTwoDevice((A, B, stamp) => {
-    A.state.transactions.push({ id: 200, note: 'A', account_id: 1 }); A.state.transactions = A.state.transactions.filter(t => t.id !== 100); A.state.updatedAt = stamp();
-    B.state.transactions.push({ id: 300, note: 'B', account_id: 1 }); B.state.transactions[0].note = 'B-edit'; B.state.updatedAt = stamp();
-  });
-  const ids = r.A.map(t => t.id).sort((a, b) => a - b);
-  ok('sync2: A-додавання (200) не втрачено', ids.includes(200));
-  ok('sync2: B-додавання (300) збережено', ids.includes(300));
-  ok('sync2: редагування перемогло видалення (100 лишилась)', ids.includes(100) && r.A.find(t => t.id === 100).note === 'B-edit');
-  ok('sync2: пристрій A і хмара зійшлись', JSON.stringify(ids) === JSON.stringify(r.cloud.map(t => t.id).sort((a, b) => a - b)));
-}
-{
-  // Сценарій 2: A видаляє 100 (B не чіпає) + дод. 200; B дод. 300 → 100 має зникнути.
-  const r = simTwoDevice((A, B, stamp) => {
-    A.state.transactions = A.state.transactions.filter(t => t.id !== 100); A.state.transactions.push({ id: 200, note: 'A', account_id: 1 }); A.state.updatedAt = stamp();
-    B.state.transactions.push({ id: 300, note: 'B', account_id: 1 }); B.state.updatedAt = stamp();
-  });
-  const ids = r.A.map(t => t.id).sort((a, b) => a - b);
-  ok('sync2: чисте видалення поважено (100 зникла)', !ids.includes(100) && ids.includes(200) && ids.includes(300));
+  const mk = (upd, txs, tomb) => ({ updatedAt: upd, accounts: [], categories: [], transactions: txs || [], banks: [], loans: [], recurring: [], goals: [], crypto: [], cryptoHistory: [], tombstones: { transactions: tomb || {} }, seq: { tx: 1 } });
+  const tx = (id, n, u) => ({ id, note: n, account_id: 1, updatedAt: u });
+  const devs = [
+    mk('t5', [tx(1, 'a', 't1'), tx(2, 'b', 't2')]),
+    mk('t5', [tx(1, 'a', 't1'), tx(3, 'c', 't3')]),
+    mk('t5', [tx(2, 'b2', 't5')]),               // редагує 2 пізніше
+    mk('t5', [], { 1: 't4' }),                    // видаляє 1 у t4
+    mk('t5', [tx(4, 'd', 't2')]),
+  ];
+  const merged = S.mergeAll(devs);
+  const merged2 = S.mergeAll(cl(devs).reverse());
+  ok('sim5: результат однаковий за будь-якого порядку', S.syncSig(merged) === S.syncSig(merged2));
+  const ids = merged.transactions.map(t => t.id).sort((a, b) => a - b);
+  ok('sim5: 1 видалено (надгробок t4 > edit t1)', !ids.includes(1));
+  ok('sim5: 2 = новіша версія b2', merged.transactions.find(t => t.id === 2).note === 'b2');
+  ok('sim5: усі додавання зведено (2,3,4)', JSON.stringify(ids) === JSON.stringify([2, 3, 4]));
+  // після повторного злиття нічого не змінюється (ідемпотентність)
+  ok('sim5: ідемпотентність повторного злиття', S.syncSig(S.mergeAll([merged, devs[0]])) === S.syncSig(merged));
 }
 
 // ——— Підсумок ———
