@@ -522,7 +522,8 @@ const I18N_EN = {
   'Залишок':'Balance','Тіло':'Principal','Після цього платежу кредит буде закрито.':'After this payment the credit will be paid off.','Закрити кредит повністю?':'Pay off credit in full?','Закрити кредит':'Pay off credit',
   'Калькулятор дострокового погашення':'Early payoff calculator','Платежі вже зроблено — перенести на наступний цикл':'Payments already made — move to next cycle',
   // — round 4: повний аудит усіх рядків коду —
-  'Крипто':'Crypto','Редагувати':'Edit','Перед синхронізацією':'Before sync','🔄 Синхронізовано з іншими пристроями':'🔄 Synced with other devices','Це видалення зачепить:':'This deletion will affect:','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
+  'Крипто':'Crypto','Редагувати':'Edit','Перед синхронізацією':'Before sync','🔄 Синхронізовано з іншими пристроями':'🔄 Synced with other devices','Це видалення зачепить:':'This deletion will affect:',
+  'Купити':'Buy','Продати':'Sell','Ціна':'Price','за':'for','Оберіть пару':'Choose a pair','Введіть ціну більше 0':'Enter a price above 0','Куплено':'Bought','Продано':'Sold','Сплачено':'Paid','Отримано':'Received','Купівля крипти':'Crypto buy','Продаж крипти':'Crypto sell','Вартість':'Value','Спершу додайте крипто-актив для пари (напр. USDT) у портфель.':'Add a crypto asset for the pair (e.g. USDT) to your portfolio first.','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
   'Шифрування працює лише на https-сайті (не з файлу, відкритого подвійним кліком).':'Encryption works only on an https site (not from a file opened by double-click).','Зашифрований експорт':'Encrypted export','Пароль для бекапу (запамʼятайте — без нього файл не відкрити!):':'Backup password (remember it — the file cannot be opened without it!):','Пароль закороткий — мінімум 4 символи.':'Password too short — at least 4 characters.','🔒 Зашифрований бекап збережено':'🔒 Encrypted backup saved',
   'На рахунок':'To account','Теги':'Tags','не вдалося отримати курси':'failed to fetch rates','не вдалося отримати ціни':'failed to fetch prices',
   'Напрямок':'Direction','Зараховано':'Credited','Кредит':'Credit','Тип запису':'Record type','Регулярний платіж':'Recurring payment','Операція':'Transaction',
@@ -616,6 +617,8 @@ const I18N_PARTIAL = [
   ['Виправлено ','Fixed '],[' некоректних посилань.',' invalid references.'],
   ['Версійні знімки у вашому Google Drive (останні ','Versioned snapshots in your Google Drive (last '],['). Відновлення замінить поточні дані — з можливістю скасувати.','). Restoring replaces current data — can be undone.'],['Знімок ','Snapshot '],[': поточні дані буде замінено (можна скасувати).',': current data will be replaced (can be undone).'],['Відновлено з Drive (','Restored from Drive ('],['Помилка відновлення:','Restore error:'],['Не вдалося отримати список:','Failed to get the list:'],
   ['Відновити дані станом на ','Restore data as of '],['? Поточні буде замінено (з можливістю скасувати).','? Current data will be replaced (can be undone).'],['Відновлено стан на ','Restored state as of '],
+  // крипто-обмін (пари)
+  ['Ринкова ціна ≈','Market price ≈'],['Ціна (','Price ('],['за 1 ','per 1 '],['Кількість ','Amount '],['Віддаси ','You give '],['Витратиш ','You spend '],[', отримаєш ',', you get '],['отримано ','received '],['сплачено ','paid '],['Недостатньо ','Not enough '],[': є лише ',': only '],['Купити ','Buy '],['Продати ','Sell '],['Купівля ','Buy '],['Продаж ','Sell '],
   // загальні (після специфічних)
   ['Курс НБУ','NBU rate'],[' міс',' mo'],
   [' операцій',' transactions'],[' регулярних',' recurring'],['кредитів','credits'],[' видалено',' deleted'],[' з ',' of '],[' і ',' and '],[' із ',' from '],
@@ -728,12 +731,18 @@ function exportCSV(){
   const q = s => `"${String(s ?? '').replace(/"/g,'""')}"`;
   const KL = { EXPENSE:'Витрата', INCOME:'Надходження', TRANSFER:'Переказ' };
   const head = ['Дата','Тип','Сума','Валюта','Рахунок','На рахунок','Категорія','Курс','Сума зарах.','Комісія','Нотатка','Теги'];
-  const rows = [...state.transactions].sort((a,b)=> a.date<b.date?-1 : a.date>b.date?1 : a.id-b.id).map(t => [
-    t.date, KL[t.kind]||t.kind, t.amount, accountCur(t.account_id), accountName(t.account_id),
-    t.kind==='TRANSFER'?accountName(t.to_account_id):'', isSplitTx(t)?t.splits.map(s=>(categoryById(s.category_id)?.name||'Без категорії')+' '+s.amount).join(' | '):(t.category_id?(categoryById(t.category_id)?.name||''):''),
-    t.kind==='TRANSFER'?(t.exchange_rate||''):'', t.kind==='TRANSFER'?(t.to_amount||''):'', t.fee_amount||0,
-    t.note||'', (t.tags||[]).join(' ')
-  ].map(q).join(';'));
+  const rows = [...state.transactions].sort((a,b)=> a.date<b.date?-1 : a.date>b.date?1 : a.id-b.id).map(t => {
+    const isCr = t.kind==='CRYPTO';
+    const typeLbl = isCr ? (t.side==='SELL'?'Продаж крипти':'Купівля крипти') : (KL[t.kind]||t.kind);
+    const catCol = isCr ? `${fmtAmt(t.base_qty||0)} ${t.base_sym||''} ⇄ ${fmtAmt(t.quote_qty||0)} ${t.quote_sym||''}`
+      : isSplitTx(t)?t.splits.map(s=>(categoryById(s.category_id)?.name||'Без категорії')+' '+s.amount).join(' | '):(t.category_id?(categoryById(t.category_id)?.name||''):'');
+    return [
+      t.date, typeLbl, isCr?(t.usd||''):t.amount, isCr?'USD':accountCur(t.account_id), isCr?'':accountName(t.account_id),
+      t.kind==='TRANSFER'?accountName(t.to_account_id):'', catCol,
+      t.kind==='TRANSFER'?(t.exchange_rate||''):'', t.kind==='TRANSFER'?(t.to_amount||''):'', t.fee_amount||0,
+      t.note||'', (t.tags||[]).join(' ')
+    ].map(q).join(';');
+  });
   const csv = '﻿' + [head.map(q).join(';'), ...rows].join('\r\n');
   const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob); const a = document.createElement('a');
@@ -1013,14 +1022,19 @@ function reorderBank(srcId, dstId) {
 
 // Деталі операції у вигляді блоку (тип + сума + поля) — спільне для перегляду й підтвердження видалення.
 function txInfoNode(tx){
-  const isT = tx.kind === 'TRANSFER', isReimb = tx.kind === 'EXPENSE' && !!tx.reimbursement, isInc = tx.kind === 'INCOME';
+  const isT = tx.kind === 'TRANSFER', isReimb = tx.kind === 'EXPENSE' && !!tx.reimbursement, isInc = tx.kind === 'INCOME', isCrypto = tx.kind === 'CRYPTO';
   const cur = accountCur(tx.account_id);
   const cat = tx.category_id ? categoryById(tx.category_id) : null;
-  const typeLabel = isT ? 'Переказ' : isReimb ? 'Повернення' : isInc ? 'Надходження' : 'Витрата';
-  const typeColor = isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : 'var(--red)';
-  const amtStr = isT ? money(tx.amount, cur) : isReimb ? '+' + money(Math.abs(tx.amount), cur) : (isInc ? '+' : '−') + money(tx.amount, cur);
+  const typeLabel = isCrypto ? (tx.side === 'SELL' ? 'Продаж крипти' : 'Купівля крипти') : isT ? 'Переказ' : isReimb ? 'Повернення' : isInc ? 'Надходження' : 'Витрата';
+  const typeColor = isCrypto ? (tx.side === 'SELL' ? 'var(--red)' : 'var(--green)') : isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : 'var(--red)';
+  const amtStr = isCrypto ? (tx.side === 'SELL' ? '−' : '+') + `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}` : isT ? money(tx.amount, cur) : isReimb ? '+' + money(Math.abs(tx.amount), cur) : (isInc ? '+' : '−') + money(tx.amount, cur);
   const rows = [];
-  if (isT) {
+  if (isCrypto) {
+    rows.push([tx.side === 'SELL' ? 'Продано' : 'Куплено', `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}`]);
+    rows.push([tx.side === 'SELL' ? 'Отримано' : 'Сплачено', `${fmtAmt(tx.quote_qty || 0)} ${tx.quote_sym || ''}`]);
+    if (tx.base_qty > 0) rows.push(['Ціна', `${fmtAmt(round2(tx.quote_qty / tx.base_qty))} ${tx.quote_sym || ''} / ${tx.base_sym || ''}`]);
+    if (tx.usd) rows.push(['Вартість', money(tx.usd, 'USD')]);
+  } else if (isT) {
     rows.push(['Напрямок', `${accountName(tx.account_id)} → ${accountName(tx.to_account_id)}`]);
     const T = accountCur(tx.to_account_id);
     if (tx.to_amount != null && T !== cur) rows.push(['Зараховано', money(tx.to_amount, T)]);
@@ -1076,6 +1090,18 @@ function doDeleteTx(tx) {
       const r = state.recurring.find(x => x.id === tx.recurring_id);
       if (r && r.next_date) r.next_date = prevRecurDate(r.next_date, r.freq);
     }
+    if (tx.kind === 'CRYPTO') {   // крипто-обмін — відкочуємо обидві позиції (базу й котирування)
+      const base = (state.crypto || []).find(x => x.id === tx.base_id);
+      const quote = (state.crypto || []).find(x => x.id === tx.quote_id);
+      const bq = tx.base_qty || 0, qq = tx.quote_qty || 0, bc = tx.base_cost_delta || 0, qc = tx.quote_cost_delta || 0;
+      if (tx.side === 'SELL') {   // продали базу за котирування → повертаємо базу, забираємо котирування
+        if (base) { base.amount = cryptoRound(base.amount + bq); base.cost = round2((base.cost || 0) + bc); }
+        if (quote) { quote.amount = cryptoRound(quote.amount - qq); quote.cost = round2(Math.max(0, (quote.cost || 0) - qc)); }
+      } else {                    // купили базу за котирування → забираємо базу, повертаємо котирування
+        if (base) { base.amount = cryptoRound(base.amount - bq); base.cost = round2(Math.max(0, (base.cost || 0) - bc)); }
+        if (quote) { quote.amount = cryptoRound(quote.amount + qq); quote.cost = round2((quote.cost || 0) + qc); }
+      }
+    }
     // прибираємо й повʼязану операцію-повернення (якщо була), щоб не лишити «мінус» сиротою
     state.transactions = state.transactions.filter(x => x.id !== tx.id && x.refund_of !== tx.id);
   });
@@ -1103,6 +1129,8 @@ const ICONS = {
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18" stroke-width="1.4"/>',
   dots: '<circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none"/>',
   calc: '<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M8 6.5h8v3H8z" stroke-width="1.4"/><path d="M8.5 13h0M12 13h0M15.5 13h0M8.5 16.5h0M12 16.5h0M15.5 16.5h0" stroke-width="2.4"/>',
+  coin: '<ellipse cx="12" cy="6.5" rx="7.5" ry="3.2"/><path d="M4.5 6.5v5c0 1.77 3.36 3.2 7.5 3.2s7.5-1.43 7.5-3.2v-5"/><path d="M4.5 11.5v5c0 1.77 3.36 3.2 7.5 3.2s7.5-1.43 7.5-3.2v-5" stroke-width="1.6"/>',
+  swap: '<path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/>',
 };
 function ic(name){ return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`; }
 const $ = (sel, root=document) => root.querySelector(sel);
@@ -2166,15 +2194,17 @@ function openTransferEdit(tx) {
 
 //==================== Рядок операції ====================
 function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
-  const isT = t.kind === 'TRANSFER', isReimb = t.kind === 'EXPENSE' && !!t.reimbursement, isInc = t.kind === 'INCOME';
+  const isT = t.kind === 'TRANSFER', isReimb = t.kind === 'EXPENSE' && !!t.reimbursement, isInc = t.kind === 'INCOME', isCrypto = t.kind === 'CRYPTO';
   const isSplit = isSplitTx(t);
-  const cat = (!isT && !isSplit && t.category_id) ? categoryById(t.category_id) : null;
-  const icon = isT ? ic('transfer') : isReimb ? ic('plus') : isSplit ? ic('split') : (cat?.icon || (isInc ? ic('plus') : ic('minus')));   // значок категорії (емодзі) або наш SVG
-  const color = isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : isSplit ? '#8b5cf6' : (cat?.color || 'var(--red)');
+  const cat = (!isT && !isCrypto && !isSplit && t.category_id) ? categoryById(t.category_id) : null;
+  const icon = isCrypto ? ic('coin') : isT ? ic('transfer') : isReimb ? ic('plus') : isSplit ? ic('split') : (cat?.icon || (isInc ? ic('plus') : ic('minus')));   // значок категорії (емодзі) або наш SVG
+  const color = isCrypto ? '#f59e0b' : isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : isSplit ? '#8b5cf6' : (cat?.color || 'var(--red)');
   const cur = accountCur(t.account_id);
-  const title = isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isReimb ? `↩ Повернення${cat ? ' · ' + cat.name : ''}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
+  const title = isCrypto ? `${t.side === 'SELL' ? 'Продаж' : 'Купівля'} ${esc(t.base_sym || 'крипто')}` : isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isReimb ? `↩ Повернення${cat ? ' · ' + cat.name : ''}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
   let sub;
-  if (isT) {
+  if (isCrypto) {
+    sub = `${t.side === 'SELL' ? 'отримано' : 'сплачено'} ${fmtAmt(t.quote_qty || 0)} ${esc(t.quote_sym || '')}${t.usd ? ' · ' + money(t.usd, 'USD') : ''}`;
+  } else if (isT) {
     const T = accountCur(t.to_account_id);
     const cross = cur !== T && t.to_amount != null;
     const parts = [];
@@ -2194,7 +2224,9 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
   } else {
     sub = accountName(t.account_id);
   }
-  const amtHtml = isT
+  const amtHtml = isCrypto
+    ? `<span class="txamt tabnum" style="color:${t.side==='SELL'?'var(--red)':'var(--green)'}">${t.side==='SELL'?'−':'+'}${fmtAmt(t.base_qty||0)} ${esc(t.base_sym||'')}</span>`
+    : isT
     ? `<span class="txamt muted">${money(t.amount,cur)}</span>`
     : isReimb
       ? `<span class="txamt" style="color:var(--green)">+${money(Math.abs(t.amount),cur)}</span>`
@@ -2212,8 +2244,8 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
       const r = b.getBoundingClientRect();
       const items = [];
       if (onView) items.push({ label: 'Переглянути', icon: ic('eye'), color: '#64748b', onClick: () => onView(t) });
-      if (onEdit && !isReimb) items.push({ label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => onEdit(t) });
-      if (onDup && !isReimb) items.push({ label: 'Дублювати', icon: ic('dup'), color: '#8b5cf6', onClick: () => onDup(t) });
+      if (onEdit && !isReimb && !isCrypto) items.push({ label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => onEdit(t) });
+      if (onDup && !isReimb && !isCrypto) items.push({ label: 'Дублювати', icon: ic('dup'), color: '#8b5cf6', onClick: () => onDup(t) });
       if (onDelete) items.push({ sep: true }, { label: 'Видалити', icon: ic('close'), color: 'var(--red)', onClick: () => onDelete(t) });
       openContextMenu(r.right, r.bottom + 4, items);
     };
@@ -3245,6 +3277,7 @@ function openGoalForm(existing){
 //==================== Вигляд: Криптовалюти ====================
 // Форматування кількості монет (велика або з багатьма знаками після коми).
 function fmtAmt(n){ const v = Number(n) || 0; return v.toLocaleString('uk-UA', { maximumFractionDigits: 8 }); }
+function cryptoRound(x){ return Math.max(0, Math.round((Number(x) || 0) * 1e8) / 1e8); }   // округлення крипто-кількості (8 знаків, не від'ємне)
 // Знак P&L: повертає {txt, color} для відсотка прибутку/збитку.
 function plTag(pct){ if (pct == null) return null; const up = pct >= 0; return { txt: (up?'▲ ':'▼ ') + (up?'+':'') + pct.toFixed(1) + '%', color: up?'var(--green)':'var(--red)' }; }
 let cryptoView = 'assets';   // режим перегляду: 'assets' (за активами) | 'exchanges' (за біржами)
@@ -3351,7 +3384,7 @@ views.crypto = (app) => {
     const a = row.lastElementChild;
     const delCrypto = () => confirmDeleteImpact(`${h.symbol}`, [], { force: true, hint: `${fmtAmt(h.amount)} ${h.symbol} ≈ ${money(cryptoValueUsd(h),'USD')}${(h.exchanges&&h.exchanges.length)?' · біржі: '+h.exchanges.map(x=>typeof x==='string'?x:x.name).filter(Boolean).join(', '):''}`, onConfirm: () => deleteWithUndo(`${h.symbol} видалено`, () => { state.crypto = state.crypto.filter(x => x.id !== h.id); }) });
     const more = el(`<button class="btn ghost sm" title="Дії">${ic('dots')}</button>`);
-    more.onclick = () => { const r = more.getBoundingClientRect(); openContextMenu(r.right, r.bottom + 4, [ { label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => openCryptoForm(h) }, { sep: true }, { label: 'Видалити', icon: ic('close'), color: 'var(--red)', onClick: delCrypto } ]); };
+    more.onclick = () => { const r = more.getBoundingClientRect(); openContextMenu(r.right, r.bottom + 4, [ { label: 'Купити', icon: ic('plus'), color: 'var(--green)', onClick: () => openCryptoTrade(h, 'BUY') }, { label: 'Продати', icon: ic('minus'), color: 'var(--red)', onClick: () => openCryptoTrade(h, 'SELL') }, { sep: true }, { label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => openCryptoForm(h) }, { sep: true }, { label: 'Видалити', icon: ic('close'), color: 'var(--red)', onClick: delCrypto } ]); };
     a.appendChild(more);
     card.appendChild(row);
   });
@@ -3594,6 +3627,88 @@ function openCryptoForm(existing){
     ensureCryptoFresh(true);   // підтягнути ціну (зокрема нового активу)
   }});
 }
+
+// ——— Обмін крипти за крипту (пари): купівля/продаж бази за котирування (USDT/USDC/…) ———
+// Чиста функція: рахує USD-вартість угоди та зміни cost-basis (без мутацій) — для тестів.
+function cryptoTradeDeltas(base, quote, side, baseQty, quoteQty){
+  const qUsd = cryptoUnitUsd(quote), bUsd = cryptoUnitUsd(base);
+  const usd = round2((qUsd != null) ? quoteQty * qUsd : (bUsd != null ? baseQty * bUsd : 0));
+  if (side === 'SELL') {   // продаємо базу → забираємо пропорційний cost бази, котируванню додаємо usd
+    const baseCostDelta = (base && base.amount > 0 && typeof base.cost === 'number') ? round2(base.cost * baseQty / base.amount) : 0;
+    return { usd, baseCostDelta, quoteCostDelta: usd };
+  }
+  // купуємо базу → базі додаємо usd, у котирування забираємо пропорційний cost витраченого
+  const quoteCostDelta = (quote && quote.amount > 0 && typeof quote.cost === 'number') ? round2(quote.cost * quoteQty / quote.amount) : 0;
+  return { usd, baseCostDelta: usd, quoteCostDelta };
+}
+// Застосовує обмін: мутує обидві позиції й створює операцію kind:'CRYPTO' (без рахунку — фіат не чіпаємо).
+function applyCryptoTrade(base, quote, side, baseQty, quoteQty, date, note){
+  const d = cryptoTradeDeltas(base, quote, side, baseQty, quoteQty);   // рахуємо ДО мутацій (пропорції за поточними amount)
+  if (side === 'SELL') {
+    base.amount = cryptoRound(base.amount - baseQty); base.cost = round2(Math.max(0, (base.cost || 0) - d.baseCostDelta));
+    quote.amount = cryptoRound(quote.amount + quoteQty); quote.cost = round2((quote.cost || 0) + d.quoteCostDelta);
+  } else {
+    base.amount = cryptoRound(base.amount + baseQty); base.cost = round2((base.cost || 0) + d.baseCostDelta);
+    quote.amount = cryptoRound(quote.amount - quoteQty); quote.cost = round2(Math.max(0, (quote.cost || 0) - d.quoteCostDelta));
+  }
+  const tx = { id: nextId('tx'), ord: nextOrd(), kind: 'CRYPTO', side, date: date || todayISO(),
+    base_id: base.id, base_sym: base.symbol, base_qty: baseQty,
+    quote_id: quote.id, quote_sym: quote.symbol, quote_qty: quoteQty,
+    usd: d.usd, base_cost_delta: d.baseCostDelta, quote_cost_delta: d.quoteCostDelta, note: note || null };
+  state.transactions.push(tx);
+  return tx;
+}
+function openCryptoTrade(base, side){
+  const isSell = side === 'SELL';
+  const quotes = (state.crypto || []).filter(h => h.id !== base.id);   // пара — інший крипто-актив
+  if (!quotes.length) { alertModal('Спершу додайте крипто-актив для пари (напр. USDT) у портфель.'); return; }
+  // дефолтна пара: USDT → USDC → перша
+  const defQuote = quotes.find(h => /^USDT$/i.test(h.symbol)) || quotes.find(h => /^USDC$/i.test(h.symbol)) || quotes[0];
+  const body = el(`<div>
+    <div class="preview" style="display:flex;align-items:center;gap:8px;background:#f8fafc">
+      <b>${isSell ? 'Продаж' : 'Купівля'} ${esc(base.symbol)}</b><span class="muted small">за</span>
+      <select id="ct-quote" style="flex:1">${quotes.map(h => `<option value="${h.id}" ${h.id === defQuote.id ? 'selected' : ''}>${esc(h.symbol)} (${fmtAmt(h.amount)})</option>`).join('')}</select>
+    </div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Кількість ${esc(base.symbol)}</label><input id="ct-qty" inputmode="decimal" placeholder="0.00"></div>
+      <div style="flex:1"><label class="lab" id="ct-price-lab">Ціна (за 1 ${esc(base.symbol)})</label><input id="ct-price" inputmode="decimal" placeholder="0.00"></div>
+    </div>
+    <div class="muted small" id="ct-hint" style="margin-top:2px"></div>
+    <div><label class="lab">Дата</label><input id="ct-date" type="date" value="${todayISO()}"></div>
+    <div class="err hidden" id="ct-err"></div>
+  </div>`);
+  const $$ = s => $(s, body);
+  const quoteOf = () => (state.crypto || []).find(h => h.id === parseInt($$('#ct-quote').value));
+  function defaultPrice(){ const q = quoteOf(); const bU = cryptoUnitUsd(base), qU = cryptoUnitUsd(q); return (bU != null && qU) ? round2(bU / qU) : null; }
+  function setPriceLab(){ const q = quoteOf(); $$('#ct-price-lab').textContent = `Ціна (${esc(q ? q.symbol : '')} за 1 ${esc(base.symbol)})`; }
+  function upd(){
+    setPriceLab();
+    const q = quoteOf(); const qty = num($$('#ct-qty').value), price = num($$('#ct-price').value);
+    const quoteQty = round2plusCrypto(qty * price);
+    const hint = $$('#ct-hint');
+    if (!(qty > 0) || !(price > 0)) hint.innerHTML = `Ринкова ціна ≈ <b>${defaultPrice() != null ? fmtAmt(defaultPrice()) + ' ' + (q ? q.symbol : '') : '—'}</b> за 1 ${esc(base.symbol)}`;
+    else { const usd = cryptoUnitUsd(q) != null ? round2(quoteQty * cryptoUnitUsd(q)) : null;
+      if (isSell) hint.innerHTML = `Віддаси <b>${fmtAmt(qty)} ${esc(base.symbol)}</b>, отримаєш <b style="color:var(--green)">${fmtAmt(quoteQty)} ${esc(q.symbol)}</b>${usd != null ? ` · ≈ ${money(usd, 'USD')}` : ''}`;
+      else hint.innerHTML = `Витратиш <b style="color:var(--red)">${fmtAmt(quoteQty)} ${esc(q.symbol)}</b>, отримаєш <b>${fmtAmt(qty)} ${esc(base.symbol)}</b>${usd != null ? ` · ≈ ${money(usd, 'USD')}` : ''}`;
+    }
+    translateTree(body);   // перекласти динамічний вміст (label + hint) у EN-режимі
+  }
+  const dp = defaultPrice(); if (dp != null) $$('#ct-price').value = dp;
+  body.addEventListener('input', upd); $$('#ct-quote').addEventListener('change', upd); upd();
+  openModal(isSell ? `Продати ${base.symbol}` : `Купити ${base.symbol}`, body, { saveLabel: isSell ? 'Продати' : 'Купити', onSave: (close) => {
+    const err = $$('#ct-err'); const q = quoteOf();
+    const qty = round2plusCrypto(num($$('#ct-qty').value)), price = num($$('#ct-price').value);
+    const quoteQty = round2plusCrypto(qty * price);
+    if (!q) { err.textContent = 'Оберіть пару'; err.classList.remove('hidden'); return; }
+    if (!(qty > 0)) { err.textContent = 'Введіть кількість більше 0'; err.classList.remove('hidden'); return; }
+    if (!(quoteQty > 0)) { err.textContent = 'Введіть ціну більше 0'; err.classList.remove('hidden'); return; }
+    if (isSell && qty > base.amount + 1e-9) { err.textContent = `Недостатньо ${base.symbol}: є лише ${fmtAmt(base.amount)}`; err.classList.remove('hidden'); return; }
+    if (!isSell && quoteQty > q.amount + 1e-9) { err.textContent = `Недостатньо ${q.symbol}: є лише ${fmtAmt(q.amount)}`; err.classList.remove('hidden'); return; }
+    applyCryptoTrade(base, q, side, qty, quoteQty, $$('#ct-date').value || todayISO());
+    save(); close(); render();
+  }});
+}
+function round2plusCrypto(x){ return Math.round((Number(x) || 0) * 1e8) / 1e8; }   // як cryptoRound, але дозволяє 0 без clamp до >0 (для проміжних розрахунків)
 
 //==================== Регулярні платежі ====================
 function dueRecurring(){ const t = todayISO(); return state.recurring.filter(r => r.active !== false && r.next_date && r.next_date <= t); }
@@ -3922,7 +4037,7 @@ function sanitizeImport(d){
   const loanIds = new Set((d.loans||[]).map(l=>l.id));
   const recIds = new Set((d.recurring||[]).map(r=>r.id));
   const txBefore = (d.transactions||[]).length;
-  d.transactions = (d.transactions||[]).filter(t => accIds.has(t.account_id));   // без валідного рахунку-джерела операція непридатна
+  d.transactions = (d.transactions||[]).filter(t => t.kind === 'CRYPTO' || accIds.has(t.account_id));   // крипто-обмін рахунку не має; решта — без валідного рахунку непридатна
   fixed += txBefore - d.transactions.length;
   d.transactions.forEach(t => {
     if (t.category_id != null && !catIds.has(t.category_id)) { t.category_id = null; fixed++; }

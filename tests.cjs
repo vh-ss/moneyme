@@ -176,6 +176,24 @@ eq('txAccountShare: не-split 0 для іншого', S.txAccountShare({ kind: 
   ok('sim5: ідемпотентність повторного злиття', S.syncSig(S.mergeAll([merged, devs[0]])) === S.syncSig(merged));
 }
 
+// ——— Крипто-обмін за крипту: cost-basis (cryptoTradeDeltas) ———
+{
+  const usdt = { id: 2, symbol: 'USDT', amount: 1000, cost: 1000, price: 1, cg: null };
+  const btc = { id: 1, symbol: 'BTC', amount: 0, cost: 0, price: 60000, cg: null };
+  const d = S.cryptoTradeDeltas(btc, usdt, 'BUY', 0.01, 600);   // купити 0.01 BTC за 600 USDT
+  eq('crypto BUY: USD-вартість угоди = 600', d.usd, 600);
+  eq('crypto BUY: базі (BTC) додається cost 600', d.baseCostDelta, 600);
+  eq('crypto BUY: з котирування (USDT) забирається пропорційний cost 600', d.quoteCostDelta, 600);
+}
+{
+  const btc = { id: 1, symbol: 'BTC', amount: 0.02, cost: 1000, price: 60000, cg: null };
+  const usdt = { id: 2, symbol: 'USDT', amount: 0, cost: 0, price: 1, cg: null };
+  const d = S.cryptoTradeDeltas(btc, usdt, 'SELL', 0.01, 700);  // продати половину BTC за 700 USDT
+  eq('crypto SELL: USD-вартість угоди = 700', d.usd, 700);
+  eq('crypto SELL: з BTC забирається пропорційний cost (половина) = 500', d.baseCostDelta, 500);
+  eq('crypto SELL: котируванню (USDT) додається cost 700', d.quoteCostDelta, 700);
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);
