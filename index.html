@@ -360,7 +360,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'd8d36d3cc9';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '1ece0edc9b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1751,8 +1751,9 @@ function attDbOpen(){
   });
   return _attDbPromise;
 }
-async function attPut(id, blob){ const db = await attDbOpen(); return new Promise((resolve, reject) => { const tx = db.transaction(ATT_STORE, 'readwrite'); tx.objectStore(ATT_STORE).put({ id, blob, ts: Date.now() }); tx.oncomplete = () => resolve(true); tx.onerror = () => reject(tx.error); }); }
-async function attGetBlob(id){ try { const db = await attDbOpen(); return await new Promise((resolve, reject) => { const tx = db.transaction(ATT_STORE, 'readonly'); const rq = tx.objectStore(ATT_STORE).get(id); rq.onsuccess = () => resolve(rq.result ? rq.result.blob : null); rq.onerror = () => reject(rq.error); }); } catch (e) { return null; } }
+// Зберігаємо ArrayBuffer + mime (НЕ Blob: Safari/iOS ненадійно тримає Blob у IndexedDB — читається null).
+async function attPut(id, blob){ const buf = await blob.arrayBuffer(); const type = blob.type || 'image/jpeg'; const db = await attDbOpen(); return new Promise((resolve, reject) => { const tx = db.transaction(ATT_STORE, 'readwrite'); tx.objectStore(ATT_STORE).put({ id, buf, type, ts: Date.now() }); tx.oncomplete = () => resolve(true); tx.onerror = () => reject(tx.error); }); }
+async function attGetBlob(id){ try { const db = await attDbOpen(); return await new Promise((resolve, reject) => { const tx = db.transaction(ATT_STORE, 'readonly'); const rq = tx.objectStore(ATT_STORE).get(id); rq.onsuccess = () => { const r = rq.result; if (!r) { resolve(null); return; } if (r.buf) resolve(new Blob([r.buf], { type: r.type || 'image/jpeg' })); else if (r.blob) resolve(r.blob); else resolve(null); }; rq.onerror = () => reject(rq.error); }); } catch (e) { return null; } }
 async function attDelBlob(id){ try { const db = await attDbOpen(); return await new Promise((resolve) => { const tx = db.transaction(ATT_STORE, 'readwrite'); tx.objectStore(ATT_STORE).delete(id); tx.oncomplete = () => resolve(true); tx.onerror = () => resolve(false); }); } catch (e) { return false; } }
 async function attAllIds(){ try { const db = await attDbOpen(); return await new Promise((resolve) => { const tx = db.transaction(ATT_STORE, 'readonly'); const rq = tx.objectStore(ATT_STORE).getAllKeys(); rq.onsuccess = () => resolve((rq.result || []).map(String)); rq.onerror = () => resolve([]); }); } catch (e) { return []; } }
 function newAttId(){ return 'att_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
@@ -1810,9 +1811,17 @@ function dataUrlToBlob(dataUrl){
 }
 // Одноразова міграція: старі base64-вкладення (у localStorage / стані з Drive) → Blob у IndexedDB + id-посилання.
 // Робить state крихітним, прибирає головну причину переповнення localStorage; нові id потім самі вивантажаться.
+function _hasLegacyAttachments(){ return (state.transactions || []).some(t => Array.isArray(t.attachments) && t.attachments.some(a => !attIsId(a) && (typeof a === 'string' ? a.startsWith('data:') : (a && a.data)))); }
 async function migrateAttachmentsToIDB(){
   try {
     if (!('indexedDB' in window)) return;
+    if (!_hasLegacyAttachments()) return;
+    // Безпека: одноразовий повний бекап (з base64) у Drive ПЕРЕД конвертацією — щоб оригінали ніколи не зникли.
+    // Не вдалося убезпечити при підключеному синху — НЕ мігруємо цього разу (спробуємо пізніше).
+    if (Sync.on && syncAvailable() && navigator.onLine && getCachedToken() && localStorage.getItem('moneyme.att.premig') !== '1') {
+      try { await driveCreateBackupFile({ app: 'MoneyMe', version: SCHEMA_VERSION, exported_at: new Date().toISOString(), note: 'pre-attachment-migration', data: state }, 'moneyme-backup-premig-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json'); localStorage.setItem('moneyme.att.premig', '1'); }
+      catch (e) { return; }
+    }
     let changed = false;
     for (const t of (state.transactions || [])) {
       if (!Array.isArray(t.attachments) || !t.attachments.length) continue;
@@ -1821,9 +1830,12 @@ async function migrateAttachmentsToIDB(){
         if (attIsId(a)) { out.push(a); continue; }
         const dataUrl = (typeof a === 'string' && a.startsWith('data:')) ? a : (a && a.data);
         const blob = dataUrl ? dataUrlToBlob(dataUrl) : null;
-        if (!blob) { if (dataUrl) out.push(a); continue; }   // не вдалось — лишаємо як є, не губимо
-        try { const id = newAttId(); await attPut(id, blob); out.push(id); changed = true; }
-        catch (e) { out.push(a); }
+        if (!blob) { if (dataUrl) out.push(a); continue; }   // не вдалось декодувати — лишаємо як є, не губимо
+        try {
+          const id = newAttId(); await attPut(id, blob);
+          const check = await attGetBlob(id);   // КЛЮЧОВЕ: викидаємо base64 ЛИШЕ якщо блоб реально читається з IDB
+          if (check && check.size > 0) { out.push(id); changed = true; } else { out.push(a); }
+        } catch (e) { out.push(a); }
       }
       t.attachments = out;
     }
