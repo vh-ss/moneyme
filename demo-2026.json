@@ -7,11 +7,12 @@
     "seq": {
       "acc": 6,
       "cat": 13,
-      "tx": 244,
+      "tx": 246,
       "bank": 3,
       "loan": 2,
       "rec": 5,
-      "goal": 3
+      "goal": 3,
+      "cry": 6
     },
     "accounts": [
       {
@@ -2954,6 +2955,42 @@
         "account_id": 4,
         "category_id": 8,
         "amount": 23.4
+      },
+      {
+        "id": 244,
+        "ord": 244,
+        "kind": "CRYPTO",
+        "side": "BUY",
+        "date": "2026-05-15",
+        "base_id": 5,
+        "base_sym": "GRAM",
+        "base_qty": 100,
+        "quote_id": 4,
+        "quote_sym": "USDT",
+        "quote_qty": 170,
+        "exchange": "Wallet",
+        "usd": 170,
+        "base_cost_delta": 170,
+        "quote_cost_delta": 170,
+        "note": null
+      },
+      {
+        "id": 245,
+        "ord": 245,
+        "kind": "CRYPTO",
+        "side": "SELL",
+        "date": "2026-06-08",
+        "base_id": 1,
+        "base_sym": "BTC",
+        "base_qty": 0.01,
+        "quote_id": 4,
+        "quote_sym": "USDT",
+        "quote_qty": 950,
+        "exchange": "Binance",
+        "usd": 950,
+        "base_cost_delta": 560,
+        "quote_cost_delta": 950,
+        "note": null
       }
     ],
     "banks": [
@@ -3051,6 +3088,139 @@
         "deadline": null,
         "color": "#22c55e",
         "icon": "🛟"
+      }
+    ],
+    "crypto": [
+      {
+        "id": 1,
+        "symbol": "BTC",
+        "amount": 0.05,
+        "cg": "bitcoin",
+        "price": null,
+        "cost": 2800,
+        "exchanges": [
+          {
+            "name": "Binance",
+            "amount": 0.03
+          },
+          {
+            "name": "WhiteBit",
+            "amount": 0.02
+          }
+        ],
+        "note": "",
+        "color": "#f59e0b"
+      },
+      {
+        "id": 2,
+        "symbol": "ETH",
+        "amount": 1.2,
+        "cg": "ethereum",
+        "price": null,
+        "cost": 3200,
+        "exchanges": [
+          {
+            "name": "Binance",
+            "amount": 0.8
+          },
+          {
+            "name": "Wallet",
+            "amount": 0.4
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "symbol": "SOL",
+        "amount": 10,
+        "cg": "solana",
+        "price": null,
+        "cost": 1400,
+        "exchanges": [
+          {
+            "name": "Binance",
+            "amount": 10
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "symbol": "USDT",
+        "amount": 1500,
+        "cg": "tether",
+        "price": 1,
+        "cost": 1500,
+        "exchanges": [
+          {
+            "name": "WhiteBit",
+            "amount": 900
+          },
+          {
+            "name": "Wallet",
+            "amount": 400
+          },
+          {
+            "name": "Binance",
+            "amount": 200
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "symbol": "GRAM",
+        "amount": 200,
+        "cg": null,
+        "price": 1.74,
+        "cost": 300,
+        "exchanges": [
+          {
+            "name": "Wallet",
+            "amount": 200
+          }
+        ],
+        "note": "TON gaming"
+      }
+    ],
+    "cryptoHistory": [
+      {
+        "date": "2026-05-18",
+        "usd": 9650
+      },
+      {
+        "date": "2026-05-22",
+        "usd": 10120
+      },
+      {
+        "date": "2026-05-26",
+        "usd": 9980
+      },
+      {
+        "date": "2026-05-30",
+        "usd": 10840
+      },
+      {
+        "date": "2026-06-03",
+        "usd": 11260
+      },
+      {
+        "date": "2026-06-07",
+        "usd": 11050
+      },
+      {
+        "date": "2026-06-11",
+        "usd": 11920
+      },
+      {
+        "date": "2026-06-15",
+        "usd": 12380
+      },
+      {
+        "date": "2026-06-19",
+        "usd": 12110
+      },
+      {
+        "date": "2026-06-23",
+        "usd": 12640
       }
     ]
   }
