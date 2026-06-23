@@ -360,7 +360,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '02f1bb64f6';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'e214bf5ca5';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -2926,12 +2926,11 @@ views.analytics = (app) => {
   app.appendChild(grid);
 
   // витрати по рахунках і по банках
-  function spendBy(keyFn) {
-    const map = {};
-    state.transactions.forEach(t => { if (t.kind!=='EXPENSE' || !inR(t)) return; const k = keyFn(t); if (k==null) return; map[k]=(map[k]||0)+txUAH(t); });
-    return map;
-  }
-  const byAcc = spendBy(t => t.account_id);
+  // Витрати по рахунках: розносимо split-частини по їхніх рахунках (txAccountShare),
+  // повернення (reimbursement — зарахування, а не витрата) виключаємо, щоб не давало мінус.
+  const byAcc = {};
+  state.transactions.forEach(t => { if (t.kind !== 'EXPENSE' || t.reimbursement || !inR(t)) return;
+    state.accounts.forEach(a => { const sh = txAccountShare(t, a.id); if (sh) byAcc[a.id] = (byAcc[a.id] || 0) + partUAH(t, sh); }); });
   const accRows = Object.entries(byAcc).map(([id,v]) => ({ a: state.accounts.find(x=>x.id==id), total:v })).filter(x=>x.a).sort((a,b)=>b.total-a.total);
   const byBank = {};
   accRows.forEach(r => { const bid = r.a.bank_id || 0; byBank[bid] = (byBank[bid]||0) + r.total; });
