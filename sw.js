@@ -18,7 +18,7 @@ self.addEventListener('install', (e) => {
     const c = await caches.open(CACHE);
     // не валимо інсталяцію, якщо якогось файлу немає (напр. лише MoneyMe.html без index.html)
     await Promise.allSettled(ASSETS.map((u) => c.add(u)));
-    // НЕ робимо skipWaiting автоматично — даємо застосунку показати плашку «оновити»
+    await self.skipWaiting();   // нова версія активується ОДРАЗУ — критично для швидкого розкочування фіксів (без чіпляння у старому коді)
   })());
 });
 
@@ -38,7 +38,19 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;   // Google API тощо — напряму в мережу
 
-  // stale-while-revalidate: миттєво з кешу, у фоні оновлюємо
+  // Документ (увесь застосунок — single-file HTML): NETWORK-FIRST — онлайн завжди віддає свіжий код,
+  // офлайн — з кешу. Так нові версії/фікси доходять одразу, без зависання на старому HTML.
+  const isDoc = req.mode === 'navigate' || req.destination === 'document' ||
+    url.pathname === '/' || url.pathname.endsWith('/') || url.pathname.endsWith('.html');
+  if (isDoc) {
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try { const res = await fetch(req); if (res && res.status === 200) cache.put(req, res.clone()); return res; }
+      catch (e2) { return (await cache.match(req, { ignoreSearch: true })) || (await cache.match('./index.html')) || (await cache.match('./MoneyMe.html')) || Response.error(); }
+    })());
+    return;
+  }
+  // Інша статика (іконки/маніфест) — stale-while-revalidate: миттєво з кешу, у фоні оновлюємо.
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(req, { ignoreSearch: true });
@@ -46,6 +58,6 @@ self.addEventListener('fetch', (e) => {
       if (res && res.status === 200 && res.type === 'basic') cache.put(req, res.clone());
       return res;
     }).catch(() => null);
-    return cached || (await network) || (await cache.match('./index.html')) || (await cache.match('./MoneyMe.html')) || Response.error();
+    return cached || (await network) || Response.error();
   })());
 });
