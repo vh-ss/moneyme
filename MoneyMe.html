@@ -2347,6 +2347,11 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
       <div class="txsub">${fmtDate(t.date)} · ${esc(sub)}${t.note?' · '+esc(t.note):''}${(t.tags&&t.tags.length)?' · '+t.tags.map(x=>'#'+esc(x)).join(' '):''}${(t.attachments&&t.attachments.length)?' · 📎'+t.attachments.length:''}</div></div>
     <div style="text-align:right">${amtHtml}</div>
   </div>`);
+  // Подвійний клік / тап по рядку → перегляд операції (швидкий доступ).
+  const viewTx = () => (onView ? onView(t) : openTxView(t));
+  row.addEventListener('dblclick', (e) => { if (e.target.closest('button')) return; viewTx(); });
+  let _lastTap = 0;   // подвійний ТАП на тач (деякі мобільні браузери не шлють dblclick)
+  row.addEventListener('touchend', (e) => { if (e.target.closest('button')) return; const now = Date.now(); if (now - _lastTap < 350) { e.preventDefault(); _lastTap = 0; viewTx(); } else _lastTap = now; });
   // Усі дії — під однією кнопкою «⋯» (щоб не тіснити назву операції).
   if (onView || onEdit || onDup || onDelete) {
     const b = el(`<button class="btn ghost sm" title="Дії">${ic('dots')}</button>`);
