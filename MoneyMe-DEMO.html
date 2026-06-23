@@ -2424,12 +2424,12 @@ function pieSVG(data, size=170) {
 function barsSVG(months) {
   // Координати по горизонталі — в одиницях viewBox (0..100), щоб усе вирівнювалось незалежно від ширини.
   const w = 100/Math.max(months.length,1);
-  const max = Math.max(1, ...months.flatMap(m=>[m.income,m.expense,m.fees]));
+  const max = Math.max(1, ...months.flatMap(m=>[m.income,m.expense]));   // комісії в графіку не показуємо
   const H = 180;
   let bars = '';
   months.forEach((m,i) => {
-    const bw = w*0.22, gap = w*0.06, base = i*w + w*0.12;
-    const vals = [[m.income,'#16a34a'],[m.expense,'#ef4444'],[m.fees,'#f59e0b']];
+    const bw = w*0.3, gap = w*0.08, base = i*w + (w - (2*bw+gap))/2;   // 2 стовпчики по центру колонки
+    const vals = [[m.income,'#16a34a'],[m.expense,'#ef4444']];
     vals.forEach(([v,c],j) => {
       const h = (v/max)*(H-6);
       bars += `<rect x="${(base + j*(bw+gap)).toFixed(2)}" y="${(H-h).toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}" rx="0.6" fill="${c}"/>`;
@@ -2991,8 +2991,7 @@ views.analytics = (app) => {
     dyn.appendChild(chartLabels(months.map(m=>m.month.slice(2))));
     dyn.appendChild(el(`<div class="row small muted" style="gap:16px;margin-top:8px">
       <span><span style="color:#16a34a">■</span> Надходження</span>
-      <span><span style="color:#ef4444">■</span> Витрати</span>
-      <span><span style="color:#f59e0b">■</span> Комісії</span></div>`));
+      <span><span style="color:#ef4444">■</span> Витрати</span></div>`));
   }
   app.appendChild(dyn);
 };
