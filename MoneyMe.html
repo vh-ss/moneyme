@@ -4657,12 +4657,17 @@ async function driveUploadNamed(id, name, payload){
 async function cloudSync(interactive){
   if (!syncAvailable()) { setSyncStatus('off'); return; }
   if (!navigator.onLine) { setSyncStatus('offline'); return; }
-  if (!interactive && !getCachedToken()) { setSyncStatus(Sync.on ? 'idle' : 'off'); return; }   // фон без токена — тихо
   if (Sync.syncing) { Sync.again = true; return; }   // не паралелити синх
   Sync.syncing = true;
   try {
     setSyncStatus('syncing');
-    await getToken(!!interactive);
+    // Токен: якщо протух — пробуємо ТИХО оновити (prompt:'' з hint; для активної Google-сесії — без вікна).
+    // Це і у ФОНІ — щоб зміни доливались самі, а не висіли в черзі до ручного синху. Не вийшло тихо у фоні —
+    // лишаємо в черзі без вікна входу (наступний тригер спробує знову).
+    if (!getCachedToken()) {
+      try { await acquireToken(''); }
+      catch (e) { if (interactive) throw e; setSyncStatus(Sync.on ? 'idle' : 'off'); return; }
+    }
     const myName = deviceFileName();
     const files = await driveListSyncFiles();
     const downloads = await Promise.all(files.map(async f => { try { return { f, j: await driveDownload(f.id) }; } catch (e) { return null; } }));

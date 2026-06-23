@@ -348,7 +348,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'df2ba3166b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'f7934f30cd';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -4657,12 +4657,17 @@ async function driveUploadNamed(id, name, payload){
 async function cloudSync(interactive){
   if (!syncAvailable()) { setSyncStatus('off'); return; }
   if (!navigator.onLine) { setSyncStatus('offline'); return; }
-  if (!interactive && !getCachedToken()) { setSyncStatus(Sync.on ? 'idle' : 'off'); return; }   // фон без токена — тихо
   if (Sync.syncing) { Sync.again = true; return; }   // не паралелити синх
   Sync.syncing = true;
   try {
     setSyncStatus('syncing');
-    await getToken(!!interactive);
+    // Токен: якщо протух — пробуємо ТИХО оновити (prompt:'' з hint; для активної Google-сесії — без вікна).
+    // Це і у ФОНІ — щоб зміни доливались самі, а не висіли в черзі до ручного синху. Не вийшло тихо у фоні —
+    // лишаємо в черзі без вікна входу (наступний тригер спробує знову).
+    if (!getCachedToken()) {
+      try { await acquireToken(''); }
+      catch (e) { if (interactive) throw e; setSyncStatus(Sync.on ? 'idle' : 'off'); return; }
+    }
     const myName = deviceFileName();
     const files = await driveListSyncFiles();
     const downloads = await Promise.all(files.map(async f => { try { return { f, j: await driveDownload(f.id) }; } catch (e) { return null; } }));
