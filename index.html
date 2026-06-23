@@ -219,6 +219,18 @@
   .calckey.act { background: var(--hover); }
   .calckey.eq { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+  /* Вкладення (чеки/скріни) */
+  .attgrid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .attthumb { position: relative; width: 66px; height: 66px; border-radius: 10px; overflow: hidden; border: 1px solid var(--inputline); flex: 0 0 auto; }
+  .attthumb img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; display: block; }
+  .attthumb .attdel { position: absolute; top: 3px; right: 3px; width: 19px; height: 19px; border-radius: 50%; border: none; background: rgba(0,0,0,.62); color: #fff; font-size: 13px; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; }
+  .imgview { position: fixed; inset: 0; z-index: 120; background: rgba(0,0,0,.86); display: grid; place-items: center; }
+  .imgview img { max-width: 94vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,.5); }
+  .imgview button { position: absolute; border: none; background: rgba(255,255,255,.16); color: #fff; cursor: pointer; border-radius: 50%; }
+  .imgview .imgclose { top: 14px; right: 16px; width: 42px; height: 42px; font-size: 24px; }
+  .imgview .imgnav { top: 50%; transform: translateY(-50%); width: 46px; height: 46px; font-size: 28px; }
+  .imgview .imgnav.prev { left: 12px; } .imgview .imgnav.next { right: 12px; }
+
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
   .swatch { width: 28px; height: 28px; border-radius: 999px; border: 0; }
   .swatch.sel { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
@@ -348,7 +360,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'f7934f30cd';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'd5f1fb61d1';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -523,12 +535,14 @@ const I18N_EN = {
   'Калькулятор дострокового погашення':'Early payoff calculator','Платежі вже зроблено — перенести на наступний цикл':'Payments already made — move to next cycle',
   // — round 4: повний аудит усіх рядків коду —
   'Крипто':'Crypto','Редагувати':'Edit','Перед синхронізацією':'Before sync','🔄 Синхронізовано з іншими пристроями':'🔄 Synced with other devices','Це видалення зачепить:':'This deletion will affect:',
-  'Купити':'Buy','Продати':'Sell','Ціна':'Price','за':'for','Біржа':'Exchange','Оберіть пару':'Choose a pair','Оберіть біржу':'Choose an exchange','Введіть ціну більше 0':'Enter a price above 0','Куплено':'Bought','Продано':'Sold','Сплачено':'Paid','Отримано':'Received','Купівля крипти':'Crypto buy','Продаж крипти':'Crypto sell','Вартість':'Value','Спершу додайте крипто-актив для пари (напр. USDT) у портфель.':'Add a crypto asset for the pair (e.g. USDT) to your portfolio first.','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
+  'Купити':'Buy','Продати':'Sell','Ціна':'Price','за':'for','Біржа':'Exchange','Оберіть пару':'Choose a pair','Оберіть біржу':'Choose an exchange',
+  'Вкладення (чек / скрін)':'Attachment (receipt / screenshot)','Додати чек / скрін':'Add receipt / screenshot','Стиснення…':'Compressing…','Вкладення':'Attachments',
+  'Сховище браузера переповнене — зміни могли не зберегтись. Найчастіше це через великі вкладення (чеки/скріни): видаліть зайві у деталях операцій або зменшіть їхню кількість.':'Browser storage is full — changes may not have been saved. This is usually due to large attachments (receipts/screenshots): remove some from transaction details or reduce their number.','Введіть ціну більше 0':'Enter a price above 0','Куплено':'Bought','Продано':'Sold','Сплачено':'Paid','Отримано':'Received','Купівля крипти':'Crypto buy','Продаж крипти':'Crypto sell','Вартість':'Value','Спершу додайте крипто-актив для пари (напр. USDT) у портфель.':'Add a crypto asset for the pair (e.g. USDT) to your portfolio first.','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
   'Шифрування працює лише на https-сайті (не з файлу, відкритого подвійним кліком).':'Encryption works only on an https site (not from a file opened by double-click).','Зашифрований експорт':'Encrypted export','Пароль для бекапу (запамʼятайте — без нього файл не відкрити!):':'Backup password (remember it — the file cannot be opened without it!):','Пароль закороткий — мінімум 4 символи.':'Password too short — at least 4 characters.','🔒 Зашифрований бекап збережено':'🔒 Encrypted backup saved',
   'На рахунок':'To account','Теги':'Tags','не вдалося отримати курси':'failed to fetch rates','не вдалося отримати ціни':'failed to fetch prices',
   'Напрямок':'Direction','Зараховано':'Credited','Кредит':'Credit','Тип запису':'Record type','Регулярний платіж':'Recurring payment','Операція':'Transaction',
   'Це платіж за кредитом — суму буде повернено у залишок боргу.':'This is a credit payment — the amount returns to the debt balance.','Це регулярний платіж — дату наступного списання буде відкочено на цикл назад.':'This is a recurring payment — the next charge date rolls back one cycle.','Разом із цією витратою буде видалено й повʼязану операцію-повернення.':'The linked refund transaction will be deleted along with this expense.','Видалити операцію?':'Delete transaction?','Переказ видалено':'Transfer deleted','Операцію видалено':'Transaction deleted',
-  'Закрити':'Close','Так':'Yes','Увага':'Warning','Готово':'Done','Потрібен щонайменше ще один рахунок.':'At least one more account is needed.','На який рахунок переказати?':'Transfer to which account?','Переказ із цього рахунку':'Transfer from this account','Спершу додайте хоча б один рахунок.':'Add at least one account first.',
+  'Закрити':'Close','Так':'Yes','Увага':'Warning','Готово':'Done','Назад':'Back','Потрібен щонайменше ще один рахунок.':'At least one more account is needed.','На який рахунок переказати?':'Transfer to which account?','Переказ із цього рахунку':'Transfer from this account','Спершу додайте хоча б один рахунок.':'Add at least one account first.',
   'Разом:':'Total:','Рахунок цієї статті':'Account for this item','↳ основний':'↳ main','сума':'amount','Прибрати':'Remove','Не заповнено — сума розділиться між тегами порівну.':'Not filled — the amount splits equally among tags.','Розподіл суми за тегами (необовʼязково)':'Amount allocation by tags (optional)','Додайте хоча б одну статтю із сумою більше 0':'Add at least one item with an amount above 0','Введіть суму більше 0':'Enter an amount above 0','Повернення не може перевищувати суму витрати':'The refund cannot exceed the expense amount',
   'Відсоток, %':'Percent, %','Вкажіть курс або суму в валюті призначення':'Set the rate or the amount in the destination currency','Для переказу потрібно щонайменше два рахунки.':'A transfer needs at least two accounts.','З рахунку':'From account','Рахунок-джерело і призначення мають відрізнятися':'Source and destination accounts must differ','Кілька статей':'Several items','Дублювати':'Duplicate',
   'Місячний звіт':'Monthly report','Друк / PDF':'Print / PDF','Надходження/міс:':'Income/mo:','Банки':'Banks','(архів)':'(archived)',
@@ -900,7 +914,16 @@ function load() {
   } catch (e) {}
   return seed();
 }
-function persist() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+var _quotaWarned = false;   // var (не let): persist() викликається з normalize() ще до цього рядка — уникаємо TDZ
+function persist() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); _quotaWarned = false; }
+  catch (e) {   // переповнення сховища (найчастіше — великі вкладення): попереджаємо, не валимо застосунок
+    if (!_quotaWarned && (e && (e.name === 'QuotaExceededError' || e.code === 22 || /quota/i.test(String(e))))) {
+      _quotaWarned = true;
+      setTimeout(() => { try { alertModal('Сховище браузера переповнене — зміни могли не зберегтись. Найчастіше це через великі вкладення (чеки/скріни): видаліть зайві у деталях операцій або зменшіть їхню кількість.'); } catch (e2) {} }, 0);
+    }
+  }
+}
 function save() {
   if (!Sync.applying) { stampLocalChanges(); state.updatedAt = new Date().toISOString(); }   // мітки часу записів/надгробки + загальна мітка
   persist();
@@ -1052,13 +1075,20 @@ function txInfoNode(tx){
   if (tx.tags && tx.tags.length) rows.push(['Теги', tx.tags.map(x => '#' + x).join(' ')]);
   if (tx.loan_id) { const l = state.loans.find(x => x.id === tx.loan_id); if (l) rows.push(['Кредит', l.name || 'Кредит']); }
   if (tx.recurring_id) rows.push(['Тип запису', 'Регулярний платіж']);
-  return el(`<div>
+  const node = el(`<div>
     <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <span style="font-weight:700;color:${typeColor}">${typeLabel}</span>
       <span class="tabnum" style="font-size:22px;font-weight:800;color:${isT ? 'var(--ink)' : typeColor}">${amtStr}</span>
     </div>
     ${rows.map(([k, v]) => `<div class="row" style="justify-content:space-between;gap:18px;margin-top:6px"><span class="muted small">${esc(k)}</span><b style="text-align:right">${esc(v)}</b></div>`).join('')}
   </div>`);
+  if (tx.attachments && tx.attachments.length) {   // вкладення (чеки/скріни) — мініатюри з повноекранним переглядом
+    node.appendChild(el(`<div class="row" style="justify-content:space-between;gap:18px;margin-top:8px"><span class="muted small">Вкладення</span><b>${tx.attachments.length}</b></div>`));
+    const grid = el(`<div class="attgrid"></div>`);
+    tx.attachments.forEach((url, i) => { const c = el(`<div class="attthumb"><img src="${url}" alt=""></div>`); c.querySelector('img').onclick = () => openImageViewer(tx.attachments, i); grid.appendChild(c); });
+    node.appendChild(grid);
+  }
+  return node;
 }
 // Перегляд операції лише на читання (без змін).
 function openTxView(tx){ openModal('Операція', txInfoNode(tx), {}); }
@@ -1698,6 +1728,56 @@ function emojiPicker(inputEl) {
   return grid;
 }
 
+// ——— Вкладення до операцій (чеки/скріни): стиснення + поле + перегляд ———
+// Стискає зображення через canvas (resize до maxDim, JPEG) — щоб не роздути localStorage і синхронізацію.
+function compressImage(file, maxDim = 1280, quality = 0.6){
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => { const img = new Image();
+      img.onload = () => { let w = img.width, h = img.height;
+        if (Math.max(w, h) > maxDim) { const s = maxDim / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+        const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
+        try { resolve(c.toDataURL('image/jpeg', quality)); } catch (e) { reject(e); } };
+      img.onerror = reject; img.src = fr.result; };
+    fr.onerror = reject; fr.readAsDataURL(file);
+  });
+}
+// Повноекранний перегляд зображень (з гортанням, якщо їх кілька).
+function openImageViewer(urls, idx){
+  urls = Array.isArray(urls) ? urls : [urls]; if (!urls.length) return; let i = Math.max(0, Math.min(idx || 0, urls.length - 1));
+  const ov = el(`<div class="imgview"><img alt=""><button class="imgclose" aria-label="Закрити">×</button>${urls.length > 1 ? '<button class="imgnav prev" aria-label="Назад">‹</button><button class="imgnav next" aria-label="Далі">›</button>' : ''}</div>`);
+  const img = ov.querySelector('img'); const show = () => img.src = urls[i];
+  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  function onKey(e){ if (e.key === 'Escape') close(); else if (e.key === 'ArrowLeft' && urls.length > 1) { i = (i - 1 + urls.length) % urls.length; show(); } else if (e.key === 'ArrowRight' && urls.length > 1) { i = (i + 1) % urls.length; show(); } }
+  ov.querySelector('.imgclose').onclick = close;
+  ov.addEventListener('mousedown', e => { if (e.target === ov) close(); });
+  if (urls.length > 1) { ov.querySelector('.prev').onclick = e => { e.stopPropagation(); i = (i - 1 + urls.length) % urls.length; show(); }; ov.querySelector('.next').onclick = e => { e.stopPropagation(); i = (i + 1) % urls.length; show(); }; }
+  document.addEventListener('keydown', onKey); document.body.appendChild(ov); show();
+}
+// Будує поле вкладень у контейнері; повертає геттер поточного масиву dataURL.
+function setupAttachments(container, initial){
+  let items = (initial || []).map(a => typeof a === 'string' ? a : (a && a.data)).filter(Boolean);
+  container.innerHTML = '';
+  container.appendChild(el(`<label class="lab">Вкладення (чек / скрін)</label>`));
+  const grid = el(`<div class="attgrid"></div>`); container.appendChild(grid);
+  const add = el(`<button type="button" class="btn ghost sm">${ic('receipt')} Додати чек / скрін</button>`);
+  const status = el(`<span class="muted small"></span>`);
+  const bar = el(`<div class="row" style="gap:8px;align-items:center;margin-top:6px"></div>`); bar.appendChild(add); bar.appendChild(status); container.appendChild(bar);
+  const input = el(`<input type="file" accept="image/*" multiple style="display:none">`); container.appendChild(input);
+  function render(){ grid.innerHTML = items.length ? '' : ''; grid.style.display = items.length ? '' : 'none';
+    items.forEach((url, i) => { const cell = el(`<div class="attthumb"><img src="${url}" alt=""><button type="button" class="attdel" title="Прибрати">×</button></div>`);
+      cell.querySelector('img').onclick = () => openImageViewer(items, i);
+      cell.querySelector('.attdel').onclick = () => { items.splice(i, 1); render(); };
+      grid.appendChild(cell); }); }
+  add.onclick = () => input.click();
+  input.onchange = async () => { const files = [...input.files]; input.value = ''; if (!files.length) return;
+    status.textContent = 'Стиснення…';
+    for (const f of files) { if (!/^image\//.test(f.type)) continue; try { items.push(await compressImage(f)); render(); } catch (e) {} }
+    status.textContent = ''; };
+  render();
+  return () => items.slice();
+}
+
 //==================== Форма витрати/надходження ====================
 function openEntryForm(kind, existing, presetAccountId, prefill) {
   if (state.accounts.length === 0) { alertModal('Спершу додайте хоча б один рахунок.'); navigate('accounts'); return; }
@@ -1723,6 +1803,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     </div>
     <div><label class="lab">Теги (через кому)</label><input id="f-tags" value="${esc((e.tags||[]).join(', '))}" placeholder="напр. відпустка, робота"></div>
     <div id="f-tagamts" style="display:none"></div>
+    <div id="f-attach" style="margin-top:8px"></div>
     ${(kind==='EXPENSE' && !existing) ? `
     <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:2px"><input type="checkbox" id="f-rfon" style="width:auto"> Частину повернули мені (оплатив за когось)</label>
     <div class="hidden" id="f-rfbox">
@@ -1805,6 +1886,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
 
   // ——— Розподіл суми за тегами (коли тегів ≥ 2) + перевірка суми ———
   const tagBox = $('#f-tagamts', body);
+  const attachGet = setupAttachments($('#f-attach', body), e.attachments);   // поле вкладень (чеки/скріни)
   const tagAmtVals = Object.assign({}, e.tagAmounts || {});
   function entryTotal(){ return splitOn.checked ? round2([...splitRows.querySelectorAll('.sp-amt')].reduce((s,i)=>s+(num(i.value)||0),0)) : num($('#f-amt', body).value); }
   function updTagSum(){
@@ -1882,6 +1964,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
         }
       }
       if (tagAmounts) rec.tagAmounts = tagAmounts;
+      const att = attachGet(); if (att.length) rec.attachments = att;   // вкладення (чеки/скріни)
       if (existing) {
         // якщо це платіж за кредитом — синхронізуємо виплачене на різницю суми
         if (existing.loan_id) {
@@ -1894,6 +1977,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
         Object.assign(existing, rec);
         if (!splits) delete existing.splits;   // прибрали розбиття — чистимо старі splits
         if (!tagAmounts) delete existing.tagAmounts;   // прибрали розподіл за тегами
+        if (!att.length) delete existing.attachments;   // прибрали всі вкладення
       }
       else {
         rec.id = nextId('tx'); rec.ord = nextOrd(); state.transactions.push(rec);
@@ -2235,7 +2319,7 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
   const row = el(`<div class="txrow">
     <span class="txicon" style="background:${color}22;color:${color}">${icon}</span>
     <div class="txmain"><div class="txtitle">${esc(title)}</div>
-      <div class="txsub">${fmtDate(t.date)} · ${esc(sub)}${t.note?' · '+esc(t.note):''}${(t.tags&&t.tags.length)?' · '+t.tags.map(x=>'#'+esc(x)).join(' '):''}</div></div>
+      <div class="txsub">${fmtDate(t.date)} · ${esc(sub)}${t.note?' · '+esc(t.note):''}${(t.tags&&t.tags.length)?' · '+t.tags.map(x=>'#'+esc(x)).join(' '):''}${(t.attachments&&t.attachments.length)?' · 📎'+t.attachments.length:''}</div></div>
     <div style="text-align:right">${amtHtml}</div>
   </div>`);
   // Усі дії — під однією кнопкою «⋯» (щоб не тіснити назву операції).
