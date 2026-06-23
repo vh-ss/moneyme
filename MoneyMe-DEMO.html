@@ -557,7 +557,8 @@ const I18N_EN = {
   // — round 4: повний аудит усіх рядків коду —
   'Крипто':'Crypto','Редагувати':'Edit','Перед синхронізацією':'Before sync','🔄 Синхронізовано з іншими пристроями':'🔄 Synced with other devices','Це видалення зачепить:':'This deletion will affect:',
   'Купити':'Buy','Продати':'Sell','Ціна':'Price','за':'for','Біржа':'Exchange','Оберіть пару':'Choose a pair','Оберіть біржу':'Choose an exchange',
-  'Вкладення (чек / скрін)':'Attachment (receipt / screenshot)','Додати чек / скрін':'Add receipt / screenshot','Стиснення…':'Compressing…','Вкладення':'Attachments',
+  'Вкладення (чек / скрін)':'Attachment (receipt / screenshot)','Файл / камера':'File / camera','Вставити скрін':'Paste screenshot','Стиснення…':'Compressing…','Вкладення':'Attachments',
+  'Браузер не дозволяє читати буфер кнопкою. Зробіть скрін і натисніть Ctrl+V у вікні.':'The browser does not allow reading the clipboard via button. Take a screenshot and press Ctrl+V in the window.','У буфері немає зображення. Скопіюйте скрін (напр. Win+Shift+S) і спробуйте ще.':'No image in the clipboard. Copy a screenshot (e.g. Win+Shift+S) and try again.','Не вдалося прочитати буфер. Зробіть скрін і натисніть Ctrl+V у вікні.':'Could not read the clipboard. Take a screenshot and press Ctrl+V in the window.',
   'Сховище браузера переповнене — зміни могли не зберегтись. Найчастіше це через великі вкладення (чеки/скріни): видаліть зайві у деталях операцій або зменшіть їхню кількість.':'Browser storage is full — changes may not have been saved. This is usually due to large attachments (receipts/screenshots): remove some from transaction details or reduce their number.','Введіть ціну більше 0':'Enter a price above 0','Куплено':'Bought','Продано':'Sold','Сплачено':'Paid','Отримано':'Received','Купівля крипти':'Crypto buy','Продаж крипти':'Crypto sell','Вартість':'Value','Спершу додайте крипто-актив для пари (напр. USDT) у портфель.':'Add a crypto asset for the pair (e.g. USDT) to your portfolio first.','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
   'Шифрування працює лише на https-сайті (не з файлу, відкритого подвійним кліком).':'Encryption works only on an https site (not from a file opened by double-click).','Зашифрований експорт':'Encrypted export','Пароль для бекапу (запамʼятайте — без нього файл не відкрити!):':'Backup password (remember it — the file cannot be opened without it!):','Пароль закороткий — мінімум 4 символи.':'Password too short — at least 4 characters.','🔒 Зашифрований бекап збережено':'🔒 Encrypted backup saved',
   'На рахунок':'To account','Теги':'Tags','не вдалося отримати курси':'failed to fetch rates','не вдалося отримати ціни':'failed to fetch prices',
@@ -653,7 +654,8 @@ const I18N_PARTIAL = [
   ['Версійні знімки у вашому Google Drive (останні ','Versioned snapshots in your Google Drive (last '],['). Відновлення замінить поточні дані — з можливістю скасувати.','). Restoring replaces current data — can be undone.'],['Знімок ','Snapshot '],[': поточні дані буде замінено (можна скасувати).',': current data will be replaced (can be undone).'],['Відновлено з Drive (','Restored from Drive ('],['Помилка відновлення:','Restore error:'],['Не вдалося отримати список:','Failed to get the list:'],
   ['Відновити дані станом на ','Restore data as of '],['? Поточні буде замінено (з можливістю скасувати).','? Current data will be replaced (can be undone).'],['Відновлено стан на ','Restored state as of '],
   // крипто-обмін (пари)
-  ['Ринкова ціна ≈','Market price ≈'],['Ціна (','Price ('],['за 1 ','per 1 '],['Кількість ','Amount '],['Віддаси ','You give '],['Витратиш ','You spend '],[', отримаєш ',', you get '],['отримано ','received '],['сплачено ','paid '],['Недостатньо ','Not enough '],[': є лише ',': only '],[' на ',' on '],['Купити ','Buy '],['Продати ','Sell '],['Купівля ','Buy '],['Продаж ','Sell '],
+  ['Ринкова ціна ≈','Market price ≈'],['Ціна (','Price ('],['за 1 ','per 1 '],['Кількість ','Amount '],['Віддаси ','You give '],['Витратиш ','You spend '],[', отримаєш ',', you get '],['отримано ','received '],['сплачено ','paid '],['Недостатньо ','Not enough '],[': є лише ',': only '],[' на ',' on '],
+  ['Або зробіть скрін і натисніть ','Or take a screenshot and press '],[' у цьому вікні.',' in this window.'],['Купити ','Buy '],['Продати ','Sell '],['Купівля ','Buy '],['Продаж ','Sell '],
   // загальні (після специфічних)
   ['Курс НБУ','NBU rate'],[' міс',' mo'],
   [' операцій',' transactions'],[' регулярних',' recurring'],['кредитів','credits'],[' видалено',' deleted'],[' з ',' of '],[' і ',' and '],[' із ',' from '],
@@ -1781,20 +1783,43 @@ function setupAttachments(container, initial){
   container.innerHTML = '';
   container.appendChild(el(`<label class="lab">Вкладення (чек / скрін)</label>`));
   const grid = el(`<div class="attgrid"></div>`); container.appendChild(grid);
-  const add = el(`<button type="button" class="btn ghost sm">${ic('receipt')} Додати чек / скрін</button>`);
+  const add = el(`<button type="button" class="btn ghost sm">${ic('receipt')} Файл / камера</button>`);
+  const pasteBtn = el(`<button type="button" class="btn ghost sm">${ic('dup')} Вставити скрін</button>`);
   const status = el(`<span class="muted small"></span>`);
-  const bar = el(`<div class="row" style="gap:8px;align-items:center;margin-top:6px"></div>`); bar.appendChild(add); bar.appendChild(status); container.appendChild(bar);
+  const bar = el(`<div class="row" style="gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"></div>`); bar.appendChild(add); bar.appendChild(pasteBtn); bar.appendChild(status); container.appendChild(bar);
+  container.appendChild(el(`<div class="muted small" style="margin-top:3px">Або зробіть скрін і натисніть <b>Ctrl+V</b> у цьому вікні.</div>`));
   const input = el(`<input type="file" accept="image/*" multiple style="display:none">`); container.appendChild(input);
-  function render(){ grid.innerHTML = items.length ? '' : ''; grid.style.display = items.length ? '' : 'none';
+  function render(){ grid.style.display = items.length ? '' : 'none'; grid.innerHTML = '';
     items.forEach((url, i) => { const cell = el(`<div class="attthumb"><img src="${url}" alt=""><button type="button" class="attdel" title="Прибрати">×</button></div>`);
       cell.querySelector('img').onclick = () => openImageViewer(items, i);
       cell.querySelector('.attdel').onclick = () => { items.splice(i, 1); render(); };
       grid.appendChild(cell); }); }
+  async function addFile(f){ if (!f || !/^image\//.test(f.type)) return false; try { items.push(await compressImage(f)); render(); return true; } catch (e) { return false; } }
+  async function addFiles(files){ if (!files.length) return; status.textContent = 'Стиснення…'; for (const f of files) await addFile(f); status.textContent = ''; }
   add.onclick = () => input.click();
-  input.onchange = async () => { const files = [...input.files]; input.value = ''; if (!files.length) return;
+  input.onchange = () => { const files = [...input.files]; input.value = ''; addFiles(files); };
+  // Вставлення зображення з буфера: Ctrl+V будь-де у відкритій формі (самоприбирається, коли поле зникло з DOM).
+  async function onPaste(e){
+    if (!container.isConnected) { document.removeEventListener('paste', onPaste); return; }
+    const its = (e.clipboardData && e.clipboardData.items) || [];
+    const imgs = [...its].filter(it => it.type && it.type.startsWith('image/'));
+    if (!imgs.length) return; e.preventDefault();
     status.textContent = 'Стиснення…';
-    for (const f of files) { if (!/^image\//.test(f.type)) continue; try { items.push(await compressImage(f)); render(); } catch (e) {} }
-    status.textContent = ''; };
+    for (const it of imgs) { const f = it.getAsFile(); if (f) await addFile(f); }
+    status.textContent = '';
+  }
+  document.addEventListener('paste', onPaste);
+  // Кнопка «Вставити скрін» — явне читання буфера (десктоп, потребує дозволу).
+  pasteBtn.onclick = async () => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.read) { alertModal('Браузер не дозволяє читати буфер кнопкою. Зробіть скрін і натисніть Ctrl+V у вікні.'); return; }
+      status.textContent = 'Стиснення…';
+      const data = await navigator.clipboard.read(); let any = false;
+      for (const it of data) { const type = (it.types || []).find(t => t.startsWith('image/')); if (type) { const blob = await it.getType(type); if (await addFile(new File([blob], 'screenshot.png', { type }))) any = true; } }
+      status.textContent = '';
+      if (!any) alertModal('У буфері немає зображення. Скопіюйте скрін (напр. Win+Shift+S) і спробуйте ще.');
+    } catch (e) { status.textContent = ''; alertModal('Не вдалося прочитати буфер. Зробіть скрін і натисніть Ctrl+V у вікні.'); }
+  };
   render();
   return () => items.slice();
 }
