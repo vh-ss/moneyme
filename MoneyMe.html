@@ -523,7 +523,7 @@ const I18N_EN = {
   'Калькулятор дострокового погашення':'Early payoff calculator','Платежі вже зроблено — перенести на наступний цикл':'Payments already made — move to next cycle',
   // — round 4: повний аудит усіх рядків коду —
   'Крипто':'Crypto','Редагувати':'Edit','Перед синхронізацією':'Before sync','🔄 Синхронізовано з іншими пристроями':'🔄 Synced with other devices','Це видалення зачепить:':'This deletion will affect:',
-  'Купити':'Buy','Продати':'Sell','Ціна':'Price','за':'for','Оберіть пару':'Choose a pair','Введіть ціну більше 0':'Enter a price above 0','Куплено':'Bought','Продано':'Sold','Сплачено':'Paid','Отримано':'Received','Купівля крипти':'Crypto buy','Продаж крипти':'Crypto sell','Вартість':'Value','Спершу додайте крипто-актив для пари (напр. USDT) у портфель.':'Add a crypto asset for the pair (e.g. USDT) to your portfolio first.','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
+  'Купити':'Buy','Продати':'Sell','Ціна':'Price','за':'for','Біржа':'Exchange','Оберіть пару':'Choose a pair','Оберіть біржу':'Choose an exchange','Введіть ціну більше 0':'Enter a price above 0','Куплено':'Bought','Продано':'Sold','Сплачено':'Paid','Отримано':'Received','Купівля крипти':'Crypto buy','Продаж крипти':'Crypto sell','Вартість':'Value','Спершу додайте крипто-актив для пари (напр. USDT) у портфель.':'Add a crypto asset for the pair (e.g. USDT) to your portfolio first.','Цю дію не можна відмінити (окрім кнопки «Скасувати» у сповіщенні одразу після видалення).':'This action cannot be undone (except the “Cancel” button in the toast right after deletion).','🗑 Видалити':'🗑 Delete',
   'Шифрування працює лише на https-сайті (не з файлу, відкритого подвійним кліком).':'Encryption works only on an https site (not from a file opened by double-click).','Зашифрований експорт':'Encrypted export','Пароль для бекапу (запамʼятайте — без нього файл не відкрити!):':'Backup password (remember it — the file cannot be opened without it!):','Пароль закороткий — мінімум 4 символи.':'Password too short — at least 4 characters.','🔒 Зашифрований бекап збережено':'🔒 Encrypted backup saved',
   'На рахунок':'To account','Теги':'Tags','не вдалося отримати курси':'failed to fetch rates','не вдалося отримати ціни':'failed to fetch prices',
   'Напрямок':'Direction','Зараховано':'Credited','Кредит':'Credit','Тип запису':'Record type','Регулярний платіж':'Recurring payment','Операція':'Transaction',
@@ -618,7 +618,7 @@ const I18N_PARTIAL = [
   ['Версійні знімки у вашому Google Drive (останні ','Versioned snapshots in your Google Drive (last '],['). Відновлення замінить поточні дані — з можливістю скасувати.','). Restoring replaces current data — can be undone.'],['Знімок ','Snapshot '],[': поточні дані буде замінено (можна скасувати).',': current data will be replaced (can be undone).'],['Відновлено з Drive (','Restored from Drive ('],['Помилка відновлення:','Restore error:'],['Не вдалося отримати список:','Failed to get the list:'],
   ['Відновити дані станом на ','Restore data as of '],['? Поточні буде замінено (з можливістю скасувати).','? Current data will be replaced (can be undone).'],['Відновлено стан на ','Restored state as of '],
   // крипто-обмін (пари)
-  ['Ринкова ціна ≈','Market price ≈'],['Ціна (','Price ('],['за 1 ','per 1 '],['Кількість ','Amount '],['Віддаси ','You give '],['Витратиш ','You spend '],[', отримаєш ',', you get '],['отримано ','received '],['сплачено ','paid '],['Недостатньо ','Not enough '],[': є лише ',': only '],['Купити ','Buy '],['Продати ','Sell '],['Купівля ','Buy '],['Продаж ','Sell '],
+  ['Ринкова ціна ≈','Market price ≈'],['Ціна (','Price ('],['за 1 ','per 1 '],['Кількість ','Amount '],['Віддаси ','You give '],['Витратиш ','You spend '],[', отримаєш ',', you get '],['отримано ','received '],['сплачено ','paid '],['Недостатньо ','Not enough '],[': є лише ',': only '],[' на ',' on '],['Купити ','Buy '],['Продати ','Sell '],['Купівля ','Buy '],['Продаж ','Sell '],
   // загальні (після специфічних)
   ['Курс НБУ','NBU rate'],[' міс',' mo'],
   [' операцій',' transactions'],[' регулярних',' recurring'],['кредитів','credits'],[' видалено',' deleted'],[' з ',' of '],[' і ',' and '],[' із ',' from '],
@@ -1033,6 +1033,7 @@ function txInfoNode(tx){
     rows.push([tx.side === 'SELL' ? 'Продано' : 'Куплено', `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}`]);
     rows.push([tx.side === 'SELL' ? 'Отримано' : 'Сплачено', `${fmtAmt(tx.quote_qty || 0)} ${tx.quote_sym || ''}`]);
     if (tx.base_qty > 0) rows.push(['Ціна', `${fmtAmt(round2(tx.quote_qty / tx.base_qty))} ${tx.quote_sym || ''} / ${tx.base_sym || ''}`]);
+    if (tx.exchange) rows.push(['Біржа', tx.exchange]);
     if (tx.usd) rows.push(['Вартість', money(tx.usd, 'USD')]);
   } else if (isT) {
     rows.push(['Напрямок', `${accountName(tx.account_id)} → ${accountName(tx.to_account_id)}`]);
@@ -1093,13 +1094,13 @@ function doDeleteTx(tx) {
     if (tx.kind === 'CRYPTO') {   // крипто-обмін — відкочуємо обидві позиції (базу й котирування)
       const base = (state.crypto || []).find(x => x.id === tx.base_id);
       const quote = (state.crypto || []).find(x => x.id === tx.quote_id);
-      const bq = tx.base_qty || 0, qq = tx.quote_qty || 0, bc = tx.base_cost_delta || 0, qc = tx.quote_cost_delta || 0;
+      const bq = tx.base_qty || 0, qq = tx.quote_qty || 0, bc = tx.base_cost_delta || 0, qc = tx.quote_cost_delta || 0, ex = tx.exchange || null;
       if (tx.side === 'SELL') {   // продали базу за котирування → повертаємо базу, забираємо котирування
-        if (base) { base.amount = cryptoRound(base.amount + bq); base.cost = round2((base.cost || 0) + bc); }
-        if (quote) { quote.amount = cryptoRound(quote.amount - qq); quote.cost = round2(Math.max(0, (quote.cost || 0) - qc)); }
+        if (base) { adjustHoldingOnExchange(base, ex, bq); base.cost = round2((base.cost || 0) + bc); }
+        if (quote) { adjustHoldingOnExchange(quote, ex, -qq); quote.cost = round2(Math.max(0, (quote.cost || 0) - qc)); }
       } else {                    // купили базу за котирування → забираємо базу, повертаємо котирування
-        if (base) { base.amount = cryptoRound(base.amount - bq); base.cost = round2(Math.max(0, (base.cost || 0) - bc)); }
-        if (quote) { quote.amount = cryptoRound(quote.amount + qq); quote.cost = round2((quote.cost || 0) + qc); }
+        if (base) { adjustHoldingOnExchange(base, ex, -bq); base.cost = round2(Math.max(0, (base.cost || 0) - bc)); }
+        if (quote) { adjustHoldingOnExchange(quote, ex, qq); quote.cost = round2((quote.cost || 0) + qc); }
       }
     }
     // прибираємо й повʼязану операцію-повернення (якщо була), щоб не лишити «мінус» сиротою
@@ -2203,7 +2204,7 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
   const title = isCrypto ? `${t.side === 'SELL' ? 'Продаж' : 'Купівля'} ${esc(t.base_sym || 'крипто')}` : isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isReimb ? `↩ Повернення${cat ? ' · ' + cat.name : ''}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
   let sub;
   if (isCrypto) {
-    sub = `${t.side === 'SELL' ? 'отримано' : 'сплачено'} ${fmtAmt(t.quote_qty || 0)} ${esc(t.quote_sym || '')}${t.usd ? ' · ' + money(t.usd, 'USD') : ''}`;
+    sub = `${t.side === 'SELL' ? 'отримано' : 'сплачено'} ${fmtAmt(t.quote_qty || 0)} ${esc(t.quote_sym || '')}${t.exchange ? ' · ' + esc(t.exchange) : ''}${t.usd ? ' · ' + money(t.usd, 'USD') : ''}`;
   } else if (isT) {
     const T = accountCur(t.to_account_id);
     const cross = cur !== T && t.to_amount != null;
@@ -3641,19 +3642,38 @@ function cryptoTradeDeltas(base, quote, side, baseQty, quoteQty){
   const quoteCostDelta = (quote && quote.amount > 0 && typeof quote.cost === 'number') ? round2(quote.cost * quoteQty / quote.amount) : 0;
   return { usd, baseCostDelta: usd, quoteCostDelta };
 }
-// Застосовує обмін: мутує обидві позиції й створює операцію kind:'CRYPTO' (без рахунку — фіат не чіпаємо).
-function applyCryptoTrade(base, quote, side, baseQty, quoteQty, date, note){
-  const d = cryptoTradeDeltas(base, quote, side, baseQty, quoteQty);   // рахуємо ДО мутацій (пропорції за поточними amount)
-  if (side === 'SELL') {
-    base.amount = cryptoRound(base.amount - baseQty); base.cost = round2(Math.max(0, (base.cost || 0) - d.baseCostDelta));
-    quote.amount = cryptoRound(quote.amount + quoteQty); quote.cost = round2((quote.cost || 0) + d.quoteCostDelta);
+// Чи позиція ведеться по біржах (є хоч одна біржа з ненульовою кількістю).
+function cryptoTracked(h){ return !!(h && h.exchanges && h.exchanges.some(x => (x.amount || 0) > 0)); }
+// Коригує кількість позиції на конкретній біржі (delta) і перераховує загальну. Якщо біржі нема або позиція
+// «пласка» (без розподілу) — просто змінюємо загальну кількість.
+function adjustHoldingOnExchange(h, exName, delta){
+  const tracked = cryptoTracked(h);
+  const seedNew = exName && delta > 0 && !tracked && (!h.exchanges || !h.exchanges.length) && (h.amount || 0) === 0;   // нова/порожня позиція → почати облік по біржі
+  if (exName && (tracked || seedNew)) {
+    if (!h.exchanges) h.exchanges = [];
+    let e = h.exchanges.find(x => x.name === exName);
+    if (!e) { e = { name: exName, amount: 0 }; h.exchanges.push(e); }
+    e.amount = cryptoRound((e.amount || 0) + delta);
+    h.exchanges = h.exchanges.filter(x => (x.amount || 0) > 0);   // прибрати порожні біржі
+    h.amount = cryptoRound(h.exchanges.reduce((s, x) => s + (x.amount || 0), 0));
   } else {
-    base.amount = cryptoRound(base.amount + baseQty); base.cost = round2((base.cost || 0) + d.baseCostDelta);
-    quote.amount = cryptoRound(quote.amount - quoteQty); quote.cost = round2(Math.max(0, (quote.cost || 0) - d.quoteCostDelta));
+    h.amount = cryptoRound((h.amount || 0) + delta);
+  }
+}
+// Застосовує обмін: мутує обидві позиції (з урахуванням біржі) й створює операцію kind:'CRYPTO' (фіат не чіпаємо).
+function applyCryptoTrade(base, quote, side, baseQty, quoteQty, date, note, exchange){
+  const d = cryptoTradeDeltas(base, quote, side, baseQty, quoteQty);   // рахуємо ДО мутацій (пропорції за поточними amount)
+  const ex = exchange || null;
+  if (side === 'SELL') {   // продали базу (на біржі ex) → отримали котирування (туди ж)
+    adjustHoldingOnExchange(base, ex, -baseQty); base.cost = round2(Math.max(0, (base.cost || 0) - d.baseCostDelta));
+    adjustHoldingOnExchange(quote, ex, +quoteQty); quote.cost = round2((quote.cost || 0) + d.quoteCostDelta);
+  } else {                 // купили базу (на біржі ex) за котирування (звідти ж)
+    adjustHoldingOnExchange(base, ex, +baseQty); base.cost = round2((base.cost || 0) + d.baseCostDelta);
+    adjustHoldingOnExchange(quote, ex, -quoteQty); quote.cost = round2(Math.max(0, (quote.cost || 0) - d.quoteCostDelta));
   }
   const tx = { id: nextId('tx'), ord: nextOrd(), kind: 'CRYPTO', side, date: date || todayISO(),
     base_id: base.id, base_sym: base.symbol, base_qty: baseQty,
-    quote_id: quote.id, quote_sym: quote.symbol, quote_qty: quoteQty,
+    quote_id: quote.id, quote_sym: quote.symbol, quote_qty: quoteQty, exchange: ex,
     usd: d.usd, base_cost_delta: d.baseCostDelta, quote_cost_delta: d.quoteCostDelta, note: note || null };
   state.transactions.push(tx);
   return tx;
@@ -3673,6 +3693,7 @@ function openCryptoTrade(base, side){
       <div style="flex:1"><label class="lab">Кількість ${esc(base.symbol)}</label><input id="ct-qty" inputmode="decimal" placeholder="0.00"></div>
       <div style="flex:1"><label class="lab" id="ct-price-lab">Ціна (за 1 ${esc(base.symbol)})</label><input id="ct-price" inputmode="decimal" placeholder="0.00"></div>
     </div>
+    <div id="ct-ex-wrap" class="hidden"><label class="lab">Біржа / гаманець</label><select id="ct-ex"></select></div>
     <div class="muted small" id="ct-hint" style="margin-top:2px"></div>
     <div><label class="lab">Дата</label><input id="ct-date" type="date" value="${todayISO()}"></div>
     <div class="err hidden" id="ct-err"></div>
@@ -3681,6 +3702,18 @@ function openCryptoTrade(base, side){
   const quoteOf = () => (state.crypto || []).find(h => h.id === parseInt($$('#ct-quote').value));
   function defaultPrice(){ const q = quoteOf(); const bU = cryptoUnitUsd(base), qU = cryptoUnitUsd(q); return (bU != null && qU) ? round2(bU / qU) : null; }
   function setPriceLab(){ const q = quoteOf(); $$('#ct-price-lab').textContent = `Ціна (${esc(q ? q.symbol : '')} за 1 ${esc(base.symbol)})`; }
+  const sourceOf = () => isSell ? base : quoteOf();   // звідки витрачаємо (продаж — база; купівля — котирування)
+  function rebuildExchanges(){
+    const src = sourceOf(), wrap = $$('#ct-ex-wrap'), sel = $$('#ct-ex');
+    if (cryptoTracked(src)) {
+      const opts = (src.exchanges || []).filter(x => (x.amount || 0) > 0).sort((a, b) => (b.amount || 0) - (a.amount || 0));
+      const prev = sel.value;
+      sel.innerHTML = opts.map(x => `<option value="${esc(x.name)}">${esc(x.name)} (${fmtAmt(x.amount)} ${esc(src.symbol)})</option>`).join('');
+      if (opts.some(x => x.name === prev)) sel.value = prev;
+      sel._sync && sel._sync();
+      wrap.classList.remove('hidden');
+    } else { wrap.classList.add('hidden'); sel.innerHTML = ''; sel._sync && sel._sync(); }
+  }
   function upd(){
     setPriceLab();
     const q = quoteOf(); const qty = num($$('#ct-qty').value), price = num($$('#ct-price').value);
@@ -3694,7 +3727,10 @@ function openCryptoTrade(base, side){
     translateTree(body);   // перекласти динамічний вміст (label + hint) у EN-режимі
   }
   const dp = defaultPrice(); if (dp != null) $$('#ct-price').value = dp;
-  body.addEventListener('input', upd); $$('#ct-quote').addEventListener('change', upd); upd();
+  body.addEventListener('input', upd);
+  $$('#ct-quote').addEventListener('change', () => { rebuildExchanges(); upd(); });
+  $$('#ct-ex').addEventListener('change', upd);
+  rebuildExchanges(); upd();
   openModal(isSell ? `Продати ${base.symbol}` : `Купити ${base.symbol}`, body, { saveLabel: isSell ? 'Продати' : 'Купити', onSave: (close) => {
     const err = $$('#ct-err'); const q = quoteOf();
     const qty = round2plusCrypto(num($$('#ct-qty').value)), price = num($$('#ct-price').value);
@@ -3702,9 +3738,15 @@ function openCryptoTrade(base, side){
     if (!q) { err.textContent = 'Оберіть пару'; err.classList.remove('hidden'); return; }
     if (!(qty > 0)) { err.textContent = 'Введіть кількість більше 0'; err.classList.remove('hidden'); return; }
     if (!(quoteQty > 0)) { err.textContent = 'Введіть ціну більше 0'; err.classList.remove('hidden'); return; }
-    if (isSell && qty > base.amount + 1e-9) { err.textContent = `Недостатньо ${base.symbol}: є лише ${fmtAmt(base.amount)}`; err.classList.remove('hidden'); return; }
-    if (!isSell && quoteQty > q.amount + 1e-9) { err.textContent = `Недостатньо ${q.symbol}: є лише ${fmtAmt(q.amount)}`; err.classList.remove('hidden'); return; }
-    applyCryptoTrade(base, q, side, qty, quoteQty, $$('#ct-date').value || todayISO());
+    const src = isSell ? base : q;   // звідки списуємо
+    const tracked = cryptoTracked(src);
+    const exName = tracked ? $$('#ct-ex').value : null;
+    const sourceQty = isSell ? qty : quoteQty;
+    let avail;
+    if (tracked) { if (!exName) { err.textContent = 'Оберіть біржу'; err.classList.remove('hidden'); return; } const e = (src.exchanges || []).find(x => x.name === exName); avail = e ? (e.amount || 0) : 0; }
+    else avail = src.amount || 0;
+    if (sourceQty > avail + 1e-9) { err.textContent = `Недостатньо ${src.symbol}${tracked ? ' на ' + exName : ''}: є лише ${fmtAmt(avail)}`; err.classList.remove('hidden'); return; }
+    applyCryptoTrade(base, q, side, qty, quoteQty, $$('#ct-date').value || todayISO(), null, exName);
     save(); close(); render();
   }});
 }

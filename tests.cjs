@@ -193,6 +193,24 @@ eq('txAccountShare: не-split 0 для іншого', S.txAccountShare({ kind: 
   eq('crypto SELL: з BTC забирається пропорційний cost (половина) = 500', d.baseCostDelta, 500);
   eq('crypto SELL: котируванню (USDT) додається cost 700', d.quoteCostDelta, 700);
 }
+// ——— Коригування позиції по біржах (adjustHoldingOnExchange) ———
+{
+  const h = { id: 1, symbol: 'USDT', amount: 342, exchanges: [{ name: 'WhiteBit', amount: 270 }, { name: 'Wallet', amount: 71 }, { name: 'Binance', amount: 1 }] };
+  S.adjustHoldingOnExchange(h, 'WhiteBit', -100);
+  eq('exchange: WhiteBit зменшено на 100', h.exchanges.find(x => x.name === 'WhiteBit').amount, 170);
+  eq('exchange: загальна = сума бірж (170+71+1)', h.amount, 242);
+}
+{
+  const g = { id: 2, symbol: 'GRAM', amount: 0, exchanges: [] };   // нова позиція засівається біржею
+  S.adjustHoldingOnExchange(g, 'WhiteBit', 50);
+  eq('exchange: нова позиція на біржі', g.amount, 50);
+  ok('exchange: створено запис біржі WhiteBit=50', g.exchanges.length === 1 && g.exchanges[0].name === 'WhiteBit' && g.exchanges[0].amount === 50);
+}
+{
+  const f = { id: 3, symbol: 'BTC', amount: 0.02 };   // пласка позиція без бірж
+  S.adjustHoldingOnExchange(f, null, 0.01);
+  eq('exchange: пласка позиція (без біржі) → загальна', f.amount, 0.03);
+}
 
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
