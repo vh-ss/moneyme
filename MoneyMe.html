@@ -3318,16 +3318,19 @@ views.categories = (app) => {
     const over = hasB && spent > eb;
     const barColor = over ? 'var(--red)' : (spent >= eb * 0.8 ? 'var(--amber)' : 'var(--green)');
     const budNote = (hasB && budgetCur(c) !== 'UAH') ? ` <span class="muted">(${money(c.budget, budgetCur(c))})</span>` : '';   // оригінальний бюджет у його валюті
-    const node = el(`<div class="card" style="padding:9px 11px;display:flex;align-items:center;gap:8px">
+    // Картка у 2 ряди: зверху назва + кнопки дій; знизу (якщо є бюджет) прогрес-бар із сумою на всю ширину —
+    // щоб на вузькому екрані нічого не виштовхувалось за межі (кнопки лишались видимими).
+    const node = el(`<div class="card" style="padding:9px 11px;min-width:0"></div>`);
+    const top = el(`<div style="display:flex;align-items:center;gap:4px;min-width:0">
       <span class="grip" title="Перетягніть, щоб змінити порядок">⠿</span>
-      <span class="txicon" style="background:${c.color}22;color:${c.color}">${c.icon||'•'}</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:600">${esc(c.name)}${hasB?` <span class="muted small">/ ${r.label}${roll>0?' ↻':''}</span>`:''}</div>
-        ${hasB?`<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
-          <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${barColor}"></i></div>
-          <span class="small" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(eb)}${budNote}${roll>0?` <span class="muted">(+${money(roll)})</span>`:''}</span>
-        </div>`:''}
-      </div></div>`);
+      <span class="txicon" style="background:${c.color}22;color:${c.color};margin-right:2px">${c.icon||'•'}</span>
+      <div style="flex:1;min-width:24px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name)}${hasB?` <span class="muted small">/ ${r.label}${roll>0?' ↻':''}</span>`:''}</div>
+    </div>`);
+    node.appendChild(top);
+    if (hasB) node.appendChild(el(`<div style="display:flex;align-items:center;gap:8px;margin-top:7px">
+      <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${barColor}"></i></div>
+      <span class="small" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(eb)}${budNote}${roll>0?` <span class="muted">(+${money(roll)})</span>`:''}</span>
+    </div>`));
     makeReorderable(node, 'cat', c.id, reorderCategory);
     const up = el(`<button class="btn ghost sm" title="Перемістити вище">↑</button>`);
     const down = el(`<button class="btn ghost sm" title="Перемістити нижче">↓</button>`);
@@ -3339,7 +3342,7 @@ views.categories = (app) => {
     const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick=()=>openCategoryForm(c);
     const del = el(`<button class="btn danger sm">${ic('close')}</button>`);
     del.onclick = () => deleteCategory(c);
-    node.appendChild(up); node.appendChild(down); node.appendChild(ops); node.appendChild(ed); node.appendChild(del);
+    top.appendChild(up); top.appendChild(down); top.appendChild(ops); top.appendChild(ed); top.appendChild(del);
     grid.appendChild(node);
   });
   app.appendChild(grid);
