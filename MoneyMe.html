@@ -436,6 +436,7 @@ function normalize() {
   (state.categories || []).forEach(c => {
     if (c.budget === undefined && c.kind === 'EXPENSE') { c.budget = 0; changed = true; }
     if (c.kind === 'EXPENSE' && !c.budget_period) { c.budget_period = 'monthly'; changed = true; }
+    if (c.kind === 'EXPENSE' && !c.budget_currency) { c.budget_currency = 'UAH'; changed = true; }
   });
   if (state.version !== SCHEMA_VERSION) { state.version = SCHEMA_VERSION; changed = true; }
   // ВАЖЛИВО: міграція/дефолти схеми зберігаються БЕЗ оновлення updatedAt (persist, не save),
@@ -1246,10 +1247,14 @@ function categorySpent(catId, from, to){
 function budgetRange(c){ return c.budget_period === 'yearly' ? { from: yearStartISO(), to: todayISO(), label: 'рік' } : { from: monthStartISO(), to: todayISO(), label: 'міс.' }; }
 // Діапазон попереднього місяця (для перенесення невитраченого бюджету).
 function prevMonthRange(){ const n=new Date(); const d=new Date(n.getFullYear(), n.getMonth()-1, 1); const y=d.getFullYear(), m=d.getMonth(); return { from: ymd(y,m+1,1), to: ymd(y,m+1,new Date(y,m+1,0).getDate()) }; }
+// Валюта бюджету категорії (бюджет можна задати в $/€/… — порівнюємо з витратами у гривневому еквіваленті).
+function budgetCur(c){ return c.budget_currency || 'UAH'; }
+// Бюджет у гривні: конвертуємо за поточним курсом (фолбек — як є, якщо курсу ще нема).
+function budgetBaseUAH(c){ const cur = budgetCur(c); if (cur === 'UAH') return c.budget || 0; const u = toUAH(c.budget || 0, cur); return u == null ? (c.budget || 0) : round2(u); }
 // Невитрачений залишок минулого місяця (для категорій з rollover).
-function budgetRollover(c){ if (!(c.budget>0) || c.budget_period==='yearly' || !c.rollover) return 0; const pr=prevMonthRange(); return round2(Math.max(0, c.budget - categorySpent(c.id, pr.from, pr.to))); }
-// Ефективний ліміт = бюджет + перенесене.
-function effectiveBudget(c){ return round2((c.budget||0) + budgetRollover(c)); }
+function budgetRollover(c){ if (!(c.budget>0) || c.budget_period==='yearly' || !c.rollover) return 0; const pr=prevMonthRange(); return round2(Math.max(0, budgetBaseUAH(c) - categorySpent(c.id, pr.from, pr.to))); }
+// Ефективний ліміт (у гривні) = бюджет + перенесене.
+function effectiveBudget(c){ return round2(budgetBaseUAH(c) + budgetRollover(c)); }
 // Картка «Бюджети»: категорії витрат з лімітом; кожна — у своєму циклі (місяць/рік).
 function budgetsCard(opts){
   const title = (opts&&opts.title) || 'Бюджети';
@@ -1268,7 +1273,7 @@ function budgetsCard(opts){
     const real = Math.round(spent / eb * 100);
     const over = spent > eb;
     const color = over ? 'var(--red)' : (spent >= eb*0.8 ? 'var(--amber)' : 'var(--green)');
-    const tip = `${c.name} / ${label}: ${money(spent)} з ${money(eb)} (${real}%)` + (roll>0?` · перенесено ${money(roll)}`:'');
+    const tip = `${c.name} / ${label}: ${money(spent)} з ${money(eb)} (${real}%)` + (budgetCur(c)!=='UAH'?` · бюджет ${money(c.budget, budgetCur(c))}`:'') + (roll>0?` · перенесено ${money(roll)}`:'');
     grid.appendChild(el(`<div title="${esc(tip)}" style="display:flex;align-items:center;gap:8px;font-size:13px">
       <span class="ln" style="flex:0 0 46%">${c.icon?c.icon+' ':''}${esc(c.name)}${roll>0?' <span class="muted" style="font-size:10px">↻</span>':''}</span>
       <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${color}"></i></div>
@@ -3303,6 +3308,7 @@ views.categories = (app) => {
     const pct = hasB ? Math.min(100, Math.round(spent / eb * 100)) : 0;
     const over = hasB && spent > eb;
     const barColor = over ? 'var(--red)' : (spent >= eb * 0.8 ? 'var(--amber)' : 'var(--green)');
+    const budNote = (hasB && budgetCur(c) !== 'UAH') ? ` <span class="muted">(${money(c.budget, budgetCur(c))})</span>` : '';   // оригінальний бюджет у його валюті
     const node = el(`<div class="card" style="padding:9px 11px;display:flex;align-items:center;gap:8px">
       <span class="grip" title="Перетягніть, щоб змінити порядок">⠿</span>
       <span class="txicon" style="background:${c.color}22;color:${c.color}">${c.icon||'•'}</span>
@@ -3310,7 +3316,7 @@ views.categories = (app) => {
         <div style="font-weight:600">${esc(c.name)}${hasB?` <span class="muted small">/ ${r.label}${roll>0?' ↻':''}</span>`:''}</div>
         ${hasB?`<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
           <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${barColor}"></i></div>
-          <span class="small" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(eb)}${roll>0?` <span class="muted">(+${money(roll)})</span>`:''}</span>
+          <span class="small" style="white-space:nowrap;color:${over?'var(--red)':'var(--muted)'}">${money(spent)} / ${money(eb)}${budNote}${roll>0?` <span class="muted">(+${money(roll)})</span>`:''}</span>
         </div>`:''}
       </div></div>`);
     makeReorderable(node, 'cat', c.id, reorderCategory);
@@ -3350,7 +3356,8 @@ function openCategoryForm(existing) {
     <div id="c-emoji"></div>
     ${catKind==='EXPENSE' ? `<div class="row">
       <div style="flex:1"><label class="lab">Бюджет (0 — без ліміту)</label><input id="c-budget" inputmode="decimal" value="${e.budget||0}"></div>
-      <div style="flex:0 0 130px"><label class="lab">Період</label><select id="c-budperiod"><option value="monthly">На місяць</option><option value="yearly">На рік</option></select></div>
+      <div style="flex:0 0 74px"><label class="lab">Валюта</label><select id="c-budcur">${CURRENCIES.map(cu=>`<option value="${cu}">${curSym(cu)}</option>`).join('')}</select></div>
+      <div style="flex:0 0 116px"><label class="lab">Період</label><select id="c-budperiod"><option value="monthly">На місяць</option><option value="yearly">На рік</option></select></div>
     </div>
     <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="c-rollover" style="width:auto" ${e.rollover?'checked':''}> Переносити невитрачене на наступний місяць</label>` : ''}
     <div><label class="lab">Колір</label><div id="c-color"></div></div>
@@ -3358,13 +3365,14 @@ function openCategoryForm(existing) {
   $('#c-emoji', body).appendChild(emojiPicker($('#c-icon', body)));
   $('#c-color', body).appendChild(swatchPicker(color, c => color = c));
   if ($('#c-budperiod', body)) $('#c-budperiod', body).value = e.budget_period || 'monthly';
+  if ($('#c-budcur', body)) $('#c-budcur', body).value = e.budget_currency || 'UAH';
   openModal(existing?'Редагувати категорію':'Нова категорія', body, {
     onSave: (close) => {
       const name = $('#c-name', body).value.trim();
       const err = $('#c-err', body);
       if (!name) { err.textContent='Введіть назву'; err.classList.remove('hidden'); return; }
       const rec = { name, kind: catKind, color, icon: $('#c-icon',body).value.trim() || null };
-      if (catKind === 'EXPENSE') { rec.budget = round2(num(($('#c-budget',body)||{}).value || 0)); rec.budget_period = ($('#c-budperiod',body)||{}).value || 'monthly'; rec.rollover = !!($('#c-rollover',body)||{}).checked; }
+      if (catKind === 'EXPENSE') { rec.budget = round2(num(($('#c-budget',body)||{}).value || 0)); rec.budget_currency = ($('#c-budcur',body)||{}).value || 'UAH'; rec.budget_period = ($('#c-budperiod',body)||{}).value || 'monthly'; rec.rollover = !!($('#c-rollover',body)||{}).checked; }
       if (existing) Object.assign(existing, rec);
       else { rec.id = nextId('cat'); state.categories.push(rec); }
       save(); close(); render();

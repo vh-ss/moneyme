@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MoneyMe — Інструкція користувача</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+    --brand:#0f172a; --accent:#3b82f6; --green:#16a34a; --red:#ef4444; --amber:#f59e0b;
+    --radius:16px; --shadow:0 1px 3px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0b1120; --card:#111a2e; --ink:#e7ecf5; --muted:#94a3b8; --line:#1e293b;
+      --brand:#e7ecf5; --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35); }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 20px}
+  /* Шапка */
+  header.hero{
+    background:linear-gradient(135deg,#0f172a,#1e293b);
+    color:#fff; padding:48px 0 40px; border-bottom:1px solid var(--line);
+  }
+  .hero .wrap{display:flex; align-items:center; gap:18px; flex-wrap:wrap}
+  .logo{display:grid; place-items:center; width:64px; height:64px; border-radius:18px;
+    background:#fff; flex:none; box-shadow:0 4px 14px rgba(0,0,0,.18)}
+  .logo svg{width:46px; height:46px; display:block}
+  .hero h1{margin:0; font-size:30px; letter-spacing:-.02em}
+  .hero p{margin:6px 0 0; color:#cbd5e1; max-width:60ch}
+  /* Розкладка */
+  .layout{display:grid; grid-template-columns:240px 1fr; gap:32px; padding:32px 0 64px}
+  @media (max-width:860px){ .layout{grid-template-columns:1fr} nav.toc{position:static!important} }
+  nav.toc{position:sticky; top:20px; align-self:start;
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px; box-shadow:var(--shadow)}
+  nav.toc strong{display:block; font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); margin:0 0 10px}
+  nav.toc a{display:block; padding:7px 10px; border-radius:9px; color:var(--ink);
+    text-decoration:none; font-size:14.5px}
+  nav.toc a:hover{background:var(--bg)}
+  /* Контент */
+  section{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:26px 28px; margin:0 0 22px; box-shadow:var(--shadow)}
+  section h2{margin:0 0 4px; font-size:22px; letter-spacing:-.01em; display:flex; gap:10px; align-items:center}
+  section h2 .num{display:grid; place-items:center; width:30px; height:30px; flex:none;
+    background:var(--accent); color:#fff; border-radius:9px; font-size:15px; font-weight:700}
+  section h3{margin:22px 0 6px; font-size:17px}
+  p{margin:8px 0}
+  ul,ol{margin:8px 0; padding-left:22px}
+  li{margin:5px 0}
+  a{color:var(--accent)}
+  code{background:var(--bg); border:1px solid var(--line); border-radius:6px;
+    padding:1px 6px; font:13.5px/1 ui-monospace,"SF Mono",Consolas,monospace}
+  .lead{color:var(--muted); font-size:15.5px}
+  /* Картки можливостей */
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; margin-top:14px}
+  .feat{border:1px solid var(--line); border-radius:13px; padding:14px 16px; background:var(--bg)}
+  .feat .ic{font-size:22px}
+  .feat b{display:block; margin:6px 0 2px}
+  .feat span{color:var(--muted); font-size:14px}
+  /* Кроки */
+  ol.steps{counter-reset:s; list-style:none; padding:0; margin:14px 0}
+  ol.steps>li{counter-increment:s; position:relative; padding:10px 0 10px 44px; border-bottom:1px dashed var(--line)}
+  ol.steps>li:last-child{border-bottom:0}
+  ol.steps>li::before{content:counter(s); position:absolute; left:0; top:9px;
+    width:30px; height:30px; display:grid; place-items:center; border-radius:50%;
+    background:var(--brand); color:var(--bg); font-weight:700; font-size:14px}
+  /* Підказки */
+  .note{display:flex; gap:12px; padding:13px 15px; border-radius:12px; margin:14px 0;
+    border:1px solid var(--line); background:var(--bg)}
+  .note .tag{flex:none; font-size:20px; line-height:1.3}
+  .note.tip{border-color:#bbf7d0; background:#f0fdf4; color:#14532d}
+  .note.warn{border-color:#fde68a; background:#fffbeb; color:#78350f}
+  .note.info{border-color:#bfdbfe; background:#eff6ff; color:#1e3a8a}
+  @media (prefers-color-scheme: dark){
+    .note.tip{background:#0c1f15; color:#bbf7d0; border-color:#14532d}
+    .note.warn{background:#241a05; color:#fde68a; border-color:#78350f}
+    .note.info{background:#0c1a2e; color:#bfdbfe; border-color:#1e3a8a}
+  }
+  /* Бейджі типів операцій */
+  .pill{display:inline-block; padding:2px 10px; border-radius:999px; font-size:13px; font-weight:600}
+  .pill.exp{background:rgba(239,68,68,.12); color:var(--red)}
+  .pill.inc{background:rgba(22,163,74,.14); color:var(--green)}
+  .pill.tr{background:rgba(59,130,246,.14); color:var(--accent)}
+  /* FAQ */
+  details{border:1px solid var(--line); border-radius:12px; padding:4px 16px; margin:10px 0; background:var(--bg)}
+  details>summary{cursor:pointer; font-weight:600; padding:10px 0; list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"＋"; color:var(--accent); margin-right:10px; font-weight:700}
+  details[open]>summary::before{content:"－"}
+  details p{margin:4px 0 12px; color:var(--muted)}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:14.5px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--line)}
+  th{color:var(--muted); font-weight:600; font-size:13px; text-transform:uppercase; letter-spacing:.04em}
+  footer{color:var(--muted); text-align:center; padding:30px 0 50px; font-size:14px}
+  kbd{border:1px solid var(--line); border-bottom-width:2px; border-radius:6px; padding:1px 7px;
+    background:var(--card); font:13px ui-monospace,monospace}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="logo">
+      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MoneyMe">
+        <g stroke="#64748b" stroke-linecap="round" stroke-linejoin="round" fill="none">
+          <path d="M31 72 V40 L50 58 L69 40 V72" stroke-width="7.5"/>
+          <path d="M17.1 36 A38 38 0 0 1 84.4 71.1" stroke-width="5"/>
+        </g>
+        <circle cx="74.4" cy="25.9" r="5" fill="#64748b"/>
+      </svg>
+    </div>
+    <div>
+      <h1>MoneyMe — Інструкція користувача</h1>
+      <p>Особистий облік грошей: рахунки, витрати й доходи, перекази, бюджети, кредити, цілі, крипто.
+         Працює офлайн, з опційною синхронізацією телефону й ПК.</p>
+    </div>
+  </div>
+</header>
+
+<div class="wrap layout">
+
+  <!-- Зміст -->
+  <nav class="toc">
+    <strong>Зміст</strong>
+    <a href="#start">1. З чого почати</a>
+    <a href="#features">2. Можливості</a>
+    <a href="#accounts">3. Рахунки</a>
+    <a href="#ops">4. Операції</a>
+    <a href="#transfer">5. Перекази</a>
+    <a href="#categories">6. Категорії та бюджети</a>
+    <a href="#more">7. Кредити · Цілі · Крипто</a>
+    <a href="#recurring">8. Регулярні платежі</a>
+    <a href="#analytics">9. Аналітика</a>
+    <a href="#backup">10. Бекап і безпека</a>
+    <a href="#sync">11. Синхронізація</a>
+    <a href="#faq">12. Питання й відповіді</a>
+  </nav>
+
+  <main>
+
+    <!-- 1 -->
+    <section id="start">
+      <h2><span class="num">1</span> З чого почати</h2>
+      <p class="lead">MoneyMe — це один файл, який відкривається у браузері. Нічого встановлювати не треба.</p>
+      <ol class="steps">
+        <li>Двічі клацніть файл <code>MoneyMe.html</code> — він відкриється у вашому браузері (Chrome або Edge).</li>
+        <li>Створіть свій перший <b>рахунок</b> (готівка чи картка) і вкажіть поточний залишок на ньому.</li>
+        <li>Додавайте <b>витрати</b> та <b>надходження</b> — баланс рахунків рахуватиметься автоматично.</li>
+        <li>Час від часу робіть <b>Експорт JSON</b> (Налаштування) — це ваша резервна копія.</li>
+      </ol>
+      <div class="note info"><span class="tag">💾</span>
+        <div>Усі дані зберігаються <b>лише на вашому пристрої</b>, у пам'яті браузера. Вони нікуди не
+        надсилаються, доки ви самі не ввімкнете синхронізацію через Google Drive (розділ 11).</div>
+      </div>
+      <div class="note warn"><span class="tag">⚠️</span>
+        <div>Не користуйтеся режимом «інкогніто» для постійної роботи — браузер очистить дані після
+        закриття. І не натискайте «очистити дані сайтів/кеш» для цієї сторінки без свіжого бекапу.</div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section id="features">
+      <h2><span class="num">2</span> Що вміє застосунок</h2>
+      <div class="grid">
+        <div class="feat"><div class="ic">🏦</div><b>Рахунки</b><span>Готівка, картки, банки у 5 валютах</span></div>
+        <div class="feat"><div class="ic">➖➕</div><b>Витрати й доходи</b><span>Швидке додавання за статтями</span></div>
+        <div class="feat"><div class="ic">🔁</div><b>Перекази</b><span>З комісією та курсом валют</span></div>
+        <div class="feat"><div class="ic">🎯</div><b>Бюджети</b><span>Ліміти на категорії за місяць/рік</span></div>
+        <div class="feat"><div class="ic">💳</div><b>Кредити</b><span>Облік боргів і платежів</span></div>
+        <div class="feat"><div class="ic">🪙</div><b>Крипто</b><span>Портфель із цінами онлайн</span></div>
+        <div class="feat"><div class="ic">🐖</div><b>Цілі</b><span>Накопичення на мрію</span></div>
+        <div class="feat"><div class="ic">📅</div><b>Регулярні</b><span>Підписки й повторювані платежі</span></div>
+        <div class="feat"><div class="ic">📊</div><b>Аналітика</b><span>Звіти, графіки, динаміка</span></div>
+        <div class="feat"><div class="ic">☁️</div><b>Синхронізація</b><span>ПК ↔ телефон через Google Drive</span></div>
+        <div class="feat"><div class="ic">📴</div><b>Офлайн</b><span>Працює без інтернету</span></div>
+        <div class="feat"><div class="ic">🌐</div><b>Дві мови</b><span>Українська / English</span></div>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section id="accounts">
+      <h2><span class="num">3</span> Рахунки</h2>
+      <p>Рахунок — це місце, де лежать ваші гроші: готівка в гаманці, картка банку, рахунок у банку.
+         У кожного рахунку є тип, валюта, стартовий залишок, колір та іконка.</p>
+      <h3>Як додати рахунок</h3>
+      <ol class="steps">
+        <li>Відкрийте розділ <b>Рахунки</b> → «Додати рахунок».</li>
+        <li>Виберіть тип: <b>Готівка</b>, <b>Картка</b> або <b>Банк</b>.</li>
+        <li>Виберіть валюту: <b>UAH ₴, USD $, EUR €, PLN zł, GBP £</b>.</li>
+        <li>Вкажіть <b>стартовий залишок</b> — скільки грошей зараз на цьому рахунку.</li>
+      </ol>
+      <div class="note tip"><span class="tag">✅</span>
+        <div>Поточний баланс рахунку <b>не вводиться вручну</b> — він рахується сам:
+        стартовий залишок + надходження − витрати − перекази й комісії з нього + перекази на нього.</div>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section id="ops">
+      <h2><span class="num">4</span> Операції: витрати й надходження</h2>
+      <p>Є три типи записів:</p>
+      <p>
+        <span class="pill exp">− Витрата</span> &nbsp;
+        <span class="pill inc">+ Надходження</span> &nbsp;
+        <span class="pill tr">⇄ Переказ</span>
+      </p>
+      <h3>Додати витрату або надходження</h3>
+      <ol class="steps">
+        <li>На <b>Огляді</b> натисніть <kbd>−</kbd> (витрата) або <kbd>+</kbd> (надходження) —
+            або зайдіть у розділ <b>Операції</b>.</li>
+        <li>Виберіть <b>рахунок</b>, з якого витратили / на який отримали.</li>
+        <li>Вкажіть <b>суму</b>, <b>категорію</b> (статтю) і <b>дату</b>.</li>
+        <li>За бажання додайте нотатку (наприклад, «обід з колегами»).</li>
+      </ol>
+      <div class="note info"><span class="tag">✂️</span>
+        <div><b>Спільна покупка (split).</b> Якщо ви заплатили за всіх, а вам повернуть частину —
+        застосунок запише дві операції (повну витрату й повернення), а у ваш бюджет потрапить лише
+        ваша частка.</div>
+      </div>
+      <p>У розділі <b>Операції</b> усі записи можна фільтрувати за рахунком, категорією, типом і періодом,
+         а також редагувати чи видаляти.</p>
+    </section>
+
+    <!-- 5 -->
+    <section id="transfer">
+      <h2><span class="num">5</span> Перекази між рахунками</h2>
+      <p>Переказ — це переміщення грошей з одного вашого рахунку на інший (наприклад, зняли готівку
+         з картки). Це <b>не витрата</b> — загальний баланс не зменшується (хіба що на комісію).</p>
+      <h3>Як зробити переказ</h3>
+      <ol class="steps">
+        <li>Найшвидше: <b>перетягніть картку</b> одного рахунку на інший.</li>
+        <li>Або: <b>Операції → Переказ</b> → виберіть рахунок-джерело й рахунок-призначення.</li>
+        <li>Якщо валюти різні — вкажіть <b>курс</b> (скільки одиниць призначення за одиницю джерела).</li>
+        <li>Якщо банк бере <b>комісію</b> — оберіть <b>відсоток (%)</b> або <b>фіксовану суму</b>.</li>
+      </ol>
+      <div class="note tip"><span class="tag">🧮</span>
+        <div>Комісія обліковується <b>окремо</b> й не змішується з витратами за категоріями. В аналітиці
+        ви завжди бачите, скільки втратили саме на комісіях.</div>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section id="categories">
+      <h2><span class="num">6</span> Категорії та бюджети</h2>
+      <p>Категорії (статті) — це на що ви витрачаєте чи звідки отримуєте гроші: продукти, транспорт,
+         зарплата тощо. Кілька базових створено одразу, решту додаєте самі.</p>
+      <h3>Бюджет на категорію</h3>
+      <p>Для витратної категорії можна задати <b>ліміт</b> — місячний або річний:</p>
+      <ol class="steps">
+        <li><b>Категорії</b> → виберіть витратну статтю.</li>
+        <li>Увімкніть <b>бюджет</b> і вкажіть суму та період (місяць/рік).</li>
+        <li>За бажання — <b>переносити невитрачене</b> на наступний період.</li>
+      </ol>
+      <div class="note warn"><span class="tag">📉</span>
+        <div>На Огляді й Аналітиці бюджети показані прогрес-смужками. Коли ліміт майже вичерпано або
+        перевищено — застосунок попередить.</div>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section id="more">
+      <h2><span class="num">7</span> Кредити, Цілі та Крипто</h2>
+      <h3>💳 Кредити</h3>
+      <p>Облік боргів: залишок боргу, щомісячний платіж. Платежі-операції прив'язуються до кредиту, тож
+         завжди видно, скільки лишилося виплатити.</p>
+      <h3>🐖 Цілі</h3>
+      <p>Накопичувальні цілі (наприклад, «на відпустку»). Прив'язуються до рахунку, можна задати дедлайн і
+         бачити прогрес накопичення.</p>
+      <h3>🪙 Крипто</h3>
+      <p>Портфель монет. Ціни автоматично підтягуються з інтернету (CoinGecko), коли є мережа; для рідкісних
+         монет можна вписати ціну вручну. Можна налаштувати <b>сповіщення про ціну</b> (коли монета
+         перетне заданий поріг).</p>
+    </section>
+
+    <!-- 8 -->
+    <section id="recurring">
+      <h2><span class="num">8</span> Регулярні платежі</h2>
+      <p>Підписки й повторювані платежі (інтернет, стрімінги, оренда). Задаєте суму, період і дату
+         наступного списання — застосунок нагадуватиме, коли час внести черговий платіж, і підсвітить
+         прострочені.</p>
+      <div class="note info"><span class="tag">🔮</span>
+        <div>Регулярні платежі й кредити враховуються у <b>прогнозі балансу</b> — ви бачите, скільки
+        грошей залишиться з урахуванням майбутніх обов'язкових витрат.</div>
+      </div>
+    </section>
+
+    <!-- 9 -->
+    <section id="analytics">
+      <h2><span class="num">9</span> Аналітика</h2>
+      <ul>
+        <li><b>Витрати/доходи за статтями</b> — куди йдуть гроші (діаграма та список).</li>
+        <li><b>Зведення за період</b> — витрати, надходження, <b>комісії окремо</b> й чистий потік.</li>
+        <li><b>Помісячна динаміка</b> — як змінюються витрати й доходи місяць до місяця.</li>
+        <li><b>Витрати за тегами</b> та <b>прогноз балансу</b> на майбутнє.</li>
+      </ul>
+    </section>
+
+    <!-- 10 -->
+    <section id="backup">
+      <h2><span class="num">10</span> Бекап і безпека даних</h2>
+      <table>
+        <tr><th>Інструмент</th><th>Що робить</th></tr>
+        <tr><td><b>Експорт JSON</b></td><td>Зберігає всі ваші дані у файл. Тримайте його в надійному місці.</td></tr>
+        <tr><td><b>Імпорт JSON</b></td><td>Відновлює дані з файлу. <b>Замінює</b> поточні дані застосунку.</td></tr>
+        <tr><td><b>Точки відновлення</b></td><td>Застосунок раз на день сам зберігає знімок стану (до 7 останніх) — можна відкотитися.</td></tr>
+      </table>
+      <div class="note tip"><span class="tag">🛟</span>
+        <div><b>Золоте правило:</b> робіть Експорт JSON хоча б раз на тиждень і зберігайте файл поза
+        браузером (на диску, у хмарі). Тоді ваші дані захищені, навіть якщо з браузером щось станеться.</div>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section id="sync">
+      <h2><span class="num">11</span> Синхронізація ПК ↔ телефон</h2>
+      <p>Щоб одні й ті самі дані були і на комп'ютері, і на телефоні, застосунок уміє синхронізуватися
+         через <b>ваш Google Drive</b>. Дані зберігаються у прихованій папці застосунку — більше ніхто,
+         і навіть сам застосунок, не бачить решту вашого Drive.</p>
+      <div class="note warn"><span class="tag">🌐</span>
+        <div>Синхронізація працює <b>лише коли застосунок відкрито за адресою <code>https://…</code></b>
+        (розміщений онлайн, наприклад на GitHub Pages), а не з файлу подвійним клацанням. Це обмеження
+        безпеки Google.</div>
+      </div>
+      <h3>Коротко, що зробити</h3>
+      <ol class="steps">
+        <li>Розмістити застосунок онлайн (безкоштовно — GitHub Pages).</li>
+        <li>Створити безкоштовний <b>Google OAuth Client ID</b> у Google Cloud Console.</li>
+        <li>У <b>Налаштування → Синхронізація</b> вставити цей ID і натиснути <b>Підключити Google Drive</b>.</li>
+        <li>Те саме повторити на телефоні з тим самим акаунтом — і дані почнуть синхронізуватися.</li>
+      </ol>
+      <div class="note info"><span class="tag">📖</span>
+        <div>Повний покроковий гайд із картинками кроків — у файлі <code>SETUP.md</code> поряд із застосунком.</div>
+      </div>
+    </section>
+
+    <!-- 12 -->
+    <section id="faq">
+      <h2><span class="num">12</span> Питання й відповіді</h2>
+
+      <details>
+        <summary>Чи потрібен інтернет?</summary>
+        <p>Ні. Застосунок повністю працює офлайн. Інтернет потрібен лише для оновлення курсів валют,
+           цін на крипту та синхронізації з Google Drive.</p>
+      </details>
+      <details>
+        <summary>Де зберігаються мої гроші/дані? Це безпечно?</summary>
+        <p>Дані лежать локально у вашому браузері й нікуди не передаються. Якщо ви ввімкнете
+           синхронізацію — вони зберігаються у приватній папці застосунку на вашому Google Drive,
+           доступ до якої захищає вхід у ваш Google-акаунт.</p>
+      </details>
+      <details>
+        <summary>Я випадково все видалив. Що робити?</summary>
+        <p>Відкрийте <b>Налаштування → Точки відновлення</b> й оберіть свіжий знімок. Якщо ви робили
+           Експорт JSON — скористайтеся Імпортом цього файлу.</p>
+      </details>
+      <details>
+        <summary>Чому не можна редагувати переказ?</summary>
+        <p>Переказ зачіпає одразу два рахунки, тож для надійності його не редагують, а видаляють і
+           створюють заново з правильними даними.</p>
+      </details>
+      <details>
+        <summary>Чи можна змінити мову?</summary>
+        <p>Так. Українська та English перемикаються в Налаштуваннях. Там само — тема оформлення (світла/темна).</p>
+      </details>
+      <details>
+        <summary>Як перенести застосунок на новий комп'ютер?</summary>
+        <p>На старому: Експорт JSON. На новому: відкрийте <code>MoneyMe.html</code> і зробіть Імпорт цього файлу.
+           Або просто увімкніть синхронізацію з Google Drive на обох пристроях.</p>
+      </details>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  MoneyMe — персональний облік фінансів · Інструкція користувача · Працює офлайн у вашому браузері
+</footer>
+
+</body>
+</html>

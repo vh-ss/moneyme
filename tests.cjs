@@ -212,6 +212,17 @@ eq('txAccountShare: не-split 0 для іншого', S.txAccountShare({ kind: 
   eq('exchange: пласка позиція (без біржі) → загальна', f.amount, 0.03);
 }
 
+// ——— Бюджет категорії у валюті (budgetBaseUAH: конвертація в гривневий еквівалент) ———
+eq('budget UAH без конвертації', S.budgetBaseUAH({ budget: 1000, budget_currency: 'UAH' }), 1000);
+eq('budget без валюти = UAH', S.budgetBaseUAH({ budget: 500 }), 500);
+{
+  const origRate = S.rateFor;
+  S.rateFor = (cur) => cur === 'UAH' ? 1 : 40;   // 1 USD = 40 UAH
+  eq('budget USD→UAH (50$ × 40 = 2000)', S.budgetBaseUAH({ budget: 50, budget_currency: 'USD' }), 2000);
+  S.rateFor = origRate;
+}
+eq('budget $ без курсу → фолбек як є', S.budgetBaseUAH({ budget: 50, budget_currency: 'USD' }), 50);   // у тестах курсів нема → toUAH=null → фолбек
+
 // ——— Вкладення: id-посилання та план синхронізації (referencedAttIds / attachmentPlan) ———
 {
   const s = { transactions: [
