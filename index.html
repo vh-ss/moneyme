@@ -360,7 +360,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '85f09fd104';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'b8c1954199';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1454,7 +1454,9 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
   }
   overlay.appendChild(modal); root.appendChild(overlay);
   enhanceSelects(modal); enhanceCalcInputs(modal); translateTree(modal);   // enhance ДО перекладу — щоб title калькулятора/кнопок переклались
-  function close(){ overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} } }
+  function close(){ overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} }
+    // форма закрилась — якщо синх відкладав злиття (щоб не загубити збереження форми), доллємо зміни тепер
+    if (Sync.on && Sync.deferred && syncAvailable() && navigator.onLine && !($('#modal-root') && $('#modal-root').children.length)) setTimeout(() => cloudSync(false), 250); }
   overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(); });
   head.querySelector('.x').onclick = close;
   function onKey(e){ if (e.key === 'Escape') close(); }
@@ -4957,12 +4959,20 @@ async function cloudSync(interactive){
     const merged = mergeAll([JSON.parse(JSON.stringify(state))].concat(remoteStates));
     gcTombstones(merged, Date.now());
     const mergedSig = syncSig(merged);
-    if (mergedSig !== localSig) {   // прийшли зміни з інших пристроїв → застосовуємо локально
+    // ВАЖЛИВО: відкрита форма тримає посилання на обʼєкти стану. Якщо зараз зробити state=merged
+    // (нові обʼєкти), збереження форми (Object.assign на старий обʼєкт) піде «в нікуди» — зміна губиться.
+    // Тому при відкритій формі застосування злиття ВІДКЛАДАЄМО; зміни доллються після її закриття
+    // (re-sync у openModal.close). Свій файл усе одно вивантажуємо — дані не втрачаються.
+    const formOpen = !!($('#modal-root') && $('#modal-root').children.length);
+    if (mergedSig !== localSig && formOpen) {
+      Sync.deferred = true;   // є непідтягнуті зміни — застосуємо, коли закриється форма
+    } else if (mergedSig !== localSig) {   // прийшли зміни з інших пристроїв → застосовуємо локально
       cloudBackupSnapshot('Перед синхронізацією');
       Sync.applying = true; state = merged; normalize(); sanitizeImport(state); Sync.applying = false;
       _syncPrev = _snapSig(); persist(); render();
+      Sync.deferred = false;
       showToast('🔄 Синхронізовано з іншими пристроями', null, null, 2500);
-    } else { state.tombstones = merged.tombstones; persist(); }   // підтягуємо/чистимо надгробки навіть без видимих змін
+    } else { if (!formOpen) state.tombstones = merged.tombstones; persist(); }   // надгробки — теж лише поза формою
     // пишемо СВІЙ файл, якщо в ньому ще не той самий стан (щоб інші пристрої побачили наш внесок)
     const mine = downloads.find(d => d && d.f.name === myName);
     Sync.fileId = mine ? mine.f.id : null;
