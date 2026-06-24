@@ -529,7 +529,7 @@ const I18N_EN = {
   'Введіть назву':'Enter a name','Введіть суму цілі':'Enter goal amount','Оберіть рахунки':'Select accounts','Внести зараз':'Add now','Внести всі':'Add all','Сплачено ✓':'Paid ✓','Переглянути':'View','До кредитів':'To credits',
   'Курс':'Rate','Сума зарах.':'Credited amount',
   '— не вказано —':'— not set —','— без банку —':'— no bank —','— не створювати операцію —':"— don't create a transaction —",
-  'Стартовий залишок':'Starting balance','Банк (необовʼязково)':'Bank (optional)','Дедлайн (необовʼязково)':'Deadline (optional)','Місячний бюджет':'Monthly budget','Переносити невитрачене на наступний місяць':'Carry over unspent to next month',
+  'Стартовий залишок':'Starting balance','Банк (необовʼязково)':'Bank (optional)','Дедлайн (необовʼязково)':'Deadline (optional)','Місячний бюджет':'Monthly budget','Переносити невитрачене на наступний місяць':'Carry over unspent to next month','Разом за місяць':'Monthly total','Разом за рік':'Yearly total',
   'Криптовалюти':'Cryptocurrencies','Загальна вартість портфеля':'Total portfolio value','Активів немає. Натисніть «+ Додати».':'No assets. Tap "+ Add".','Новий крипто-актив':'New crypto asset','Редагувати актив':'Edit asset','Символ':'Symbol','Кількість':'Amount','CoinGecko ID (для авто-ціни)':'CoinGecko ID (for auto price)','Ручна ціна, USD (необовʼязково)':'Manual price, USD (optional)',
   'Автозаповнюється для відомих символів. Якщо монети немає в CoinGecko — лишіть порожнім і вкажіть ручну ціну.':'Auto-filled for known symbols. If the coin is not on CoinGecko — leave empty and set a manual price.',
   'Розподіл портфеля':'Portfolio allocation','Історія портфеля':'Portfolio history','Ручна ціна, USD':'Manual price, USD','Сума закупки, USD':'Purchase cost, USD','Інші':'Other','Очистити криптопортфель':'Clear crypto portfolio',
@@ -1306,6 +1306,17 @@ function budgetsCard(opts){
       <span class="tabnum" style="flex:0 0 auto;width:34px;text-align:right;color:${over?'var(--red)':'var(--muted)'}">${real}%</span>
     </div>`));
   });
+  // Підсумок: разом місячних і разом річних бюджетів (у гривневому еквіваленті), окремими рядками.
+  const periodSum = (yearly) => cats.filter(c => yearly ? c.budget_period === 'yearly' : c.budget_period !== 'yearly')
+    .reduce((a, c) => { const r = budgetRange(c); return { n: a.n + 1, budget: a.budget + budgetBaseUAH(c), spent: a.spent + categorySpent(c.id, r.from, r.to) }; }, { n: 0, budget: 0, spent: 0 });
+  const mon = periodSum(false), yr = periodSum(true);
+  const sumRow = (label, s) => `<div class="row" style="justify-content:space-between;gap:12px"><span class="muted">${label}</span><b class="tabnum" style="color:${s.spent > s.budget ? 'var(--red)' : 'var(--ink)'}">${money(round2(s.spent))} / ${money(round2(s.budget))}</b></div>`;
+  if (mon.n || yr.n) {
+    const foot = el(`<div style="margin-top:9px;border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:3px;font-size:13px"></div>`);
+    if (mon.n) foot.appendChild(el(sumRow('Разом за місяць', mon)));
+    if (yr.n) foot.appendChild(el(sumRow('Разом за рік', yr)));
+    card.appendChild(foot);
+  }
   const hidden = totalCount - rows.length;
   if (hidden > 0) card.appendChild(el(`<div class="muted small" style="margin-top:7px">+ ${hidden} без витрат цього періоду</div>`));
   return card;
