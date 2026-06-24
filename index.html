@@ -360,7 +360,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'e2d993f806';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '85f09fd104';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -827,8 +827,11 @@ function multiplierToX(F, T, mult) {
   return Math.round(x * 10000) / 10000;
 }
 
+let _ratesFetching = false;
 async function ensureRatesFresh(force) {
   if (!force && ratesCache.date === todayISO() && Object.keys(ratesCache.rates || {}).length > 1) return;
+  if (_ratesFetching) return; _ratesFetching = true;   // без паралельних запитів (можна кликати з кількох місць)
+  let ok = false;
   try {
     const res = await fetch('https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -837,10 +840,11 @@ async function ensureRatesFresh(force) {
     data.forEach(x => { if (x.cc && typeof x.rate === 'number') rates[x.cc] = x.rate; });
     ratesCache = { date: todayISO(), base: 'UAH', rates, fetched_at: new Date().toISOString(), error: null };
     localStorage.setItem(RATES_KEY, JSON.stringify(ratesCache));
+    ok = true;
   } catch (e) {
     ratesCache.error = e.message || 'не вдалося отримати курси';
-  }
-  if (currentView === 'dashboard') render();
+  } finally { _ratesFetching = false; }
+  if (ok) render();   // нові курси впливають на будь-яку вкладку (бюджети у валюті, чисті активи) — перемальовуємо все
 }
 
 //==================== Криптовалюти (ціни з CoinGecko, раз на день) ====================
@@ -1257,6 +1261,7 @@ function budgetRollover(c){ if (!(c.budget>0) || c.budget_period==='yearly' || !
 function effectiveBudget(c){ return round2(budgetBaseUAH(c) + budgetRollover(c)); }
 // Картка «Бюджети»: категорії витрат з лімітом; кожна — у своєму циклі (місяць/рік).
 function budgetsCard(opts){
+  if (state.categories.some(c => c.kind==='EXPENSE' && (c.budget||0)>0 && budgetCur(c)!=='UAH' && rateFor(budgetCur(c))==null)) ensureRatesFresh();   // курс для бюджетів у валюті
   const title = (opts&&opts.title) || 'Бюджети';
   const hideZero = !!(opts && opts.hideZero);   // не показувати категорії без витрат (0%)
   const cats = state.categories.filter(c => c.kind==='EXPENSE' && (c.budget||0) > 0);
@@ -3285,6 +3290,8 @@ function deleteCategory(c){
 //==================== Вигляд: Категорії ====================
 let catKind = 'EXPENSE';
 views.categories = (app) => {
+  // якщо є бюджет у валюті, а курсу ще нема — дозавантажуємо (ensureRatesFresh потім перемалює список з конвертацією)
+  if (state.categories.some(c => c.kind==='EXPENSE' && (c.budget||0)>0 && budgetCur(c)!=='UAH' && rateFor(budgetCur(c))==null)) ensureRatesFresh();
   const head = el(`<div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Категорії</h1></div>`);
   const add = el(`<button class="btn primary">+ Додати</button>`); add.onclick=()=>openCategoryForm();
   head.appendChild(add); app.appendChild(head);
@@ -3375,6 +3382,8 @@ function openCategoryForm(existing) {
       if (catKind === 'EXPENSE') { rec.budget = round2(num(($('#c-budget',body)||{}).value || 0)); rec.budget_currency = ($('#c-budcur',body)||{}).value || 'UAH'; rec.budget_period = ($('#c-budperiod',body)||{}).value || 'monthly'; rec.rollover = !!($('#c-rollover',body)||{}).checked; }
       if (existing) Object.assign(existing, rec);
       else { rec.id = nextId('cat'); state.categories.push(rec); }
+      // бюджет у валюті без курсу — одразу тягнемо курс (потім ensureRatesFresh перемалює з конвертацією)
+      if (catKind === 'EXPENSE' && rec.budget_currency && rec.budget_currency !== 'UAH' && (rec.budget||0) > 0 && rateFor(rec.budget_currency) == null) ensureRatesFresh();
       save(); close(); render();
     }
   });
