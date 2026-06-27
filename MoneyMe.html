@@ -508,7 +508,7 @@ const I18N_EN = {
   'Введіть назву':'Enter a name','Введіть суму цілі':'Enter goal amount','Оберіть рахунки':'Select accounts','Внести зараз':'Add now','Внести всі':'Add all','Сплачено ✓':'Paid ✓','Переглянути':'View','До кредитів':'To credits',
   'Курс':'Rate','Сума зарах.':'Credited amount',
   '— не вказано —':'— not set —','— без банку —':'— no bank —','— не створювати операцію —':"— don't create a transaction —",
-  'Стартовий залишок':'Starting balance','Банк (необовʼязково)':'Bank (optional)','Дедлайн (необовʼязково)':'Deadline (optional)','Місячний бюджет':'Monthly budget','Переносити невитрачене на наступний місяць':'Carry over unspent to next month','Разом за місяць':'Monthly total','Разом за рік':'Yearly total',
+  'Стартовий залишок':'Starting balance','Банк (необовʼязково)':'Bank (optional)','Дедлайн (необовʼязково)':'Deadline (optional)','Місячний бюджет':'Monthly budget','Переносити невитрачене на наступний місяць':'Carry over unspent to next month','Разом за місяць':'Monthly total','Разом за рік':'Yearly total','Основний':'Main','По днях':'By day','Стаття витрат':'Expense category','Усі статті витрат':'All expense categories','Разом: ':'Total: ','За цей період витрат немає.':'No expenses in this period.','Днів: ':'Days: ','У середньому: ':'Average: ','/день':'/day',
   'Криптовалюти':'Cryptocurrencies','Загальна вартість портфеля':'Total portfolio value','Активів немає. Натисніть «+ Додати».':'No assets. Tap "+ Add".','Новий крипто-актив':'New crypto asset','Редагувати актив':'Edit asset','Символ':'Symbol','Кількість':'Amount','CoinGecko ID (для авто-ціни)':'CoinGecko ID (for auto price)','Ручна ціна, USD (необовʼязково)':'Manual price, USD (optional)',
   'Автозаповнюється для відомих символів. Якщо монети немає в CoinGecko — лишіть порожнім і вкажіть ручну ціну.':'Auto-filled for known symbols. If the coin is not on CoinGecko — leave empty and set a manual price.',
   'Розподіл портфеля':'Portfolio allocation','Історія портфеля':'Portfolio history','Ручна ціна, USD':'Manual price, USD','Сума закупки, USD':'Purchase cost, USD','Інші':'Other','Очистити криптопортфель':'Clear crypto portfolio',
@@ -2876,6 +2876,8 @@ function chartLabels(labels){
 
 //==================== Вигляд: Аналітика ====================
 let anFilter = { from: monthStartISO(), to: todayISO(), preset: 'month' };
+let anReport = 'main';   // варіант звіту: 'main' (дашборд) | 'byday' (витрати по днях)
+let anDayCat = '';        // фільтр звіту «По днях»: '' = усі статті, інакше id категорії-витрати
 // ——— Місячний звіт (одним екраном, з друком/PDF) ———
 function monthRangeOf(ym){ const from = ym + '-01'; const [y,m] = ym.split('-').map(Number); const last = new Date(y, m, 0).getDate(); return { from, to: `${ym}-${String(last).padStart(2,'0')}` }; }
 function addMonthsYM(ym, d){ const [y,m] = ym.split('-').map(Number); const dt = new Date(y, m-1+d, 1); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`; }
@@ -2934,6 +2936,55 @@ function openMonthlyReport(){
   openModal('Звіт за місяць', wrap, { wide: true, topSheet: true });   // кріпимо зверху — щоб при перемиканні місяців не «стрибало»
 }
 
+// ——— Звіт «По днях»: одна серія стовпчиків (витрати), хронологічно ———
+function dayBarsSVG(items){   // items: [{date, total}]
+  const n = Math.max(items.length, 1), w = 100 / n;
+  const max = Math.max(1, ...items.map(d => Math.max(0, d.total)));
+  const H = 140; let bars = '';
+  items.forEach((d, i) => { const bw = w * 0.6, base = i * w + (w - bw) / 2;
+    const h = (Math.max(0, d.total) / max) * (H - 6);
+    bars += `<rect x="${base.toFixed(2)}" y="${(H - h).toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}" rx="0.5" fill="#ef4444"><title>${esc(fmtDate(d.date))}: ${esc(money(round2(d.total)))}</title></rect>`; });
+  return el(`<svg width="100%" height="${H}" viewBox="0 0 100 ${H}" preserveAspectRatio="none" style="overflow:visible;display:block">${bars}</svg>`);
+}
+// Звіт «Аналітика по днях»: витрати по днях (день+сума) + графік, з фільтром за статтею витрат.
+function renderDayReport(app, inR){
+  const exCats = state.categories.filter(c => c.kind === 'EXPENSE');
+  const fwrap = el(`<div class="card" style="padding:12px 14px;margin-top:14px">
+    <label class="lab">Стаття витрат</label>
+    <select id="an-day-cat"><option value="">Усі статті витрат</option>${exCats.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select>
+  </div>`);
+  app.appendChild(fwrap);
+  const sel = $('#an-day-cat', fwrap); sel.value = anDayCat;
+  sel.addEventListener('change', () => { anDayCat = sel.value; render(); });
+
+  // витрати по днях у грн-екв; повернення (відʼємний EXPENSE) нетиться автоматично, як у categorySpent
+  const dayMap = {};
+  state.transactions.forEach(t => { if (t.kind !== 'EXPENSE' || !inR(t)) return;
+    const amt = anDayCat ? partUAH(t, txCatAmount(t, Number(anDayCat))) : txUAH(t);
+    if (!amt) return; const d = t.date.slice(0, 10); dayMap[d] = (dayMap[d] || 0) + amt; });
+  const days = Object.keys(dayMap).filter(d => Math.abs(dayMap[d]) > 0.005).sort();   // хронологічно
+  const total = days.reduce((s, d) => s + dayMap[d], 0);
+
+  if (!days.length) { app.appendChild(el(`<div class="empty" style="margin-top:14px">За цей період витрат немає.</div>`)); return; }
+
+  app.appendChild(el(`<div class="card" style="padding:12px 14px;margin-top:14px;display:flex;gap:8px 18px;flex-wrap:wrap;font-size:14px">
+    <div><span class="muted">Разом: </span><b class="tabnum" style="color:var(--red)">${money(round2(total))}</b></div>
+    <div><span class="muted">Днів: </span><b>${days.length}</b></div>
+    <div><span class="muted">У середньому: </span><b class="tabnum">${money(round2(total/days.length))}</b><span class="muted">/день</span></div>
+  </div>`));
+
+  const chart = el(`<section class="card" style="padding:14px 16px;margin-top:14px"></section>`);
+  chart.appendChild(dayBarsSVG(days.map(d => ({ date: d, total: dayMap[d] }))));
+  chart.appendChild(chartLabels(days.map(d => d.slice(8,10) + '.' + d.slice(5,7))));
+  app.appendChild(chart);
+
+  const listCard = el(`<section class="card" style="padding:4px 6px;margin-top:14px"></section>`);
+  days.slice().reverse().forEach(d => {   // новіші зверху
+    listCard.appendChild(el(`<div class="row" style="justify-content:space-between;gap:12px;padding:9px 10px;border-bottom:1px solid var(--line)"><span>${esc(fmtDate(d))}</span><b class="tabnum" style="color:var(--red)">${money(round2(dayMap[d]))}</b></div>`));
+  });
+  if (listCard.lastElementChild) listCard.lastElementChild.style.borderBottom = 'none';
+  app.appendChild(listCard);
+}
 views.analytics = (app) => {
   const presets = [['month','Цей місяць'],['lastmonth','Минулий'],['year','Рік'],['all','Усе']];
   const top = el(`<div>
@@ -2942,19 +2993,23 @@ views.analytics = (app) => {
       <div class="row"><div><label class="lab">Від</label><input id="an-from" type="date" value="${anFilter.from}"></div>
       <div><label class="lab">До</label><input id="an-to" type="date" value="${anFilter.to}"></div></div>
     </div>
+    <div class="pill" style="margin-top:10px"><button data-r="main">Основний</button><button data-r="byday">По днях</button></div>
     <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
       <div class="pill" style="flex-wrap:wrap">${presets.map(([k,l])=>`<button data-p="${k}">${l}</button>`).join('')}</div>
-      <button class="btn ghost sm" id="an-report">${ic('receipt')} Звіт за місяць</button>
+      ${anReport==='main'?`<button class="btn ghost sm" id="an-report">${ic('receipt')} Звіт за місяць</button>`:''}
     </div>
   </div>`);
-  $('#an-report',top).onclick = () => openMonthlyReport();
+  if ($('#an-report',top)) $('#an-report',top).onclick = () => openMonthlyReport();
   $('#an-from',top).addEventListener('change', () => { anFilter = { from:$('#an-from',top).value, to:$('#an-to',top).value, preset:'custom' }; render(); });
   $('#an-to',top).addEventListener('change', () => { anFilter = { from:$('#an-from',top).value, to:$('#an-to',top).value, preset:'custom' }; render(); });
-  top.querySelectorAll('.pill button').forEach(b => { b.classList.toggle('on', b.dataset.p===anFilter.preset);
+  top.querySelectorAll('.pill button[data-p]').forEach(b => { b.classList.toggle('on', b.dataset.p===anFilter.preset);
     b.onclick = () => { const r = presetRange(b.dataset.p); anFilter = { ...r, preset: b.dataset.p }; render(); }; });
+  top.querySelectorAll('.pill button[data-r]').forEach(b => { b.classList.toggle('on', b.dataset.r===anReport);
+    b.onclick = () => { anReport = b.dataset.r; render(); }; });
   app.appendChild(top);
 
   const inR = (t) => inRange(t, anFilter.from, anFilter.to);
+  if (anReport === 'byday') { renderDayReport(app, inR); return; }   // звіт «По днях»; нижче — наявний «Основний»
   let inc=0, exp=0, fees=0;
   state.transactions.forEach(t => { if(!inR(t))return;
     if(t.kind==='INCOME')inc+=txUAH(t); else if(t.kind==='EXPENSE')exp+=txUAH(t); else if(t.kind==='TRANSFER')fees+=feeUAH(t); });
