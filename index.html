@@ -360,7 +360,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '467a455307';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'e0713ad54b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -2979,10 +2979,29 @@ function renderDayReport(app, inR){
   app.appendChild(chart);
 
   const listCard = el(`<section class="card" style="padding:4px 6px;margin-top:14px"></section>`);
-  days.slice().reverse().forEach(d => {   // новіші зверху
-    listCard.appendChild(el(`<div class="row" style="justify-content:space-between;gap:12px;padding:9px 10px;border-bottom:1px solid var(--line)"><span>${esc(fmtDate(d))}</span><b class="tabnum" style="color:var(--red)">${money(round2(dayMap[d]))}</b></div>`));
+  const ordered = days.slice().reverse();   // новіші зверху
+  ordered.forEach((d, i) => {
+    // витрати того дня (з урахуванням фільтра за статтею), новіші зверху
+    const dayTx = state.transactions
+      .filter(t => t.kind === 'EXPENSE' && inR(t) && t.date.slice(0, 10) === d
+        && (anDayCat ? Math.abs(txCatAmount(t, Number(anDayCat))) > 0.005 : true))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const isLast = i === ordered.length - 1;
+    const row = el(`<div class="row" style="justify-content:space-between;gap:12px;padding:9px 10px;cursor:pointer;user-select:none${isLast ? '' : ';border-bottom:1px solid var(--line)'}">
+      <span><span class="day-caret" style="display:inline-block;width:1.1em;color:var(--muted);transition:transform .15s">▸</span>${esc(fmtDate(d))} <span class="muted" style="font-size:12px">· ${dayTx.length}</span></span>
+      <b class="tabnum" style="color:var(--red)">${money(round2(dayMap[d]))}</b></div>`);
+    const sub = el(`<div class="day-sub" style="display:none;padding:2px 4px 10px"></div>`);
+    dayTx.forEach(t => sub.appendChild(txRow(t)));   // dblclick по операції → перегляд (як скрізь)
+    const toggle = () => {
+      const open = sub.style.display === 'none';
+      sub.style.display = open ? 'block' : 'none';
+      const c = $('.day-caret', row); if (c) c.style.transform = open ? 'rotate(90deg)' : '';
+    };
+    row.addEventListener('dblclick', (e) => { if (e.target.closest('button')) return; toggle(); });
+    let _lastTap = 0;   // подвійний тап на тач (як у txRow)
+    row.addEventListener('touchend', (e) => { if (e.target.closest('button')) return; const now = Date.now(); if (now - _lastTap < 350) { e.preventDefault(); _lastTap = 0; toggle(); } else _lastTap = now; });
+    listCard.appendChild(row); listCard.appendChild(sub);
   });
-  if (listCard.lastElementChild) listCard.lastElementChild.style.borderBottom = 'none';
   app.appendChild(listCard);
 }
 views.analytics = (app) => {
@@ -2993,7 +3012,7 @@ views.analytics = (app) => {
       <div class="row"><div><label class="lab">Від</label><input id="an-from" type="date" value="${anFilter.from}"></div>
       <div><label class="lab">До</label><input id="an-to" type="date" value="${anFilter.to}"></div></div>
     </div>
-    <div class="pill" style="margin-top:10px"><button data-r="main">Основний</button><button data-r="byday">По днях</button></div>
+    <div class="pill" style="margin-top:10px"><button data-r="main">Основний</button><button data-r="byday">Денний</button></div>
     <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px;align-items:center">
       <div class="pill" style="flex-wrap:wrap">${presets.map(([k,l])=>`<button data-p="${k}">${l}</button>`).join('')}</div>
       ${anReport==='main'?`<button class="btn ghost sm" id="an-report">${ic('receipt')} Звіт за місяць</button>`:''}
