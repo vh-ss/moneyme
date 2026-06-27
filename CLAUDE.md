@@ -8,9 +8,9 @@
 - PWA: `manifest.webmanifest`, `sw.js`, `.nojekyll` (для GitHub Pages).
 
 ## Середовище
-- **Машина БЕЗ Node.js та БЕЗ інтернету.** `npm install` / `npm run dev` тут НЕ запускаються.
-- Тому правити код напряму, а перевіряти — через офлайн-білд `MoneyMe.html` у браузері (або згенерувати його збірним скриптом, якщо Node доступний).
-- Команди для довідки (де є Node): `npm run dev`, `npm run typecheck`, `npm run test`.
+- **Node.js (v24) та інтернет ДОСТУПНІ на машині.** Збірку/тести можна ганяти локально.
+- Основний робочий процес: правити код у джерелах → `node .build-pwa.cjs` (проганяє `tests.cjs`, штампує версію, будує `MoneyMe.html`/`index.html`/`sw.js`/`MoneyMe-DEMO.html`) → перевіряти у браузері.
+- Команди (де є повний стек): `npm run dev`, `npm run typecheck`, `npm run test`.
 
 ## Межі проєкту
 Працювати ТІЛЬКИ в цій папці (`TEST\MoneyMe`). Інші проєкти в `TEST` не чіпати.
