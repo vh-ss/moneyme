@@ -38,15 +38,24 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;   // Google API тощо — напряму в мережу
 
-  // Документ (увесь застосунок — single-file HTML): NETWORK-FIRST — онлайн завжди віддає свіжий код,
-  // офлайн — з кешу. Так нові версії/фікси доходять одразу, без зависання на старому HTML.
+  // Документ (увесь застосунок — single-file HTML): NETWORK-FIRST з ТАЙМАУТОМ — онлайн віддає свіжий код,
+  // але якщо мережа не відповіла швидко (офлайн / є з'єднання без інтернету / повільний DNS) — НЕ висимо,
+  // а одразу віддаємо кеш. Без таймауту fetch міг зависати до браузерного ліміту → застосунок «зависав».
   const isDoc = req.mode === 'navigate' || req.destination === 'document' ||
     url.pathname === '/' || url.pathname.endsWith('/') || url.pathname.endsWith('.html');
   if (isDoc) {
     e.respondWith((async () => {
       const cache = await caches.open(CACHE);
-      try { const res = await fetch(req); if (res && res.status === 200) cache.put(req, res.clone()); return res; }
-      catch (e2) { return (await cache.match(req, { ignoreSearch: true })) || (await cache.match('./index.html')) || (await cache.match('./MoneyMe.html')) || Response.error(); }
+      const cached = (await cache.match(req, { ignoreSearch: true })) || (await cache.match('./index.html')) || (await cache.match('./MoneyMe.html'));
+      // якщо кеш уже є — чекаємо мережу максимум 3с; на першому завантаженні (кешу нема) даємо більше часу
+      const ctrl = new AbortController();
+      let to; const timer = new Promise((_, rej) => { to = setTimeout(() => { ctrl.abort(); rej(new Error('sw-timeout')); }, cached ? 3000 : 12000); });
+      const net = fetch(req, { signal: ctrl.signal }); net.catch(() => {});   // не лишати unhandled rejection при abort/offline
+      try {
+        const res = await Promise.race([net, timer]); clearTimeout(to);
+        if (res && res.status === 200) cache.put(req, res.clone());
+        return res;
+      } catch (e2) { clearTimeout(to); return cached || Response.error(); }
     })());
     return;
   }
