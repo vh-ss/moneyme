@@ -5093,18 +5093,23 @@ async function cloudConnect(){
     const remoteStates = downloads.filter(Boolean);
     const remoteHasData = remoteStates.some(s => (s.accounts||[]).length || (s.transactions||[]).length);
     const localHasData = !!(((state.accounts||[]).length) || ((state.transactions||[]).length));
-    const everConnected = localStorage.getItem('moneyme.sync.everConnected') === '1';
     if (remoteHasData) {
       // на цьому акаунті вже є дані → підтягуємо ЛИШЕ хмарні (локальні з пристрою НЕ заливаємо — ізоляція акаунтів)
+      if (localHasData) cloudBackupSnapshot('Перед підключенням Google Drive');   // раптом це не той акаунт — лишаємо шлях назад у Точках відновлення
       const merged = mergeAll(remoteStates); gcTombstones(merged, Date.now());
       Sync.applying = true; state = merged; normalize(); sanitizeImport(state); Sync.applying = false; _syncPrev = _snapSig(); persist(); render();
-    } else if (!everConnected && localHasData) {
-      // ПЕРШЕ підключення, акаунт порожній, локально є дані → питаємо власника
-      const up = await confirmModal('Перше підключення', 'Акаунт у хмарі порожній. Завантажити поточні дані з цього пристрою у ваш акаунт — чи почати з чистого?', { okLabel: 'Завантажити мої дані', cancelLabel: 'Почати з чистого' });
-      if (!up) { state = seed(); normalize(); persist(); _syncPrev = _snapSig(); render(); }
     } else if (localHasData) {
-      // зміна акаунта на порожній → беремо «чисто», локальне НЕ заливаємо (щоб дані не перетікали між акаунтами)
-      state = seed(); normalize(); persist(); _syncPrev = _snapSig(); render();
+      // Акаунт у хмарі ПОРОЖНІЙ, а локально Є дані. НІКОЛИ не затираємо автоматично — саме це стирало дані тим,
+      // хто вів базу без Drive і просто підключив хмару. Питаємо, і БЕЗПЕЧНО за замовчуванням: закриття вікна /
+      // Esc / клік повз / «Залишити» → дані ЛИШАЮТЬСЯ і заллються нижче в cloudSync. Стерти — лише явним
+      // червоним вибором «Почати з чистого», і навіть тоді спершу робимо точку відновлення.
+      const wipe = await confirmModal('Підключення Google Drive',
+        'У цьому Google-акаунті ще немає даних MoneyMe.\n\nЗа замовчуванням ваші поточні дані з цього пристрою залишаться і завантажаться у хмару.\n\nСтерти поточні дані й почати з чистого? (напр. це новий/чужий акаунт на спільному пристрої)',
+        { okLabel: 'Почати з чистого', cancelLabel: 'Залишити мої дані', danger: true });
+      if (wipe) {
+        cloudBackupSnapshot('Перед очищенням при підключенні Drive');   // дані можна відновити з Точок відновлення
+        state = seed(); normalize(); persist(); _syncPrev = _snapSig(); render();
+      }
     }
     Sync.on = true; localStorage.setItem('moneyme.sync.on', '1'); localStorage.setItem('moneyme.sync.everConnected', '1');
     Sync.fileId = null;
