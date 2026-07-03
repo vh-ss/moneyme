@@ -1974,7 +1974,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     <div><label class="lab">Теги (через кому)</label><input id="f-tags" value="${esc((e.tags||[]).join(', '))}" placeholder="напр. відпустка, робота"></div>
     <div id="f-tagamts" style="display:none"></div>
     <div id="f-attach" style="margin-top:8px"></div>
-    ${(kind==='EXPENSE' && !existing) ? `
+    ${(kind==='EXPENSE' && !(existing && existing.reimbursement)) ? `
     <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:2px"><input type="checkbox" id="f-rfon" style="width:auto"> Частину повернули мені (оплатив за когось)</label>
     <div class="hidden" id="f-rfbox">
       <div class="row">
@@ -2009,6 +2009,17 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     $('#f-acc', body).addEventListener('change', () => { if (rfon.checked) { fillRfAcc(); updHint(); } });
     ['f-amt','f-rfamt'].forEach(id => $('#'+id, body).addEventListener('input', () => { if (rfon.checked) updHint(); }));
     $('#f-rfacc', body).addEventListener('change', updHint);
+    // Редагування: якщо у витрати вже є повʼязане повернення — підставляємо його (сума + рахунок)
+    if (existing) {
+      const exRef = state.transactions.find(x => x.reimbursement && x.refund_of === existing.id);
+      if (exRef) {
+        rfon.checked = true; $('#f-rfbox', body).classList.remove('hidden'); fillRfAcc();
+        const acc = String(exRef.account_id);
+        if ([...$('#f-rfacc', body).options].some(o => o.value === acc)) { $('#f-rfacc', body).value = acc; $('#f-rfacc', body)._sync && $('#f-rfacc', body)._sync(); }
+        $('#f-rfamt', body).value = String(Math.abs(exRef.amount || 0));
+        updHint();
+      }
+    }
   }
   // ——— Розбиття на кілька статей (split) ———
   const splitRows = $('#f-split-rows', body);
@@ -2148,6 +2159,24 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
         if (!splits) delete existing.splits;   // прибрали розбиття — чистимо старі splits
         if (!tagAmounts) delete existing.tagAmounts;   // прибрали розподіл за тегами
         if (!att.length) delete existing.attachments;   // прибрали всі вкладення
+        // повернення при редагуванні: створюємо / оновлюємо / видаляємо повʼязану операцію-повернення
+        if (rf) {
+          const ri = state.transactions.findIndex(x => x.reimbursement && x.refund_of === existing.id);
+          if (refund > 0) {
+            const refRec = {
+              kind: 'EXPENSE', date: existing.date,
+              account_id: refundAccId || existing.account_id,
+              category_id: existing.category_id ?? null,
+              amount: round2(-refund), reimbursement: true, refund_of: existing.id,
+              note: existing.note || null,
+              tags: (existing.tags && existing.tags.length) ? existing.tags.slice() : [],
+            };
+            if (ri >= 0) Object.assign(state.transactions[ri], refRec);   // зберігаємо id/ord наявного
+            else { refRec.id = nextId('tx'); refRec.ord = nextOrd(); state.transactions.push(refRec); }
+          } else if (ri >= 0) {
+            state.transactions.splice(ri, 1);   // повернення прибрали → видаляємо (save() поставить надгробок)
+          }
+        }
       }
       else {
         rec.id = nextId('tx'); rec.ord = nextOrd(); state.transactions.push(rec);
