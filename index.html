@@ -360,7 +360,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '309b9d2b36';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'ef8e1d842c';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1977,47 +1977,58 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     ${(kind==='EXPENSE' && !(existing && existing.reimbursement)) ? `
     <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:2px"><input type="checkbox" id="f-rfon" style="width:auto"> Частину повернули мені (оплатив за когось)</label>
     <div class="hidden" id="f-rfbox">
-      <div class="row">
-        <div style="flex:1"><label class="lab">Сума повернення</label><input id="f-rfamt" inputmode="decimal" placeholder="0.00"></div>
-        <div style="flex:1"><label class="lab">Куди повернули</label><select id="f-rfacc"></select></div>
-      </div>
+      <label class="lab">Повернення (можна кілька — на різні рахунки)</label>
+      <div id="f-rf-rows"></div>
+      <button type="button" class="btn ghost sm" id="f-rf-add" style="margin-top:6px">+ Ще повернення</button>
       <div class="muted small" id="f-rfhint" style="margin-top:6px"></div>
     </div>` : ''}
     <div class="err hidden" id="f-err"></div>
   </div>`);
   const rfon = $('#f-rfon', body);
   if (rfon) {
-    const fillRfAcc = () => {
-      const exAcc = state.accounts.find(a => a.id === parseInt($('#f-acc', body).value));
-      const cur = exAcc ? exAcc.currency_code : 'UAH';
-      const opts = state.accounts.filter(a => a.currency_code === cur);
-      const prev = $('#f-rfacc', body).value;
-      $('#f-rfacc', body).innerHTML = opts.map(a => `<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('');
-      $('#f-rfacc', body).value = (opts.some(a => String(a.id) === prev) ? prev : String(exAcc ? exAcc.id : (opts[0] ? opts[0].id : '')));
-      $('#f-rfacc', body)._sync && $('#f-rfacc', body)._sync();   // ре-синк кастомної кнопки
-    };
-    const updHint = () => {
-      const exAcc = state.accounts.find(a => a.id === parseInt($('#f-acc', body).value));
-      const cur = exAcc ? exAcc.currency_code : 'UAH';
-      const full = num($('#f-amt', body).value), rf = num($('#f-rfamt', body).value);
+    const rfRows = $('#f-rf-rows', body);
+    const rfCur = () => { const a = state.accounts.find(x => x.id === parseInt($('#f-acc', body).value)); return a ? a.currency_code : 'UAH'; };
+    const rfAccOpts = () => state.accounts.filter(a => !a.archived && a.currency_code === rfCur());
+    const rfDefaultAcc = () => { const exAcc = state.accounts.find(a => a.id === parseInt($('#f-acc', body).value)); const opts = rfAccOpts(); return exAcc ? exAcc.id : (opts[0] ? opts[0].id : ''); };
+    const updRfHint = () => {
+      const cur = rfCur();
+      const full = num($('#f-amt', body).value);
+      const rf = round2([...rfRows.querySelectorAll('.rf-amt')].reduce((s, i) => s + (num(i.value) || 0), 0));
       const share = round2(full - rf);
       $('#f-rfhint', body).innerHTML = (rf > 0 && full > 0)
-        ? `Запишемо 2 операції (як у виписці): витрата <b>${money(full, cur)}</b> + повернення <b style="color:var(--green)">+${money(rf, cur)}</b>. У категорію піде лише ваша частка: <b>${money(share, cur)}</b>${share < 0 ? ' ⛔' : ''}`
-        : 'Запишемо 2 окремі операції (як у банківській виписці): повну витрату і повернення. У категорію/бюджет піде лише ваша частка.';
+        ? `Повернень: <b style="color:var(--green)">+${money(rf, cur)}</b>. У категорію піде лише ваша частка: <b>${money(share, cur)}</b>${share < 0 ? ' ⛔' : ''}`
+        : 'Кожне повернення — окрема операція (як у виписці); можна на різні рахунки. У категорію/бюджет піде лише ваша частка (витрата − повернення).';
     };
-    rfon.onchange = () => { const on = rfon.checked; $('#f-rfbox', body).classList.toggle('hidden', !on); if (on) { fillRfAcc(); updHint(); } };
-    $('#f-acc', body).addEventListener('change', () => { if (rfon.checked) { fillRfAcc(); updHint(); } });
-    ['f-amt','f-rfamt'].forEach(id => $('#'+id, body).addEventListener('input', () => { if (rfon.checked) updHint(); }));
-    $('#f-rfacc', body).addEventListener('change', updHint);
-    // Редагування: якщо у витрати вже є повʼязане повернення — підставляємо його (сума + рахунок)
+    function addRfRow(amount, accId, refId){
+      const accs = rfAccOpts();
+      const r = el(`<div class="rfrow" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+        <input class="rf-amt" inputmode="decimal" placeholder="сума повернення" value="${(amount!=null&&amount!=='')?amount:''}" style="flex:1 1 40%;min-width:0">
+        <select class="rf-acc" style="flex:1 1 40%;min-width:0" title="Куди повернули">${accs.map(a=>`<option value="${a.id}">${a.icon?a.icon+' ':''}${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select>
+        <button type="button" class="btn ghost sm rf-del" title="Прибрати">${ic('close')}</button></div>`);
+      r.querySelector('.rf-acc').value = String(accId != null ? accId : rfDefaultAcc());
+      if (refId != null) r.dataset.refId = String(refId);
+      r.querySelector('.rf-amt').addEventListener('input', updRfHint);
+      r.querySelector('.rf-del').onclick = () => { r.remove(); if (!rfRows.children.length) addRfRow('', null); updRfHint(); };
+      rfRows.appendChild(r);
+      enhanceSelects(r); enhanceCalcInputs(r);   // пошуковий комбобокс + калькулятор для динамічних рядків
+    }
+    function rebuildRfRows(){   // валюта основного рахунку змінилась → оновити списки рахунків, зберігши суми
+      const vals = [...rfRows.querySelectorAll('.rfrow')].map(r => ({ amt: r.querySelector('.rf-amt').value, acc: r.querySelector('.rf-acc').value, refId: r.dataset.refId }));
+      rfRows.innerHTML = '';
+      vals.forEach(v => addRfRow(v.amt, v.acc ? parseInt(v.acc) : null, v.refId != null ? parseInt(v.refId) : null));
+      updRfHint();
+    }
+    rfon.onchange = () => { const on = rfon.checked; $('#f-rfbox', body).classList.toggle('hidden', !on); if (on) { if (!rfRows.children.length) addRfRow('', null); updRfHint(); } };
+    $('#f-rf-add', body).onclick = () => addRfRow('', null);
+    $('#f-acc', body).addEventListener('change', () => { if (rfon.checked) rebuildRfRows(); });
+    $('#f-amt', body).addEventListener('input', () => { if (rfon.checked) updRfHint(); });
+    // Редагування: підставляємо ВСІ наявні повернення цієї витрати (кожне — свій рядок)
     if (existing) {
-      const exRef = state.transactions.find(x => x.reimbursement && x.refund_of === existing.id);
-      if (exRef) {
-        rfon.checked = true; $('#f-rfbox', body).classList.remove('hidden'); fillRfAcc();
-        const acc = String(exRef.account_id);
-        if ([...$('#f-rfacc', body).options].some(o => o.value === acc)) { $('#f-rfacc', body).value = acc; $('#f-rfacc', body)._sync && $('#f-rfacc', body)._sync(); }
-        $('#f-rfamt', body).value = String(Math.abs(exRef.amount || 0));
-        updHint();
+      const exRefs = state.transactions.filter(x => x.reimbursement && x.refund_of === existing.id);
+      if (exRefs.length) {
+        rfon.checked = true; $('#f-rfbox', body).classList.remove('hidden');
+        exRefs.forEach(x => addRfRow(String(Math.abs(x.amount || 0)), x.account_id, x.id));
+        updRfHint();
       }
     }
   }
@@ -2117,13 +2128,17 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       const amt = splits ? round2(splits.reduce((s,x)=>s+x.amount,0)) : num($('#f-amt', body).value);
       if (amt <= 0) { err.textContent = 'Введіть суму більше 0'; err.classList.remove('hidden'); return; }
       const exAccId = parseInt($('#f-acc', body).value);
-      // повернення частини коштів: витрата = ваша частка, решта — переказ на рахунок повернення
+      // повернення частини коштів: витрата = ваша частка, решта — окремі операції-повернення (можна на різні рахунки)
       const rf = $('#f-rfon', body);
-      let refund = 0, refundAccId = exAccId;
+      let refundRows = [];
       if (rf && rf.checked) {
-        refund = round2(num($('#f-rfamt', body).value));
-        refundAccId = parseInt($('#f-rfacc', body).value);
-        if (refund > 0 && refund > amt) { err.textContent = 'Повернення не може перевищувати суму витрати'; err.classList.remove('hidden'); return; }
+        refundRows = [...$('#f-rf-rows', body).querySelectorAll('.rfrow')].map(r => ({
+          amount: round2(num(r.querySelector('.rf-amt').value)),
+          account_id: parseInt(r.querySelector('.rf-acc').value) || exAccId,
+          refId: r.dataset.refId ? parseInt(r.dataset.refId) : null,
+        })).filter(x => x.amount > 0);
+        const totalRefund = round2(refundRows.reduce((s, x) => s + x.amount, 0));
+        if (totalRefund > amt) { err.textContent = 'Сума повернень не може перевищувати суму витрати'; err.classList.remove('hidden'); return; }
       }
       const rec = {
         kind, amount: round2(amt),
@@ -2159,40 +2174,42 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
         if (!splits) delete existing.splits;   // прибрали розбиття — чистимо старі splits
         if (!tagAmounts) delete existing.tagAmounts;   // прибрали розподіл за тегами
         if (!att.length) delete existing.attachments;   // прибрали всі вкладення
-        // повернення при редагуванні: створюємо / оновлюємо / видаляємо повʼязану операцію-повернення
+        // повернення при редагуванні: звіряємо рядки форми з наявними повʼязаними операціями —
+        // рядок з наявним id оновлюємо, новий рядок створюємо, зникле повернення видаляємо (надгробок через save()).
         if (rf) {
-          const ri = state.transactions.findIndex(x => x.reimbursement && x.refund_of === existing.id);
-          if (refund > 0) {
+          const existingRefs = state.transactions.filter(x => x.reimbursement && x.refund_of === existing.id);
+          const keptIds = new Set();
+          refundRows.forEach(rw => {
             const refRec = {
               kind: 'EXPENSE', date: existing.date,
-              account_id: refundAccId || existing.account_id,
+              account_id: rw.account_id || existing.account_id,
               category_id: existing.category_id ?? null,
-              amount: round2(-refund), reimbursement: true, refund_of: existing.id,
+              amount: round2(-rw.amount), reimbursement: true, refund_of: existing.id,
               note: existing.note || null,
               tags: (existing.tags && existing.tags.length) ? existing.tags.slice() : [],
             };
-            if (ri >= 0) Object.assign(state.transactions[ri], refRec);   // зберігаємо id/ord наявного
-            else { refRec.id = nextId('tx'); refRec.ord = nextOrd(); state.transactions.push(refRec); }
-          } else if (ri >= 0) {
-            state.transactions.splice(ri, 1);   // повернення прибрали → видаляємо (save() поставить надгробок)
-          }
+            const cur = rw.refId ? existingRefs.find(x => x.id === rw.refId) : null;
+            if (cur) { Object.assign(cur, refRec); keptIds.add(cur.id); }   // зберігаємо id/ord наявного
+            else { refRec.id = nextId('tx'); refRec.ord = nextOrd(); state.transactions.push(refRec); keptIds.add(refRec.id); }
+          });
+          existingRefs.forEach(x => { if (!keptIds.has(x.id)) { const i = state.transactions.indexOf(x); if (i >= 0) state.transactions.splice(i, 1); } });
         }
       }
       else {
         rec.id = nextId('tx'); rec.ord = nextOrd(); state.transactions.push(rec);
-        // Повернену частину проводимо ОКРЕМОЮ операцією (як у виписці): зарахування на рахунок повернення.
+        // Кожне повернення проводимо ОКРЕМОЮ операцією (як у виписці): зарахування на свій рахунок.
         // Зберігаємо як витрату з відʼємною сумою у тій самій категорії — щоб у всіх зведеннях
-        // (категорії, бюджети, теги, рахунки) вона віднімалась: реальна витрата = повна − повернення.
-        if (refund > 0) {
+        // (категорії, бюджети, теги, рахунки) вона віднімалась: реальна витрата = повна − сума повернень.
+        refundRows.forEach(rw => {
           state.transactions.push({
             id: nextId('tx'), ord: nextOrd(), kind: 'EXPENSE', date: rec.date,
-            account_id: refundAccId || exAccId,
+            account_id: rw.account_id || exAccId,
             category_id: rec.category_id ?? null,
-            amount: round2(-refund), reimbursement: true, refund_of: rec.id,
+            amount: round2(-rw.amount), reimbursement: true, refund_of: rec.id,
             note: rec.note || null,
             tags: (rec.tags && rec.tags.length) ? rec.tags.slice() : [],
           });
-        }
+        });
       }
       save(); close(); render();
     }
