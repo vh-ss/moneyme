@@ -1,0 +1,47 @@
+name: Deploy MoneyMe to GitHub Pages
+
+# Публікація через GitHub Actions (а не legacy-білдер гілки, який стабільно збоїть):
+# наш артефакт — уже готовий статичний сайт, deploy-pages публікує його напряму,
+# без проміжної Jekyll/legacy-збірки.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assemble static site
+        run: |
+          mkdir -p _site
+          cp index.html sw.js manifest.webmanifest .nojekyll _site/
+          cp MoneyMe.html MoneyMe-DEMO.html _site/
+          cp -r icons _site/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
