@@ -1280,15 +1280,32 @@ function budgetBaseUAH(c){ const cur = budgetCur(c); if (cur === 'UAH') return c
 function budgetRollover(c){ if (!(c.budget>0) || c.budget_period==='yearly' || !c.rollover) return 0; const pr=prevMonthRange(); return round2(Math.max(0, budgetBaseUAH(c) - categorySpent(c.id, pr.from, pr.to))); }
 // Ефективний ліміт (у гривні) = бюджет + перенесене.
 function effectiveBudget(c){ return round2(budgetBaseUAH(c) + budgetRollover(c)); }
+// К-сть циклів бюджету (місяців/років), що перекривають діапазон — щоб у аналітиці масштабувати ліміт
+// під обраний період (напр. річний перегляд місячного бюджету = бюджет × к-сть місяців). from='' → від найранішої операції.
+function budgetPeriodsInRange(period, from, to){
+  const t = (to || todayISO()).slice(0, 7);
+  let f = from;
+  if (!f) { const ds = state.transactions.map(x => x.date).filter(Boolean).sort(); f = ds.length ? ds[0] : t; }
+  f = f.slice(0, 7);
+  const [fy, fm] = f.split('-').map(Number), [ty, tm] = t.split('-').map(Number);
+  return period === 'yearly' ? Math.max(1, ty - fy + 1) : Math.max(1, (ty * 12 + tm) - (fy * 12 + fm) + 1);
+}
 // Картка «Бюджети»: категорії витрат з лімітом; кожна — у своєму циклі (місяць/рік).
 function budgetsCard(opts){
   if (state.categories.some(c => c.kind==='EXPENSE' && (c.budget||0)>0 && budgetCur(c)!=='UAH' && rateFor(budgetCur(c))==null)) ensureRatesFresh();   // курс для бюджетів у валюті
   const title = (opts&&opts.title) || 'Бюджети';
   const hideZero = !!(opts && opts.hideZero);   // не показувати категорії без витрат (0%)
+  const range = (opts && opts.range) || null;   // аналітика передає обраний період → масштабуємо ліміт і рахуємо spent за ним
   const cats = state.categories.filter(c => c.kind==='EXPENSE' && (c.budget||0) > 0);
   if (!cats.length) return null;
-  let rows = cats.map(c => { const r = budgetRange(c); const eb = effectiveBudget(c); return { c, eb, roll: budgetRollover(c), spent: categorySpent(c.id, r.from, r.to), label: r.label }; })
-    .sort((a,b)=> (b.spent/b.eb) - (a.spent/a.eb));
+  let rows = cats.map(c => {
+    const r = range || budgetRange(c);
+    const per = range ? budgetPeriodsInRange(c.budget_period, range.from, range.to) : 1;
+    const eb = range ? Math.max(0.01, round2(budgetBaseUAH(c) * per)) : effectiveBudget(c);
+    const roll = range ? 0 : budgetRollover(c);   // перенесення — лише для поточного циклу, не для довільного періоду
+    const label = range ? (c.budget_period === 'yearly' ? (per > 1 ? per + ' р.' : 'рік') : (per > 1 ? per + ' міс.' : 'міс.')) : r.label;
+    return { c, eb, roll, spent: categorySpent(c.id, r.from, r.to), label };
+  }).sort((a,b)=> (b.spent/b.eb) - (a.spent/a.eb));
   const totalCount = rows.length;
   if (hideZero) rows = rows.filter(r => Math.round(r.spent / r.eb * 100) > 0);
   if (!rows.length) return null;   // усі бюджети без витрат — картку не показуємо
@@ -1308,13 +1325,13 @@ function budgetsCard(opts){
   });
   // Підсумок: разом місячних і разом річних бюджетів (у гривневому еквіваленті), окремими рядками.
   const periodSum = (yearly) => cats.filter(c => yearly ? c.budget_period === 'yearly' : c.budget_period !== 'yearly')
-    .reduce((a, c) => { const r = budgetRange(c); return { n: a.n + 1, budget: a.budget + budgetBaseUAH(c), spent: a.spent + categorySpent(c.id, r.from, r.to) }; }, { n: 0, budget: 0, spent: 0 });
+    .reduce((a, c) => { const r = range || budgetRange(c); const per = range ? budgetPeriodsInRange(c.budget_period, range.from, range.to) : 1; return { n: a.n + 1, budget: a.budget + budgetBaseUAH(c) * per, spent: a.spent + categorySpent(c.id, r.from, r.to) }; }, { n: 0, budget: 0, spent: 0 });
   const mon = periodSum(false), yr = periodSum(true);
   const sumRow = (label, s) => `<div class="row" style="justify-content:space-between;gap:12px"><span class="muted">${label}</span><b class="tabnum" style="color:${s.spent > s.budget ? 'var(--red)' : 'var(--ink)'}">${money(round2(s.spent))} / ${money(round2(s.budget))}</b></div>`;
   if (mon.n || yr.n) {
     const foot = el(`<div style="margin-top:9px;border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:3px;font-size:13px"></div>`);
-    if (mon.n) foot.appendChild(el(sumRow('Разом за місяць', mon)));
-    if (yr.n) foot.appendChild(el(sumRow('Разом за рік', yr)));
+    if (mon.n) foot.appendChild(el(sumRow(range ? 'Місячні бюджети (за період)' : 'Разом за місяць', mon)));
+    if (yr.n) foot.appendChild(el(sumRow(range ? 'Річні бюджети (за період)' : 'Разом за рік', yr)));
     card.appendChild(foot);
   }
   const hidden = totalCount - rows.length;
@@ -3116,8 +3133,8 @@ views.analytics = (app) => {
   </div>`);
   app.appendChild(sum);
 
-  // бюджети (кожна категорія у своєму циклі); неактивні (0%) згортаємо, як на Огляді
-  const bcard = budgetsCard({ hideZero: true });
+  // бюджети за ОБРАНИЙ період аналітики: spent і ліміт масштабуються під anFilter (а не завжди поточний місяць/рік)
+  const bcard = budgetsCard({ hideZero: true, title: 'Бюджети (за обраний період)', range: { from: anFilter.from, to: anFilter.to } });
   if (bcard) { bcard.style.marginTop = '14px'; app.appendChild(bcard); }
 
   // ——— Кредити: підсумок ———
