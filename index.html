@@ -360,7 +360,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '53da4e2ab9';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '7defbc4934';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -2913,6 +2913,28 @@ function prevRange(from, to){
   const f = Date.parse(from), t = Date.parse(to); const len = t - f;
   return { from: isoOf(new Date(f-len-86400000)), to: isoOf(new Date(f-86400000)) };
 }
+// Попередній період для порівняння в аналітиці — КАЛЕНДАРНО вирівняний до пресета (а не просто рівний
+// проміжок перед періодом: раніше «Цей місяць» 1–4 порівнювався з 27–30 минулого місяця → плутанина).
+function analyticsPrevRange(f){
+  if (!f || !f.from || !f.to) return null;   // «Усе»/без меж — без порівняння
+  const [fy,fm] = f.from.split('-').map(Number);
+  const [ty,tm,td] = f.to.split('-').map(Number);
+  const lastDay = (y,m) => new Date(y, m, 0).getDate();       // m 1-based → останній день місяця
+  const clampDay = (y,m,d) => Math.min(d, lastDay(y,m));
+  const prevMonthOf = (y,m) => m === 1 ? [y-1,12] : [y,m-1];
+  if (f.preset === 'month') {          // місяць-до-сьогодні → минулий місяць, 1..той самий день
+    const [py,pm] = prevMonthOf(fy,fm);
+    return { from: ymd(py,pm,1), to: ymd(py,pm,clampDay(py,pm,td)) };
+  }
+  if (f.preset === 'lastmonth') {      // повний минулий місяць → повний місяць перед ним
+    const [py,pm] = prevMonthOf(fy,fm);
+    return { from: ymd(py,pm,1), to: ymd(py,pm,lastDay(py,pm)) };
+  }
+  if (f.preset === 'year') {           // рік-до-сьогодні → торік той самий проміжок
+    return { from: ymd(fy-1,1,1), to: ymd(ty-1,tm,clampDay(ty-1,tm,td)) };
+  }
+  return prevRange(f.from, f.to);      // довільний діапазон → рівний проміжок безпосередньо перед ним
+}
 function pctDelta(cur, prev){ if (!prev) return null; return Math.round((cur-prev)/Math.abs(prev)*100); }
 // Чисті активи (UAH-екв за поточним курсом) станом на дату.
 function netWorthAt(dateISO){
@@ -3106,16 +3128,17 @@ views.analytics = (app) => {
     if(t.kind==='INCOME')inc+=txUAH(t); else if(t.kind==='EXPENSE')exp+=txUAH(t); else if(t.kind==='TRANSFER')fees+=feeUAH(t); });
   const net = inc - exp - fees;
 
-  // порівняння з попереднім періодом
-  const pr = prevRange(anFilter.from, anFilter.to);
+  // порівняння з попереднім періодом (календарно вирівняним до пресета)
+  const pr = analyticsPrevRange(anFilter);
   let pInc=0, pExp=0;
   if (pr) state.transactions.forEach(t => { if(!inRange(t,pr.from,pr.to))return; if(t.kind==='INCOME')pInc+=txUAH(t); else if(t.kind==='EXPENSE')pExp+=txUAH(t); });
   const dInc = pctDelta(inc,pInc), dExp = pctDelta(exp,pExp);
-  const deltaTag = (d, goodIfNeg) => d==null ? '' : `<div class="k" style="font-size:11px;color:${(goodIfNeg? d<=0 : d>=0)?'var(--green)':'var(--red)'}">${d>0?'+':''}${d}% vs попередній</div>`;
+  const prTip = pr ? `Попередній період: ${fmtDate(pr.from)} – ${fmtDate(pr.to)}` : '';
+  const deltaTag = (d, goodIfNeg, prevVal) => d==null ? '' : `<div class="k" title="${esc(prTip + (prevVal!=null ? ' · ' + money(round2(prevVal)) : ''))}" style="font-size:11px;color:${(goodIfNeg? d<=0 : d>=0)?'var(--green)':'var(--red)'};cursor:help">${d>0?'+':''}${d}% vs попередній</div>`;
 
   const sum = el(`<div class="sumcards" style="margin-top:14px">
-    <div class="card sumcard"><div class="k">Надходження</div><div class="v tabnum" style="color:var(--green)">${money(inc)}</div>${deltaTag(dInc,false)}</div>
-    <div class="card sumcard"><div class="k">Витрати</div><div class="v tabnum" style="color:var(--red)">${money(exp)}</div>${deltaTag(dExp,true)}</div>
+    <div class="card sumcard"><div class="k">Надходження</div><div class="v tabnum" style="color:var(--green)">${money(inc)}</div>${deltaTag(dInc,false,pInc)}</div>
+    <div class="card sumcard"><div class="k">Витрати</div><div class="v tabnum" style="color:var(--red)">${money(exp)}</div>${deltaTag(dExp,true,pExp)}</div>
     <div class="card sumcard"><div class="k">Комісії</div><div class="v tabnum" style="color:var(--amber)">${money(fees)}</div></div>
     <div class="card sumcard"><div class="k">Чистий потік</div><div class="v tabnum" style="color:${net>=0?'var(--green)':'var(--red)'}">${money(net)}</div></div>
   </div>`);
