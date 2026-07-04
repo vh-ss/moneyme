@@ -360,7 +360,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '7defbc4934';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'dfdb649028';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3132,13 +3132,23 @@ views.analytics = (app) => {
   const pr = analyticsPrevRange(anFilter);
   let pInc=0, pExp=0;
   if (pr) state.transactions.forEach(t => { if(!inRange(t,pr.from,pr.to))return; if(t.kind==='INCOME')pInc+=txUAH(t); else if(t.kind==='EXPENSE')pExp+=txUAH(t); });
-  const dInc = pctDelta(inc,pInc), dExp = pctDelta(exp,pExp);
   const prTip = pr ? `Попередній період: ${fmtDate(pr.from)} – ${fmtDate(pr.to)}` : '';
-  const deltaTag = (d, goodIfNeg, prevVal) => d==null ? '' : `<div class="k" title="${esc(prTip + (prevVal!=null ? ' · ' + money(round2(prevVal)) : ''))}" style="font-size:11px;color:${(goodIfNeg? d<=0 : d>=0)?'var(--green)':'var(--red)'};cursor:help">${d>0?'+':''}${d}% vs попередній</div>`;
+  // Дельта vs попередній період. Якщо попередній період БЕЗ даних (0) — НЕ ховаємо, а показуємо
+  // «— vs попередній» з підказкою (раніше зникало, бо pctDelta повертав null при нульовій базі).
+  const deltaTag = (cur, prev, goodIfNeg) => {
+    if (!pr) return '';   // «Усе» — порівнювати нема з чим
+    if (prev > 0) {
+      const d = Math.round((cur - prev) / prev * 100);
+      const good = goodIfNeg ? d <= 0 : d >= 0;
+      return `<div class="k" title="${esc(prTip + ' · ' + money(round2(prev)))}" style="font-size:11px;color:${good?'var(--green)':'var(--red)'};cursor:help">${d>0?'+':''}${d}% vs попередній</div>`;
+    }
+    if (cur > 0) return `<div class="k" title="${esc(prTip + ' · 0 ₴ — немає даних для порівняння')}" style="font-size:11px;color:var(--muted);cursor:help">— vs попередній</div>`;
+    return '';   // і поточний, і попередній порожні
+  };
 
   const sum = el(`<div class="sumcards" style="margin-top:14px">
-    <div class="card sumcard"><div class="k">Надходження</div><div class="v tabnum" style="color:var(--green)">${money(inc)}</div>${deltaTag(dInc,false,pInc)}</div>
-    <div class="card sumcard"><div class="k">Витрати</div><div class="v tabnum" style="color:var(--red)">${money(exp)}</div>${deltaTag(dExp,true,pExp)}</div>
+    <div class="card sumcard"><div class="k">Надходження</div><div class="v tabnum" style="color:var(--green)">${money(inc)}</div>${deltaTag(inc,pInc,false)}</div>
+    <div class="card sumcard"><div class="k">Витрати</div><div class="v tabnum" style="color:var(--red)">${money(exp)}</div>${deltaTag(exp,pExp,true)}</div>
     <div class="card sumcard"><div class="k">Комісії</div><div class="v tabnum" style="color:var(--amber)">${money(fees)}</div></div>
     <div class="card sumcard"><div class="k">Чистий потік</div><div class="v tabnum" style="color:${net>=0?'var(--green)':'var(--red)'}">${money(net)}</div></div>
   </div>`);
