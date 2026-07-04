@@ -1317,11 +1317,20 @@ function budgetsCard(opts){
     const over = spent > eb;
     const color = over ? 'var(--red)' : (spent >= eb*0.8 ? 'var(--amber)' : 'var(--green)');
     const tip = `${c.name} / ${label}: ${money(spent)} з ${money(eb)} (${real}%)` + (budgetCur(c)!=='UAH'?` · бюджет ${money(c.budget, budgetCur(c))}`:'') + (roll>0?` · перенесено ${money(roll)}`:'');
-    grid.appendChild(el(`<div title="${esc(tip)}" style="display:flex;align-items:center;gap:8px;font-size:13px">
-      <span class="ln" style="flex:0 0 46%">${c.icon?c.icon+' ':''}${esc(c.name)}${roll>0?' <span class="muted" style="font-size:10px">↻</span>':''}</span>
-      <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${color}"></i></div>
-      <span class="tabnum" style="flex:0 0 auto;width:34px;text-align:right;color:${over?'var(--red)':'var(--muted)'}">${real}%</span>
-    </div>`));
+    grid.appendChild(el(range
+      // Аналітика: показуємо реальні суми (витрачено / ліміт за період) + %, щоб не було «невідомо що»
+      ? `<div title="${esc(tip)}" style="font-size:13px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+            <span class="ln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.icon?c.icon+' ':''}${esc(c.name)}</span>
+            <span class="tabnum" style="flex:0 0 auto;color:${over?'var(--red)':'var(--muted)'}"><b style="color:var(--ink)">${money(round2(spent))}</b> / ${money(round2(eb))} · ${real}%</span>
+          </div>
+          <div class="pbar" style="margin-top:4px"><i style="width:${pct}%;background:${color}"></i></div>
+        </div>`
+      : `<div title="${esc(tip)}" style="display:flex;align-items:center;gap:8px;font-size:13px">
+          <span class="ln" style="flex:0 0 46%">${c.icon?c.icon+' ':''}${esc(c.name)}${roll>0?' <span class="muted" style="font-size:10px">↻</span>':''}</span>
+          <div class="pbar" style="flex:1"><i style="width:${pct}%;background:${color}"></i></div>
+          <span class="tabnum" style="flex:0 0 auto;width:34px;text-align:right;color:${over?'var(--red)':'var(--muted)'}">${real}%</span>
+        </div>`));
   });
   // Підсумок: разом місячних і разом річних бюджетів (у гривневому еквіваленті), окремими рядками.
   const periodSum = (yearly) => cats.filter(c => yearly ? c.budget_period === 'yearly' : c.budget_period !== 'yearly')
