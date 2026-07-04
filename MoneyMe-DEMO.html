@@ -2943,9 +2943,9 @@ function analyticsPrevRange(f){
   const lastDay = (y,m) => new Date(y, m, 0).getDate();       // m 1-based → останній день місяця
   const clampDay = (y,m,d) => Math.min(d, lastDay(y,m));
   const prevMonthOf = (y,m) => m === 1 ? [y-1,12] : [y,m-1];
-  if (f.preset === 'month') {          // місяць-до-сьогодні → минулий місяць, 1..той самий день
+  if (f.preset === 'month') {          // цей місяць (до сьогодні) → ВЕСЬ минулий місяць (цей vs минулий)
     const [py,pm] = prevMonthOf(fy,fm);
-    return { from: ymd(py,pm,1), to: ymd(py,pm,clampDay(py,pm,td)) };
+    return { from: ymd(py,pm,1), to: ymd(py,pm,lastDay(py,pm)) };
   }
   if (f.preset === 'lastmonth') {      // повний минулий місяць → повний місяць перед ним
     const [py,pm] = prevMonthOf(fy,fm);
