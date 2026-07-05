@@ -31,6 +31,8 @@ jobs:
           cp index.html sw.js manifest.webmanifest .nojekyll _site/
           cp MoneyMe.html MoneyMe-DEMO.html _site/
           cp -r icons _site/
+          cp "Інструкція-користувача.html" _site/
+          cp -r help-img _site/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
