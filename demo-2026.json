@@ -1,13 +1,13 @@
 {
   "app": "MoneyMe",
   "version": 2,
-  "exported_at": "2026-06-18T10:00:00.000Z",
+  "exported_at": "2026-07-05T10:00:00.000Z",
   "data": {
     "version": 2,
     "seq": {
       "acc": 6,
       "cat": 13,
-      "tx": 246,
+      "tx": 266,
       "bank": 3,
       "loan": 2,
       "rec": 5,
@@ -2787,143 +2787,365 @@
       {
         "id": 229,
         "ord": 229,
-        "note": "Суші",
+        "note": "Ринок",
         "tags": [],
         "kind": "EXPENSE",
-        "date": "2026-06-05",
-        "account_id": 2,
-        "category_id": 2,
-        "amount": 168.95
+        "date": "2026-06-19",
+        "account_id": 3,
+        "category_id": 1,
+        "amount": 914.11
       },
       {
         "id": 230,
         "ord": 230,
-        "note": "Піца",
+        "note": "Метро",
         "tags": [],
         "kind": "EXPENSE",
-        "date": "2026-06-08",
+        "date": "2026-06-21",
         "account_id": 3,
-        "category_id": 2,
-        "amount": 618.01
+        "category_id": 1,
+        "amount": 1092.84
       },
       {
         "id": 231,
         "ord": 231,
-        "note": "Суші",
+        "note": "Novus",
         "tags": [],
         "kind": "EXPENSE",
-        "date": "2026-06-13",
-        "account_id": 2,
-        "category_id": 2,
-        "amount": 400.67
+        "date": "2026-06-25",
+        "account_id": 3,
+        "category_id": 1,
+        "amount": 1415.93
       },
       {
         "id": 232,
         "ord": 232,
-        "note": "Бізнес-ланч",
+        "note": "Варус",
         "tags": [],
         "kind": "EXPENSE",
-        "date": "2026-06-15",
-        "account_id": 3,
-        "category_id": 2,
-        "amount": 340.75
+        "date": "2026-06-27",
+        "account_id": 1,
+        "category_id": 1,
+        "amount": 1005.44
       },
       {
         "id": 233,
         "ord": 233,
-        "note": "Бар з друзями",
+        "note": "Novus",
         "tags": [],
         "kind": "EXPENSE",
-        "date": "2026-06-18",
+        "date": "2026-06-29",
         "account_id": 1,
-        "category_id": 2,
-        "amount": 277.47
+        "category_id": 1,
+        "amount": 1057.88
       },
       {
         "id": 234,
         "ord": 234,
-        "note": "Паливо",
+        "note": "Бізнес-ланч",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-02",
+        "account_id": 1,
+        "category_id": 2,
+        "amount": 148.67
+      },
+      {
+        "id": 235,
+        "ord": 235,
+        "note": "Бізнес-ланч",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-05",
+        "account_id": 3,
+        "category_id": 2,
+        "amount": 138.91
+      },
+      {
+        "id": 236,
+        "ord": 236,
+        "note": "Бізнес-ланч",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-10",
+        "account_id": 3,
+        "category_id": 2,
+        "amount": 575.27
+      },
+      {
+        "id": 237,
+        "ord": 237,
+        "note": "Кава з собою",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-15",
+        "account_id": 2,
+        "category_id": 2,
+        "amount": 229.91
+      },
+      {
+        "id": 238,
+        "ord": 238,
+        "note": "Кава з собою",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-18",
+        "account_id": 2,
+        "category_id": 2,
+        "amount": 161.37
+      },
+      {
+        "id": 239,
+        "ord": 239,
+        "note": "Суші",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-20",
+        "account_id": 3,
+        "category_id": 2,
+        "amount": 460.34
+      },
+      {
+        "id": 240,
+        "ord": 240,
+        "note": "Суші",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-22",
+        "account_id": 2,
+        "category_id": 2,
+        "amount": 205.67
+      },
+      {
+        "id": 241,
+        "ord": 241,
+        "note": "Кава з собою",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-24",
+        "account_id": 3,
+        "category_id": 2,
+        "amount": 611.23
+      },
+      {
+        "id": 242,
+        "ord": 242,
+        "note": "Кава з собою",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-30",
+        "account_id": 3,
+        "category_id": 2,
+        "amount": 321.7
+      },
+      {
+        "id": 243,
+        "ord": 243,
+        "note": "Bolt",
         "tags": [],
         "kind": "EXPENSE",
         "date": "2026-06-04",
         "account_id": 2,
         "category_id": 3,
-        "amount": 99.27
+        "amount": 396.48
       },
       {
-        "id": 235,
-        "ord": 235,
-        "note": "Bolt",
+        "id": 244,
+        "ord": 244,
+        "note": "Метро/проїзд",
         "tags": [],
         "kind": "EXPENSE",
-        "date": "2026-06-07",
-        "account_id": 2,
+        "date": "2026-06-08",
+        "account_id": 1,
         "category_id": 3,
-        "amount": 265.42
+        "amount": 291.24
       },
       {
-        "id": 236,
-        "ord": 236,
-        "note": "Bolt",
+        "id": 245,
+        "ord": 245,
+        "note": "Таксі",
         "tags": [],
         "kind": "EXPENSE",
         "date": "2026-06-12",
         "account_id": 2,
         "category_id": 3,
-        "amount": 179.03
+        "amount": 197.59
       },
       {
-        "id": 237,
-        "ord": 237,
-        "note": "Паливо",
+        "id": 246,
+        "ord": 246,
+        "note": "Метро/проїзд",
         "tags": [],
         "kind": "EXPENSE",
         "date": "2026-06-17",
-        "account_id": 1,
+        "account_id": 2,
         "category_id": 3,
-        "amount": 234.62
+        "amount": 202.7
       },
       {
-        "id": 238,
-        "ord": 238,
-        "note": "Концерт",
+        "id": 247,
+        "ord": 247,
+        "note": "Паливо",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-20",
+        "account_id": 2,
+        "category_id": 3,
+        "amount": 393.89
+      },
+      {
+        "id": 248,
+        "ord": 248,
+        "note": "Bolt",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-23",
+        "account_id": 1,
+        "category_id": 3,
+        "amount": 302.19
+      },
+      {
+        "id": 249,
+        "ord": 249,
+        "note": "Метро/проїзд",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-28",
+        "account_id": 1,
+        "category_id": 3,
+        "amount": 337.09
+      },
+      {
+        "id": 250,
+        "ord": 250,
+        "note": "Книги",
         "tags": [],
         "kind": "EXPENSE",
         "date": "2026-06-06",
         "account_id": 2,
         "category_id": 6,
-        "amount": 891.14
+        "amount": 1034.63
       },
       {
-        "id": 239,
-        "ord": 239,
-        "note": "Концерт",
+        "id": 251,
+        "ord": 251,
+        "note": "Boardgames",
         "tags": [],
         "kind": "EXPENSE",
-        "date": "2026-06-13",
-        "account_id": 2,
+        "date": "2026-06-14",
+        "account_id": 3,
         "category_id": 6,
-        "amount": 234.57
+        "amount": 1129.14
       },
       {
-        "id": 240,
-        "ord": 240,
+        "id": 252,
+        "ord": 252,
+        "note": "Боулінг",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-21",
+        "account_id": 2,
+        "category_id": 6,
+        "amount": 225.36
+      },
+      {
+        "id": 253,
+        "ord": 253,
+        "note": "Boardgames",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-29",
+        "account_id": 3,
+        "category_id": 6,
+        "amount": 238.18
+      },
+      {
+        "id": 254,
+        "ord": 254,
+        "note": "Аптека",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-06-16",
+        "account_id": 3,
+        "category_id": 5,
+        "amount": 1765.34
+      },
+      {
+        "id": 255,
+        "ord": 255,
         "note": "Зняття готівки",
         "tags": [],
         "kind": "TRANSFER",
-        "date": "2026-06-11",
+        "date": "2026-06-06",
         "account_id": 2,
         "to_account_id": 1,
-        "amount": 3554.01,
-        "to_amount": 3554.01,
+        "amount": 4065.63,
+        "to_amount": 4065.63,
         "exchange_rate": 1,
         "fee_type": "NONE",
         "fee_value": 0,
         "fee_amount": 0
       },
       {
-        "id": 241,
-        "ord": 241,
+        "id": 256,
+        "ord": 256,
+        "note": "Зарплата",
+        "tags": [
+          "робота"
+        ],
+        "kind": "INCOME",
+        "date": "2026-07-05",
+        "account_id": 2,
+        "category_id": 9,
+        "amount": 39093.45
+      },
+      {
+        "id": 257,
+        "ord": 257,
+        "note": "Оренда квартири",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-07-02",
+        "account_id": 2,
+        "category_id": 4,
+        "amount": 13000
+      },
+      {
+        "id": 258,
+        "ord": 258,
+        "note": "Сільпо",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-07-03",
+        "account_id": 2,
+        "category_id": 1,
+        "amount": 783.85
+      },
+      {
+        "id": 259,
+        "ord": 259,
+        "note": "Сніданок",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-07-02",
+        "account_id": 3,
+        "category_id": 2,
+        "amount": 549.45
+      },
+      {
+        "id": 260,
+        "ord": 260,
+        "note": "Уклон",
+        "tags": [],
+        "kind": "EXPENSE",
+        "date": "2026-07-04",
+        "account_id": 1,
+        "category_id": 3,
+        "amount": 390.06
+      },
+      {
+        "id": 261,
+        "ord": 261,
         "note": "Підписка (US)",
         "tags": [
           "робота"
@@ -2932,33 +3154,35 @@
         "date": "2026-03-14",
         "account_id": 4,
         "category_id": 8,
-        "amount": 28.39
+        "amount": 45.45
       },
       {
-        "id": 242,
-        "ord": 242,
+        "id": 262,
+        "ord": 262,
         "note": "Apple Store",
         "tags": [],
         "kind": "EXPENSE",
         "date": "2026-05-09",
         "account_id": 5,
         "category_id": 6,
-        "amount": 20.63
+        "amount": 40.79
       },
       {
-        "id": 243,
-        "ord": 243,
+        "id": 263,
+        "ord": 263,
         "note": "Хостинг",
         "tags": [],
         "kind": "EXPENSE",
         "date": "2026-06-02",
         "account_id": 4,
         "category_id": 8,
-        "amount": 23.4
+        "amount": 28.73
       },
       {
-        "id": 244,
-        "ord": 244,
+        "id": 264,
+        "ord": 264,
+        "note": null,
+        "tags": [],
         "kind": "CRYPTO",
         "side": "BUY",
         "date": "2026-05-15",
@@ -2971,12 +3195,13 @@
         "exchange": "Wallet",
         "usd": 170,
         "base_cost_delta": 170,
-        "quote_cost_delta": 170,
-        "note": null
+        "quote_cost_delta": 170
       },
       {
-        "id": 245,
-        "ord": 245,
+        "id": 265,
+        "ord": 265,
+        "note": null,
+        "tags": [],
         "kind": "CRYPTO",
         "side": "SELL",
         "date": "2026-06-08",
@@ -2989,8 +3214,7 @@
         "exchange": "Binance",
         "usd": 950,
         "base_cost_delta": 560,
-        "quote_cost_delta": 950,
-        "note": null
+        "quote_cost_delta": 950
       }
     ],
     "banks": [
@@ -3040,7 +3264,7 @@
         "kind": "EXPENSE",
         "freq": "monthly",
         "amount": 259,
-        "next_date": "2026-06-18",
+        "next_date": "2026-07-04",
         "account_id": 2,
         "category_id": 6,
         "active": true
@@ -3062,7 +3286,7 @@
         "kind": "EXPENSE",
         "freq": "monthly",
         "amount": 13000,
-        "next_date": "2026-07-02",
+        "next_date": "2026-08-02",
         "account_id": 2,
         "category_id": 4,
         "active": true
@@ -3221,6 +3445,18 @@
       {
         "date": "2026-06-23",
         "usd": 12640
+      },
+      {
+        "date": "2026-06-27",
+        "usd": 12900
+      },
+      {
+        "date": "2026-07-01",
+        "usd": 13180
+      },
+      {
+        "date": "2026-07-04",
+        "usd": 13050
       }
     ]
   }

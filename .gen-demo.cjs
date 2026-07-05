@@ -1,8 +1,8 @@
-// Генератор демо-даних MoneyMe: операції з 1 січня по 18 червня 2026.
+// Генератор демо-даних MoneyMe: операції з 1 січня по 5 липня 2026 (включно з поточним місяцем).
 // Формат сумісний із бекапом застосунку: { app, version, exported_at, data }.
 const fs = require('fs');
 
-const TODAY = '2026-06-18';
+const TODAY = '2026-07-05';
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
 // — детермінований ГПВЧ (щоб результат був відтворюваний) —
@@ -59,7 +59,7 @@ const transNotes = ['Таксі','Паливо','Метро/проїзд','Bolt'
 const funNotes = ['Кіно','Концерт','Boardgames','Steam','Книги','Боулінг'];
 const healthNotes = ['Аптека','Стоматолог','Аналізи','Вітаміни','Лікар'];
 
-for (let m = 1; m <= 6; m++) {
+for (let m = 1; m <= 7; m++) {
   const y = 2026, dim = daysInMonth(y, m);
 
   // Зарплата 5-го числа → Monobank
@@ -136,6 +136,25 @@ add({ kind:'EXPENSE', date:'2026-06-02', account_id:4, category_id:8, amount:amt
 tx.filter(t => t.date >= '2026-05-01' && t.date <= '2026-05-12' && [2,3].includes(t.category_id))
   .slice(0, 4).forEach(t => { t.tags = [...new Set([...(t.tags||[]), 'відпустка'])]; });
 
+// ——— Крипто-портфель ———
+const crypto = [
+  { id:1, symbol:'BTC',  amount:0.05, cg:'bitcoin',  price:null, cost:2800, exchanges:[{name:'Binance',amount:0.03},{name:'WhiteBit',amount:0.02}], note:'', color:'#f59e0b' },
+  { id:2, symbol:'ETH',  amount:1.2,  cg:'ethereum', price:null, cost:3200, exchanges:[{name:'Binance',amount:0.8},{name:'Wallet',amount:0.4}] },
+  { id:3, symbol:'SOL',  amount:10,   cg:'solana',   price:null, cost:1400, exchanges:[{name:'Binance',amount:10}] },
+  { id:4, symbol:'USDT', amount:1500, cg:'tether',   price:1,    cost:1500, exchanges:[{name:'WhiteBit',amount:900},{name:'Wallet',amount:400},{name:'Binance',amount:200}] },
+  { id:5, symbol:'GRAM', amount:200,  cg:null,       price:1.74, cost:300,  exchanges:[{name:'Wallet',amount:200}], note:'TON gaming' },
+];
+// Історія вартості портфеля (щоденні знімки — для графіка)
+const cryptoHistory = [
+  {date:'2026-05-18',usd:9650},{date:'2026-05-22',usd:10120},{date:'2026-05-26',usd:9980},
+  {date:'2026-05-30',usd:10840},{date:'2026-06-03',usd:11260},{date:'2026-06-07',usd:11050},
+  {date:'2026-06-11',usd:11920},{date:'2026-06-15',usd:12380},{date:'2026-06-19',usd:12110},
+  {date:'2026-06-23',usd:12640},{date:'2026-06-27',usd:12900},{date:'2026-07-01',usd:13180},{date:'2026-07-04',usd:13050},
+];
+// Дві крипто-операції (обмін на біржі): купівля GRAM за USDT і продаж частини BTC
+add({ kind:'CRYPTO', side:'BUY',  date:'2026-05-15', base_id:5, base_sym:'GRAM', base_qty:100,  quote_id:4, quote_sym:'USDT', quote_qty:170, exchange:'Wallet',  usd:170, base_cost_delta:170, quote_cost_delta:170 });
+add({ kind:'CRYPTO', side:'SELL', date:'2026-06-08', base_id:1, base_sym:'BTC',  base_qty:0.01, quote_id:4, quote_sym:'USDT', quote_qty:950, exchange:'Binance', usd:950, base_cost_delta:560, quote_cost_delta:950 });
+
 // ——— Цілі ———
 const goals = [
   { id:1, name:'Відпустка', target:60000, saved:24500, currency:'UAH', deadline:'2026-08-15', color:'#0ea5e9', icon:'✈️' },
@@ -145,9 +164,9 @@ const goals = [
 // ——— Регулярні платежі (шаблони; next_date — наступне списання) ———
 const recurring = [
   { id:1, name:'Інтернет', kind:'EXPENSE', freq:'monthly', amount:300, next_date:'2026-07-07', account_id:2, category_id:4, active:true },
-  { id:2, name:'Netflix',  kind:'EXPENSE', freq:'monthly', amount:259, next_date:'2026-06-18', account_id:2, category_id:6, active:true },
+  { id:2, name:'Netflix',  kind:'EXPENSE', freq:'monthly', amount:259, next_date:'2026-07-04', account_id:2, category_id:6, active:true },
   { id:3, name:'Spotify',  kind:'EXPENSE', freq:'monthly', amount:149, next_date:'2026-07-18', account_id:3, category_id:6, active:true },
-  { id:4, name:'Оренда',   kind:'EXPENSE', freq:'monthly', amount:13000, next_date:'2026-07-02', account_id:2, category_id:4, active:true },
+  { id:4, name:'Оренда',   kind:'EXPENSE', freq:'monthly', amount:13000, next_date:'2026-08-02', account_id:2, category_id:4, active:true },
 ];
 
 // ——— Кредит (розстрочка) ———
@@ -157,10 +176,10 @@ const loans = [
 
 const data = {
   version: 2,
-  seq: { acc:6, cat:13, tx:tid, bank:3, loan:2, rec:5, goal:3 },
-  accounts, categories, transactions: tx, banks, loans, recurring, goals,
+  seq: { acc:6, cat:13, tx:tid, bank:3, loan:2, rec:5, goal:3, cry:6 },
+  accounts, categories, transactions: tx, banks, loans, recurring, goals, crypto, cryptoHistory,
 };
-const payload = { app:'MoneyMe', version:2, exported_at:'2026-06-18T10:00:00.000Z', data };
+const payload = { app:'MoneyMe', version:2, exported_at:'2026-07-05T10:00:00.000Z', data };
 
 fs.writeFileSync(__dirname + '/demo-2026.json', JSON.stringify(payload, null, 2), 'utf8');
 
