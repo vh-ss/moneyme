@@ -172,6 +172,8 @@
   .crsym { width: 24px; height: 24px; border-radius: 50%; background: var(--chip); color: var(--muted); display: inline-grid; place-items: center; font-size: 9px; font-weight: 700; flex: 0 0 auto; }
   .notice { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 12px; padding: 10px 12px; font-size: 13px; }
   html[data-theme="dark"] .notice { background: #2a230d; border-color: #5b4a13; color: #fcd34d; }
+  .notice.warn { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
+  html[data-theme="dark"] .notice.warn { background: #3a1414; border-color: #7f1d1d; color: #fca5a5; }
   .ctxmenu { position: fixed; z-index: 60; min-width: 190px; background: var(--card); border: 1px solid var(--line);
     border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.28); padding: 6px; }
   .ctxmenu .ci { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 9px;
@@ -2748,6 +2750,24 @@ views.dashboard = (app) => {
     done.onclick = () => { loanDue.forEach(l => { l.due_date = addMonthsISO(l.due_date, 1); }); save(); render(); };
     const b = el(`<button class="btn sm">До кредитів</button>`); b.onclick = () => navigate('credits');
     acts.appendChild(done); acts.appendChild(b); app.appendChild(n);
+
+    // перевірка: чи вистачає коштів на базовій картці банку (основному рахунку) для цих платежів
+    const needByAcc = {}, noCard = [];
+    loanDue.forEach(l => {
+      const bank = bankById(l.bank_id); if (!bank) return;
+      if (bank.primary_account_id == null) { noCard.push(bank.name || 'банк'); return; }
+      const r = needByAcc[bank.primary_account_id] || (needByAcc[bank.primary_account_id] = { need: 0, accId: bank.primary_account_id });
+      r.need += loanMonthly(l);
+    });
+    const warns = [];
+    Object.values(needByAcc).forEach(r => {
+      const acc = state.accounts.find(a => a.id === r.accId); if (!acc) return;
+      const bal = accountBalance(r.accId), need = round2(r.need);
+      if (round2(bal) + 0.005 < need)
+        warns.push(`На «${esc(acc.name)}» бракує на платіж: потрібно ${money(need, acc.currency)}, є ${money(bal, acc.currency)} (не вистачає ${money(round2(need - bal), acc.currency)})`);
+    });
+    [...new Set(noCard)].forEach(nm => warns.push(`У банку «${esc(nm)}» не вказано основний рахунок — перевірку коштів пропущено`));
+    if (warns.length) app.appendChild(el(`<div class="notice warn" style="margin-top:6px">⚠ ${warns.join('<br>')}</div>`));
   }
 
   // рахунки з drag-and-drop
