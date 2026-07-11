@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '96241be43e';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '5953e178fc';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -2619,6 +2619,21 @@ function pieSVG(data, size=170) {
   }
   return el(`<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`);
 }
+// Розводимо ОДНАКОВІ кольори зрізів (напр. кілька категорій з дефолтним синім) на різні — щоб діаграма
+// читалась. Перше входження кольору лишається; повтори отримують наступний вільний колір із палітри.
+const CHART_PALETTE = ['#3b82f6','#10b981','#ef4444','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#0ea5e9','#84cc16','#a855f7','#e11d48','#eab308','#06b6d4','#d946ef','#22c55e','#6366f1','#f43f5e','#0891b2','#65a30d'];
+function distinctSliceColors(data){
+  const used = new Set(); let pi = 0;
+  data.forEach(d => {
+    const col = (d.color || '').toLowerCase();
+    if (!col || used.has(col)) {
+      while (pi < CHART_PALETTE.length && used.has(CHART_PALETTE[pi].toLowerCase())) pi++;
+      if (pi < CHART_PALETTE.length) d.color = CHART_PALETTE[pi++];
+    }
+    used.add((d.color || '').toLowerCase());
+  });
+  return data;
+}
 
 function barsSVG(months) {
   // Координати по горизонталі — в одиницях viewBox (0..100), щоб усе вирівнювалось незалежно від ширини.
@@ -3252,7 +3267,7 @@ views.analytics = (app) => {
         if (!map[key]) map[key] = { name: c?c.name:'Без категорії', color: c?c.color:'#94a3b8', icon: c?c.icon:'', total:0 };
         map[key].total += partUAH(t, p.amount);
       }); });
-    return Object.values(map).sort((a,b)=>b.total-a.total);
+    return distinctSliceColors(Object.values(map).sort((a,b)=>b.total-a.total));
   }
   const grid = el(`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:14px"></div>`);
   [['Витрати за статтями', catData('EXPENSE')], ['Надходження за статтями', catData('INCOME')]].forEach(([title,data]) => {
