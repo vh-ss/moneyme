@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '8c0b5ed2f7';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'b5259ec40b';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -2676,6 +2676,8 @@ views.dashboard = (app) => {
   let uah = 0, missing = false;
   selected.forEach(c => { const v = toUAH(byCur[c], c); if (v == null) missing = true; else uah += v; });
   if (showCrypto) { const cu = cryptoTotalUAH(); if (cu == null) missing = true; else uah += cu; }
+  const usdRate = rateFor('USD');
+  const uahInUsd = usdRate ? round2(uah / usdRate) : null;   // доларовий еквівалент загального балансу
   const ratesNote = ratesCache.date ? `курс НБУ на ${fmtDate(ratesCache.date)}`
     : (ratesCache.error ? 'курси недоступні' : 'завантаження курсів…');
   // курси валют, які є на рахунках (крім гривні)
@@ -2688,7 +2690,7 @@ views.dashboard = (app) => {
     </div>
     <div class="row" style="flex-wrap:wrap;gap:6px 28px;margin-top:8px" id="bc"></div>
     <div style="margin-top:10px">
-      <span class="muted">Разом ≈ </span><b class="tabnum" style="font-size:20px">${money(round2(uah),'UAH')}</b>
+      <span class="muted">Разом ≈ </span><b class="tabnum" style="font-size:20px">${money(round2(uah),'UAH')}</b>${uahInUsd!=null?`<span class="muted tabnum" style="font-size:15px"> (≈ ${money(uahInUsd,'USD')})</span>`:''}
       <span class="muted small"> · ${ratesNote}${missing?' · деякі валюти без курсу':''}</span>
       <button class="btn ghost sm" id="rrefresh" title="Оновити курси">${ic('refresh')}</button>
     </div>
