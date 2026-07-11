@@ -1584,7 +1584,8 @@ function openSelectMenu(anchor, sel){
   const selRow = menu.querySelector('.ci.sel'); if (selRow) selRow.scrollIntoView({ block: 'nearest' });
   function close(){ menu.remove(); document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); }
   function onDown(e){ if (!menu.contains(e.target)) close(); }
-  function onKey(e){ if (e.key === 'Escape') close(); }
+  // Escape закриває ЛИШЕ це меню, не пропускаючи подію до модалки (capture-фаза → stopPropagation спрацьовує раніше за обробник форми)
+  function onKey(e){ if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); } }
   setTimeout(() => { document.addEventListener('mousedown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
 }
 function enhanceSelect(sel){
@@ -1705,7 +1706,8 @@ function openContextMenu(x, y, items, title) {
   menu.style.top = Math.max(8, py) + 'px';
   function close(){ menu.remove(); document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); }
   function onDown(e){ if (!menu.contains(e.target)) close(); }
-  function onKey(e){ if (e.key === 'Escape') close(); }
+  // Escape закриває ЛИШЕ це меню, не пропускаючи подію до модалки (capture-фаза → stopPropagation спрацьовує раніше за обробник форми)
+  function onKey(e){ if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); } }
   setTimeout(() => { document.addEventListener('mousedown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
 }
 

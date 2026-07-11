@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '5953e178fc';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'bce51a3c75';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1563,7 +1563,8 @@ function openSelectMenu(anchor, sel){
   const selRow = menu.querySelector('.ci.sel'); if (selRow) selRow.scrollIntoView({ block: 'nearest' });
   function close(){ menu.remove(); document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); }
   function onDown(e){ if (!menu.contains(e.target)) close(); }
-  function onKey(e){ if (e.key === 'Escape') close(); }
+  // Escape закриває ЛИШЕ це меню, не пропускаючи подію до модалки (capture-фаза → stopPropagation спрацьовує раніше за обробник форми)
+  function onKey(e){ if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); } }
   setTimeout(() => { document.addEventListener('mousedown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
 }
 function enhanceSelect(sel){
@@ -1684,7 +1685,8 @@ function openContextMenu(x, y, items, title) {
   menu.style.top = Math.max(8, py) + 'px';
   function close(){ menu.remove(); document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); }
   function onDown(e){ if (!menu.contains(e.target)) close(); }
-  function onKey(e){ if (e.key === 'Escape') close(); }
+  // Escape закриває ЛИШЕ це меню, не пропускаючи подію до модалки (capture-фаза → stopPropagation спрацьовує раніше за обробник форми)
+  function onKey(e){ if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); } }
   setTimeout(() => { document.addEventListener('mousedown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
 }
 
