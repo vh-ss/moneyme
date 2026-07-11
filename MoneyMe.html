@@ -1501,8 +1501,10 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
   head.querySelector('.x').onclick = close;
   function onKey(e){ if (e.key === 'Escape') close(); }
   document.addEventListener('keydown', onKey);
-  const firstFocus = modal.querySelector('input, .selbtn') || head.querySelector('.x');
-  if (firstFocus) firstFocus.focus();
+  // НЕ автофокусимо поле вводу — щоб на телефоні одразу не вискакувала клавіатура. Фокусуємо саму картку
+  // модалки (для Escape й доступності); користувач тапне потрібне поле сам.
+  modal.setAttribute('tabindex', '-1');
+  try { modal.focus({ preventScroll: true }); } catch (e) { modal.focus(); }
   return close;
 }
 

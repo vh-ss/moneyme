@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'bce51a3c75';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'acf69667ab';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1501,8 +1501,10 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
   head.querySelector('.x').onclick = close;
   function onKey(e){ if (e.key === 'Escape') close(); }
   document.addEventListener('keydown', onKey);
-  const firstFocus = modal.querySelector('input, .selbtn') || head.querySelector('.x');
-  if (firstFocus) firstFocus.focus();
+  // НЕ автофокусимо поле вводу — щоб на телефоні одразу не вискакувала клавіатура. Фокусуємо саму картку
+  // модалки (для Escape й доступності); користувач тапне потрібне поле сам.
+  modal.setAttribute('tabindex', '-1');
+  try { modal.focus({ preventScroll: true }); } catch (e) { modal.focus(); }
   return close;
 }
 
