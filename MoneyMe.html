@@ -3277,7 +3277,13 @@ views.analytics = (app) => {
         <div><span class="muted">Витрати/міс: </span><b style="color:var(--red)">${curMapStr(recurringMonthlyByCur('EXPENSE'))}</b></div>
         ${hasInc?`<div><span class="muted">Надходження/міс: </span><b style="color:var(--green)">${curMapStr(incM)}</b></div>`:''}
       </div>
-      <div style="margin-top:8px">${activeRec.map(r => { const cur = accountCur(r.account_id); return `<div class="row" style="justify-content:space-between;gap:10px;font-size:13px;margin-top:5px"><span class="ln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="color:${r.kind==='INCOME'?'var(--green)':'var(--red)'}">${r.kind==='INCOME'?'+':'−'}</b> ${esc(r.name||'Платіж')} <span class="muted" style="font-size:11px">${FREQ_LABEL[r.freq]||''}</span></span><span class="muted tabnum" style="flex:0 0 auto">${money(r.amount,cur)} · ${money(recurMonthlyAmt(r),cur)}/міс</span></div>`; }).join('')}</div>
+      <div style="margin-top:8px">${activeRec.map(r => {
+        // суму показуємо у ВАЛЮТІ ПЛАТЕЖУ (напр. 120,00 $), а місячний еквівалент — у валюті рахунку
+        // (конвертований), щоб рядки збігалися з підсумком «Витрати/міс»
+        const rcur = recurCur(r), accC = accountCur(r.account_id);
+        const perM = recurToAccCur(recurMonthlyAmt(r), r);
+        const perMStr = perM != null ? money(perM, accC) : money(recurMonthlyAmt(r), rcur);
+        return `<div class="row" style="justify-content:space-between;gap:10px;font-size:13px;margin-top:5px"><span class="ln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="color:${r.kind==='INCOME'?'var(--green)':'var(--red)'}">${r.kind==='INCOME'?'+':'−'}</b> ${esc(r.name||'Платіж')} <span class="muted" style="font-size:11px">${FREQ_LABEL[r.freq]||''}</span></span><span class="muted tabnum" style="flex:0 0 auto">${money(r.amount,rcur)} · ${perMStr}/міс</span></div>`; }).join('')}</div>
     </section>`);
     $('#an-rec', rc).onclick = () => navigate('recurring');
     app.appendChild(rc);

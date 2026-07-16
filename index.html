@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'a83022c9c3';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '304ecedd8d';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3277,7 +3277,13 @@ views.analytics = (app) => {
         <div><span class="muted">Витрати/міс: </span><b style="color:var(--red)">${curMapStr(recurringMonthlyByCur('EXPENSE'))}</b></div>
         ${hasInc?`<div><span class="muted">Надходження/міс: </span><b style="color:var(--green)">${curMapStr(incM)}</b></div>`:''}
       </div>
-      <div style="margin-top:8px">${activeRec.map(r => { const cur = accountCur(r.account_id); return `<div class="row" style="justify-content:space-between;gap:10px;font-size:13px;margin-top:5px"><span class="ln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="color:${r.kind==='INCOME'?'var(--green)':'var(--red)'}">${r.kind==='INCOME'?'+':'−'}</b> ${esc(r.name||'Платіж')} <span class="muted" style="font-size:11px">${FREQ_LABEL[r.freq]||''}</span></span><span class="muted tabnum" style="flex:0 0 auto">${money(r.amount,cur)} · ${money(recurMonthlyAmt(r),cur)}/міс</span></div>`; }).join('')}</div>
+      <div style="margin-top:8px">${activeRec.map(r => {
+        // суму показуємо у ВАЛЮТІ ПЛАТЕЖУ (напр. 120,00 $), а місячний еквівалент — у валюті рахунку
+        // (конвертований), щоб рядки збігалися з підсумком «Витрати/міс»
+        const rcur = recurCur(r), accC = accountCur(r.account_id);
+        const perM = recurToAccCur(recurMonthlyAmt(r), r);
+        const perMStr = perM != null ? money(perM, accC) : money(recurMonthlyAmt(r), rcur);
+        return `<div class="row" style="justify-content:space-between;gap:10px;font-size:13px;margin-top:5px"><span class="ln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="color:${r.kind==='INCOME'?'var(--green)':'var(--red)'}">${r.kind==='INCOME'?'+':'−'}</b> ${esc(r.name||'Платіж')} <span class="muted" style="font-size:11px">${FREQ_LABEL[r.freq]||''}</span></span><span class="muted tabnum" style="flex:0 0 auto">${money(r.amount,rcur)} · ${perMStr}/міс</span></div>`; }).join('')}</div>
     </section>`);
     $('#an-rec', rc).onclick = () => navigate('recurring');
     app.appendChild(rc);
