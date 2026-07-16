@@ -4254,14 +4254,33 @@ function round2plusCrypto(x){ return Math.round((Number(x) || 0) * 1e8) / 1e8; }
 function dueRecurring(){ const t = todayISO(); return state.recurring.filter(r => r.active !== false && r.next_date && r.next_date <= t); }
 // Місячний еквівалент суми регулярного (тиждень → ×52/12).
 function recurMonthlyAmt(r){ const f = r.freq; const m = f === 'weekly' ? 52/12 : f === 'quarterly' ? 1/3 : f === 'yearly' ? 1/12 : 1; return round2((r.amount || 0) * m); }
+// Валюта суми регулярного (може відрізнятись від валюти рахунку, напр. підписка в $ з гривневої картки).
+function recurCur(r){ return r.currency || accountCur(r.account_id); }
+// Перерахунок суми регулярного у валюту його рахунку за ПОТОЧНИМ курсом. null — якщо курсу ще нема.
+function recurToAccCur(amount, r){
+  const accC = accountCur(r.account_id), rc = recurCur(r);
+  if (rc === accC) return round2(amount || 0);
+  const uah = toUAH(amount || 0, rc), rate = rateFor(accC);
+  return (uah == null || !rate) ? null : round2(uah / rate);
+}
 // Місячне навантаження регулярних за валютами, для типу (EXPENSE/INCOME).
-function recurringMonthlyByCur(kind){ const m = {}; state.recurring.filter(r => r.active !== false && r.kind === kind).forEach(r => { const c = accountCur(r.account_id); m[c] = (m[c] || 0) + recurMonthlyAmt(r); }); return m; }
+// Показуємо, скільки реально піде з рахунку → конвертуємо у валюту рахунку; без курсу лишаємо у валюті платежу.
+function recurringMonthlyByCur(kind){
+  const m = {};
+  state.recurring.filter(r => r.active !== false && r.kind === kind).forEach(r => {
+    const accC = accountCur(r.account_id), a = recurMonthlyAmt(r);
+    const conv = recurToAccCur(a, r);
+    if (conv != null) m[accC] = (m[accC] || 0) + conv;
+    else { const rc = recurCur(r); m[rc] = (m[rc] || 0) + a; }
+  });
+  return m;
+}
 // Агрегат по активних кредитах за валютами (fn — що сумувати: залишок/платіж).
 function loansByCur(fn){ const m = {}; state.loans.filter(loanActive).forEach(l => { const c = bankById(l.bank_id)?.currency || 'UAH'; m[c] = (m[c] || 0) + fn(l); }); return m; }
 // «{UAH: 100, USD: 5}» → «100,00 ₴ + 5,00 $» (пропускає ~нульові).
 function curMapStr(m){ const e = Object.entries(m).filter(([c, v]) => Math.abs(v) > 0.005); return e.length ? e.map(([c, v]) => money(round2(v), c)).join(' + ') : '—'; }
 // Місячні регулярні/кредитні потоки, зведені в гривню (для прогнозу балансу).
-function recurringMonthlyUAH(kind){ return round2(state.recurring.filter(r => r.active !== false && r.kind === kind).reduce((s, r) => { const a = recurMonthlyAmt(r); const u = toUAH(a, accountCur(r.account_id)); return s + (u == null ? a : u); }, 0)); }
+function recurringMonthlyUAH(kind){ return round2(state.recurring.filter(r => r.active !== false && r.kind === kind).reduce((s, r) => { const a = recurMonthlyAmt(r); const u = toUAH(a, recurCur(r)); return s + (u == null ? a : u); }, 0)); }
 function loansMonthlyUAH(){ return round2(state.loans.filter(loanActive).reduce((s, l) => { const a = loanMonthly(l); const u = toUAH(a, bankById(l.bank_id)?.currency || 'UAH'); return s + (u == null ? a : u); }, 0)); }
 // Графік амортизації від поточного залишку: помісячно платіж = тіло + відсотки.
 function loanSchedule(l){
@@ -4298,9 +4317,19 @@ function overBudgetCats(){ return state.categories.filter(c => c.kind === 'EXPEN
 function recordRecurring(r){
   // операцію датуємо днем запису (а прострочену — її запланованою датою), щоб вона була видима «зараз»
   const txDate = (r.next_date && r.next_date <= todayISO()) ? r.next_date : todayISO();
+  const accC = accountCur(r.account_id), rc = recurCur(r);
+  // валюта платежу відрізняється від валюти рахунку → конвертуємо за курсом НА МОМЕНТ списання
+  let amt = round2(r.amount || 0);
+  let note = r.note || r.name || null;
+  if (rc !== accC) {
+    const conv = recurToAccCur(r.amount, r);
+    if (conv == null) { alertModal(`Немає курсу для перерахунку ${curSym(rc)} → ${curSym(accC)}. Оновіть курси на Огляді й спробуйте ще раз.`); return; }
+    amt = conv;
+    note = `${note ? note + ' · ' : ''}${money(r.amount, rc)}`;   // лишаємо оригінал у нотатці (напр. «Claude · 120,00 $»)
+  }
   state.transactions.push({ id: nextId('tx'), ord: nextOrd(), kind: r.kind, date: txDate,
-    note: r.note || r.name || null, account_id: r.account_id, category_id: r.category_id || null,
-    amount: round2(r.amount), recurring_id: r.id });
+    note, account_id: r.account_id, category_id: r.category_id || null,
+    amount: amt, recurring_id: r.id });
   r.next_date = nextRecurDate(r.next_date || txDate, r.freq);
   save(); render();
   showToast('Операцію створено', null, null, 2500);
@@ -4331,7 +4360,12 @@ views.recurring = (app) => {
           <div style="font-weight:600">${cat?.icon?cat.icon+' ':''}${esc(r.name||'Платіж')} <span class="muted small">${r.kind==='INCOME'?'надходження':'витрата'}</span></div>
           <div class="muted small">${FREQ_LABEL[r.freq]||''} · ${acc?esc(acc.name):'—'}${cat?' · '+esc(cat.name):''} · далі ${r.next_date?fmtDate(r.next_date):'—'}${isDue?' · <b style="color:var(--amber)">термін</b>':''}</div>
         </div>
-        <div class="tabnum" style="font-weight:700;color:${r.kind==='INCOME'?'var(--green)':'var(--red)'}">${r.kind==='INCOME'?'+':'−'}${money(r.amount, acc?acc.currency_code:'UAH')}</div>
+        <div style="text-align:right;flex:0 0 auto">
+          <div class="tabnum" style="font-weight:700;color:${r.kind==='INCOME'?'var(--green)':'var(--red)'}">${r.kind==='INCOME'?'+':'−'}${money(r.amount, recurCur(r))}</div>
+          ${(() => { const accC = acc?acc.currency_code:'UAH'; if (recurCur(r) === accC) return '';
+            const conv = recurToAccCur(r.amount, r);
+            return `<div class="muted small tabnum">${conv!=null?'≈ '+money(conv, accC):'курс невідомий'}</div>`; })()}
+        </div>
       </div>
       <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"></div></div>`);
     const acts = card.lastElementChild;
@@ -4356,10 +4390,12 @@ function openRecurringForm(existing){
     </div>
     <div><label class="lab">Назва</label><input id="r-name" value="${esc(e.name||'')}" placeholder="напр. Netflix, оренда"></div>
     <div class="row">
-      <div style="flex:1"><label class="lab">Сума</label><input id="r-amt" inputmode="decimal" value="${e.amount ?? ''}"></div>
-      <div style="flex:1"><label class="lab">Наступна дата</label><input id="r-date" type="date" value="${e.next_date||todayISO()}"></div>
+      <div style="flex:2"><label class="lab">Сума</label><input id="r-amt" inputmode="decimal" value="${e.amount ?? ''}"></div>
+      <div style="flex:1"><label class="lab">Валюта</label><select id="r-cur">${CURRENCIES.map(c=>`<option value="${c}">${curSym(c)} ${c}</option>`).join('')}</select></div>
+      <div style="flex:2"><label class="lab">Наступна дата</label><input id="r-date" type="date" value="${e.next_date||todayISO()}"></div>
     </div>
     <div><label class="lab">Рахунок</label><select id="r-acc">${state.accounts.map(a=>`<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select></div>
+    <div class="muted small hidden" id="r-conv" style="margin-top:-2px"></div>
     <div><label class="lab">Категорія</label><select id="r-cat"><option value="">Без категорії</option></select></div>
     <div class="err hidden" id="r-err"></div>
   </div>`);
@@ -4367,6 +4403,23 @@ function openRecurringForm(existing){
   $$('#r-kind').value = e.kind || 'EXPENSE';
   $$('#r-freq').value = e.freq || 'monthly';
   if (e.account_id) $$('#r-acc').value = String(e.account_id);
+  // Валюта суми: за замовчуванням — валюта обраного рахунку; можна задати іншу (напр. підписка в $ з гривневої картки).
+  const accCurNow = () => accountCur(parseInt($$('#r-acc').value) || 0);
+  $$('#r-cur').value = e.currency || accCurNow();
+  let curTouched = !!(e.currency && e.currency !== accCurNow());   // якщо валюту не чіпали — вона слідує за рахунком
+  function updConv(){
+    const rc = $$('#r-cur').value, accC = accCurNow(), box = $$('#r-conv'), amt = num($$('#r-amt').value);
+    if (rc === accC || !(amt > 0)) { box.classList.add('hidden'); return; }
+    const uah = toUAH(amt, rc), rate = rateFor(accC);
+    const conv = (uah == null || !rate) ? null : round2(uah / rate);
+    box.classList.remove('hidden');
+    box.innerHTML = conv != null
+      ? `Спишеться з рахунку ≈ <b>${money(conv, accC)}</b> — точна сума порахується за курсом на день списання`
+      : `<span style="color:var(--amber)">Немає курсу ${curSym(rc)} → ${curSym(accC)} — оновіть курси на Огляді</span>`;
+  }
+  $$('#r-cur').addEventListener('change', () => { curTouched = true; updConv(); });
+  $$('#r-acc').addEventListener('change', () => { if (!curTouched) { $$('#r-cur').value = accCurNow(); $$('#r-cur')._sync && $$('#r-cur')._sync(); } updConv(); });
+  $$('#r-amt').addEventListener('input', updConv);
   function fillCats(){
     const k = $$('#r-kind').value;
     const cs = state.categories.filter(c => c.kind === k);
@@ -4374,13 +4427,13 @@ function openRecurringForm(existing){
     if (e.category_id) $$('#r-cat').value = String(e.category_id);
     $$('#r-cat')._sync && $$('#r-cat')._sync();   // ре-синк кастомної кнопки
   }
-  $$('#r-kind').addEventListener('change', fillCats); fillCats();
+  $$('#r-kind').addEventListener('change', fillCats); fillCats(); updConv();
   openModal(existing?'Редагувати регулярний':'Новий регулярний', body, { onSave: (close) => {
     const err = $$('#r-err');
     const amt = round2(num($$('#r-amt').value));
     if (amt <= 0) { err.textContent='Введіть суму'; err.classList.remove('hidden'); return; }
     const rec = { kind:$$('#r-kind').value, freq:$$('#r-freq').value, name:$$('#r-name').value.trim()||null,
-      amount: amt, next_date: $$('#r-date').value || todayISO(),
+      amount: amt, currency: $$('#r-cur').value || 'UAH', next_date: $$('#r-date').value || todayISO(),
       account_id: parseInt($$('#r-acc').value), category_id: $$('#r-cat').value ? parseInt($$('#r-cat').value) : null,
       active: existing ? e.active !== false : true };
     if (existing) Object.assign(existing, rec);
