@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '43b0db3a58';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'a83022c9c3';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -869,6 +869,7 @@ let _bankRatesFetching = false;
 async function ensureBankRatesFresh(force){
   if (!force && bankRatesCache.date === todayISO() && Object.keys(bankRatesCache.rates || {}).length) return;
   if (_bankRatesFetching) return; _bankRatesFetching = true;
+  let ok = false;
   try {
     const res = await fetch('https://api.monobank.ua/bank/currency', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);   // 429 = ліміт 1 запит/5хв — просто спробуємо пізніше
@@ -883,9 +884,13 @@ async function ensureBankRatesFresh(force){
     if (Object.keys(rates).length) {
       bankRatesCache = { date: todayISO(), rates, fetched_at: new Date().toISOString(), error: null };
       localStorage.setItem(BANK_RATES_KEY, JSON.stringify(bankRatesCache));
+      ok = true;
     }
   } catch (e) { bankRatesCache.error = e.message || 'не вдалося отримати курси банку'; }
   finally { _bankRatesFetching = false; }
+  // Перемальовуємо ЛИШЕ після успішного завантаження (як ensureRatesFresh). НЕ можна робити .then(render)
+  // на місці виклику: при вже свіжому кеші функція повертається одразу → render → view → знову виклик → цикл.
+  if (ok) render();
 }
 
 //==================== Криптовалюти (ціни з CoinGecko, раз на день) ====================
@@ -4389,8 +4394,9 @@ function recordRecurring(r){
 }
 
 views.recurring = (app) => {
-  // якщо є валютні регулярні — підтягуємо банківський курс, щоб «Внести зараз» рахувало по-справжньому
-  if (state.recurring.some(r => recurCur(r) !== accountCur(r.account_id))) ensureBankRatesFresh().then(() => { if (currentView === 'recurring') render(); });
+  // якщо є валютні регулярні — підтягуємо банківський курс, щоб «Внести зараз» рахувало по-справжньому.
+  // БЕЗ .then(render) — перемалювання робить сама ensureBankRatesFresh і лише при успішному завантаженні.
+  if (state.recurring.some(r => recurCur(r) !== accountCur(r.account_id))) ensureBankRatesFresh();
   const head = el(`<div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Регулярні</h1></div>`);
   const add = el(`<button class="btn primary">+ Додати</button>`); add.onclick = () => openRecurringForm();
   head.appendChild(add); app.appendChild(head);
