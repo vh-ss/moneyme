@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <!-- Content Security Policy: головне — connect-src обмежує, куди можуть піти дані (захист від витоку
      при можливому XSS). script/style 'unsafe-inline' потрібні для single-file застосунку. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'; img-src 'self' data: https: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://apis.google.com https://www.gstatic.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://api.coingecko.com https://bank.gov.ua; frame-src https://accounts.google.com; form-action 'self'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'; img-src 'self' data: https: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://apis.google.com https://www.gstatic.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://api.coingecko.com https://bank.gov.ua https://api.monobank.ua; frame-src https://accounts.google.com; form-action 'self'" />
 <title>MoneyMe — облік фінансів</title>
 <meta name="description" content="Персональний облік витрат і доходів. Працює офлайн, синхронізація через Google Drive." />
 <!-- PWA -->
@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '5e9b581ae8';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '43b0db3a58';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -848,6 +848,44 @@ async function ensureRatesFresh(force) {
     ratesCache.error = e.message || 'не вдалося отримати курси';
   } finally { _ratesFetching = false; }
   if (ok) render();   // нові курси впливають на будь-яку вкладку (бюджети у валюті, чисті активи) — перемальовуємо все
+}
+
+//==================== Банківські курси (Monobank, раз на день) ====================
+// НБУ ≈ середина банківського спреду, тож для ОЦІНКИ активів його досить. Але коли з картки реально
+// списують валютну підписку — банк ПРОДАЄ вам валюту за своїм (вищим) курсом. Тому тільки для конвертації
+// регулярних платежів беремо банківський курс: те, що купуєш — за rateSell, те, що віддаєш — за rateBuy.
+const BANK_RATES_KEY = 'moneyme.bankRates';
+const MONO_CUR_CODE = { 840:'USD', 978:'EUR', 985:'PLN', 826:'GBP' };   // ISO-4217 числові → наші коди
+let bankRatesCache = loadBankRates();
+function loadBankRates(){ try { const r = JSON.parse(localStorage.getItem(BANK_RATES_KEY)); if (r && r.rates) return r; } catch (e) {} return { date:'', rates:{}, error:null }; }
+// Банківський курс валюти до гривні: side='sell' (банк продає вам) | 'buy' (банк купує у вас). null — якщо немає.
+function bankRate(cur, side){
+  if (cur === 'UAH') return 1;
+  const r = bankRatesCache.rates ? bankRatesCache.rates[cur] : null;
+  const v = r ? r[side] : null;
+  return (typeof v === 'number' && v > 0) ? v : null;
+}
+let _bankRatesFetching = false;
+async function ensureBankRatesFresh(force){
+  if (!force && bankRatesCache.date === todayISO() && Object.keys(bankRatesCache.rates || {}).length) return;
+  if (_bankRatesFetching) return; _bankRatesFetching = true;
+  try {
+    const res = await fetch('https://api.monobank.ua/bank/currency', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);   // 429 = ліміт 1 запит/5хв — просто спробуємо пізніше
+    const data = await res.json();
+    const rates = {};
+    data.forEach(x => {
+      if (x.currencyCodeB !== 980) return;                 // цікавлять лише пари до гривні
+      const c = MONO_CUR_CODE[x.currencyCodeA]; if (!c) return;
+      const buy = x.rateBuy || x.rateCross, sell = x.rateSell || x.rateCross;
+      if (buy > 0 && sell > 0) rates[c] = { buy, sell };
+    });
+    if (Object.keys(rates).length) {
+      bankRatesCache = { date: todayISO(), rates, fetched_at: new Date().toISOString(), error: null };
+      localStorage.setItem(BANK_RATES_KEY, JSON.stringify(bankRatesCache));
+    }
+  } catch (e) { bankRatesCache.error = e.message || 'не вдалося отримати курси банку'; }
+  finally { _bankRatesFetching = false; }
 }
 
 //==================== Криптовалюти (ціни з CoinGecko, раз на день) ====================
@@ -4262,11 +4300,21 @@ function recurMonthlyAmt(r){ const f = r.freq; const m = f === 'weekly' ? 52/12 
 // Валюта суми регулярного (може відрізнятись від валюти рахунку, напр. підписка в $ з гривневої картки).
 function recurCur(r){ return r.currency || accountCur(r.account_id); }
 // Перерахунок суми регулярного у валюту його рахунку за ПОТОЧНИМ курсом. null — якщо курсу ще нема.
+// Беремо БАНКІВСЬКИЙ курс (реально те, що спише картка): валюту платежу банк тобі продає (sell),
+// а валюту рахунку — купує в тебе (buy). Якщо банківського курсу нема — фолбек на НБУ.
 function recurToAccCur(amount, r){
+  const accC = accountCur(r.account_id), rc = recurCur(r), a = amount || 0;
+  if (rc === accC) return round2(a);
+  const sell = bankRate(rc, 'sell') ?? rateFor(rc);
+  const buy = bankRate(accC, 'buy') ?? rateFor(accC);
+  if (sell == null || buy == null || !(buy > 0)) return null;
+  return round2(a * sell / buy);
+}
+// Чи використано курс банку (для підказки джерела в UI).
+function recurUsesBankRate(r){
   const accC = accountCur(r.account_id), rc = recurCur(r);
-  if (rc === accC) return round2(amount || 0);
-  const uah = toUAH(amount || 0, rc), rate = rateFor(accC);
-  return (uah == null || !rate) ? null : round2(uah / rate);
+  if (rc === accC) return false;
+  return bankRate(rc, 'sell') != null || bankRate(accC, 'buy') != null;
 }
 // Місячне навантаження регулярних за валютами, для типу (EXPENSE/INCOME).
 // Показуємо, скільки реально піде з рахунку → конвертуємо у валюту рахунку; без курсу лишаємо у валюті платежу.
@@ -4341,6 +4389,8 @@ function recordRecurring(r){
 }
 
 views.recurring = (app) => {
+  // якщо є валютні регулярні — підтягуємо банківський курс, щоб «Внести зараз» рахувало по-справжньому
+  if (state.recurring.some(r => recurCur(r) !== accountCur(r.account_id))) ensureBankRatesFresh().then(() => { if (currentView === 'recurring') render(); });
   const head = el(`<div class="row" style="justify-content:space-between;align-items:center"><h1 style="margin:0">Регулярні</h1></div>`);
   const add = el(`<button class="btn primary">+ Додати</button>`); add.onclick = () => openRecurringForm();
   head.appendChild(add); app.appendChild(head);
@@ -4415,11 +4465,12 @@ function openRecurringForm(existing){
   function updConv(){
     const rc = $$('#r-cur').value, accC = accCurNow(), box = $$('#r-conv'), amt = num($$('#r-amt').value);
     if (rc === accC || !(amt > 0)) { box.classList.add('hidden'); return; }
-    const uah = toUAH(amt, rc), rate = rateFor(accC);
-    const conv = (uah == null || !rate) ? null : round2(uah / rate);
+    const fake = { account_id: parseInt($$('#r-acc').value) || 0, currency: rc };   // рахуємо тим самим шляхом, що й списання
+    const conv = recurToAccCur(amt, fake);
+    const src = recurUsesBankRate(fake) ? 'за курсом банку' : 'за курсом НБУ';
     box.classList.remove('hidden');
     box.innerHTML = conv != null
-      ? `Спишеться з рахунку ≈ <b>${money(conv, accC)}</b> — точна сума порахується за курсом на день списання`
+      ? `Спишеться з рахунку ≈ <b>${money(conv, accC)}</b> — ${src}; точна сума порахується на день списання`
       : `<span style="color:var(--amber)">Немає курсу ${curSym(rc)} → ${curSym(accC)} — оновіть курси на Огляді</span>`;
   }
   $$('#r-cur').addEventListener('change', () => { curTouched = true; updConv(); });
@@ -4433,6 +4484,7 @@ function openRecurringForm(existing){
     $$('#r-cat')._sync && $$('#r-cat')._sync();   // ре-синк кастомної кнопки
   }
   $$('#r-kind').addEventListener('change', fillCats); fillCats(); updConv();
+  ensureBankRatesFresh().then(updConv);   // підтягнути банківський курс і уточнити підказку
   openModal(existing?'Редагувати регулярний':'Новий регулярний', body, { onSave: (close) => {
     const err = $$('#r-err');
     const amt = round2(num($$('#r-amt').value));
@@ -5345,6 +5397,8 @@ navigate(hashView() || 'dashboard');   // відкриваємо вкладку 
 (function(){ try { const add = new URLSearchParams(location.search).get('add'); if (add === 'expense' || add === 'income') { history.replaceState(null, '', location.pathname + location.hash); openEntryForm(add === 'income' ? 'INCOME' : 'EXPENSE'); } } catch (e) {} })();
 ensureRatesFresh();
 ensureCryptoFresh();   // ціни крипти (раз на день)
+// курси банку — лише якщо є регулярні у валюті, відмінній від валюти їхньої картки (щоб не смикати API дарма)
+if ((state.recurring || []).some(r => recurCur(r) !== accountCur(r.account_id))) ensureBankRatesFresh();
 ensureDailySnapshot();   // точка відновлення на сьогодні
 maybeAutoBackup();       // опційне автозавантаження бекапу
 migrateAttachmentsToIDB();   // старі base64-вкладення → IndexedDB-blob + id (раз)
