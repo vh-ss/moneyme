@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '4cebea86cf';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '5e9b581ae8';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1497,7 +1497,12 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
   function close(){ overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} }
     // форма закрилась — якщо синх відкладав злиття (щоб не загубити збереження форми), доллємо зміни тепер
     if (Sync.on && Sync.deferred && syncAvailable() && navigator.onLine && !($('#modal-root') && $('#modal-root').children.length)) setTimeout(() => cloudSync(false), 250); }
-  overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(); });
+  // Закриття кліком повз форму — лише ПОДВІЙНИМ кліком/тапом: одинарний випадковий тап не має губити
+  // заповнене. Закрити також можна ✕, Escape або «Скасувати».
+  overlay.addEventListener('dblclick', e => { if (e.target === overlay) close(); });
+  let _lastTap = 0;   // подвійний ТАП на тач (як у txRow — деякі мобільні браузери не шлють dblclick)
+  overlay.addEventListener('touchend', e => { if (e.target !== overlay) return; const now = Date.now();
+    if (now - _lastTap < 350) { e.preventDefault(); _lastTap = 0; close(); } else _lastTap = now; });
   head.querySelector('.x').onclick = close;
   function onKey(e){ if (e.key === 'Escape') close(); }
   document.addEventListener('keydown', onKey);

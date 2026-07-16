@@ -1497,7 +1497,12 @@ function openModal(title, bodyNode, { onSave, saveLabel='Зберегти', wide
   function close(){ overlay.remove(); document.removeEventListener('keydown', onKey); if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} }
     // форма закрилась — якщо синх відкладав злиття (щоб не загубити збереження форми), доллємо зміни тепер
     if (Sync.on && Sync.deferred && syncAvailable() && navigator.onLine && !($('#modal-root') && $('#modal-root').children.length)) setTimeout(() => cloudSync(false), 250); }
-  overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(); });
+  // Закриття кліком повз форму — лише ПОДВІЙНИМ кліком/тапом: одинарний випадковий тап не має губити
+  // заповнене. Закрити також можна ✕, Escape або «Скасувати».
+  overlay.addEventListener('dblclick', e => { if (e.target === overlay) close(); });
+  let _lastTap = 0;   // подвійний ТАП на тач (як у txRow — деякі мобільні браузери не шлють dblclick)
+  overlay.addEventListener('touchend', e => { if (e.target !== overlay) return; const now = Date.now();
+    if (now - _lastTap < 350) { e.preventDefault(); _lastTap = 0; close(); } else _lastTap = now; });
   head.querySelector('.x').onclick = close;
   function onKey(e){ if (e.key === 'Escape') close(); }
   document.addEventListener('keydown', onKey);
