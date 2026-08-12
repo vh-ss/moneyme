@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '2ca43c13b1';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '9103d8a122';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1621,6 +1621,9 @@ function enhanceSelect(sel){
   if (sel.dataset.enh || sel.multiple) return; sel.dataset.enh = '1';
   sel.style.display = 'none'; sel.setAttribute('tabindex', '-1'); sel.setAttribute('aria-hidden', 'true');
   const btn = el(`<button type="button" class="selbtn"><span class="seltxt"></span><span class="selcar">▼</span></button>`);
+  // переносимо розмірні стилі select на кнопку (щоб .selbtn не був завжди 100% і вкладався у flex-колонки, напр. рядки split)
+  if (sel.style.flex) { btn.style.flex = sel.style.flex; btn.style.minWidth = sel.style.minWidth || '0'; }
+  if (sel.style.width) { btn.style.width = sel.style.width; }
   const sync = () => { const o = sel.options[sel.selectedIndex]; btn.querySelector('.seltxt').innerHTML = o ? (o.innerHTML || esc(o.textContent)) : ''; btn.disabled = sel.disabled; btn.classList.toggle('hidden', sel.classList.contains('hidden')); };
   sel._sync = sync;
   sel.insertAdjacentElement('afterend', btn);
@@ -2063,6 +2066,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     <div id="f-split-wrap">
       <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:2px"><input type="checkbox" id="f-split-on" style="width:auto"> Розділити на кілька статей</label>
       <div class="hidden" id="f-split-box" style="margin-top:6px">
+        <div id="f-split-head" style="display:flex;gap:6px;font-size:11px;color:var(--muted);margin:0 2px 3px"></div>
         <div id="f-split-rows"></div>
         <button type="button" class="btn ghost sm" id="f-split-add" style="margin-top:6px">+ Стаття</button>
         <div class="muted small" id="f-split-sum" style="margin-top:4px"></div>
@@ -2149,15 +2153,22 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     $('#f-split-sum', body).innerHTML = `Разом: <b>${money(sum, accountCur(parseInt($('#f-acc',body).value)||0))}</b>`;
   }
   function splitAccOpts(){ const cur = accountCur(parseInt($('#f-acc', body).value) || 0); return state.accounts.filter(a => !a.archived && a.currency_code === cur); }
+  // Заголовок таблиці статей; колонку «Рахунок» показуємо лише коли є ≥2 рахунки тієї валюти
+  function renderSplitHead(){
+    const multi = splitAccOpts().length > 1;
+    $('#f-split-head', body).innerHTML = `<span style="flex:1 1 auto">Стаття</span><span style="flex:0 0 88px;text-align:right;padding-right:30px">Сума</span>${multi?'<span style="flex:0 0 96px">Рахунок</span>':''}<span style="flex:0 0 30px"></span>`;
+  }
   function addSplitRow(catId, amt, accId){
     const accs = splitAccOpts();
-    const r = el(`<div class="exrow" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
-      <select class="sp-cat" style="flex:1 1 44%;min-width:0"><option value="">Без категорії</option>${cats.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select>
-      <select class="sp-acc" style="flex:1 1 30%;min-width:0" title="Рахунок цієї статті"><option value="">↳ основний</option>${accs.map(a=>`<option value="${a.id}">${a.icon?a.icon+' ':''}${esc(a.name)}</option>`).join('')}</select>
-      <input class="sp-amt" inputmode="decimal" placeholder="сума" value="${(amt!=null&&amt!=='')?amt:''}" style="flex:0 0 84px">
+    const multi = accs.length > 1;   // рахунок-колонку показуємо лише коли є з чого вибрати; порожньо = основний
+    const r = el(`<div class="exrow" style="display:flex;gap:6px;align-items:center;margin-top:5px">
+      <select class="sp-cat" style="flex:1 1 auto;min-width:0"><option value="">Без категорії</option>${cats.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select>
+      <input class="sp-amt" inputmode="decimal" placeholder="сума" value="${(amt!=null&&amt!=='')?amt:''}" style="flex:0 0 88px;text-align:right">
+      ${multi ? `<select class="sp-acc" style="flex:0 0 96px;min-width:0" title="Рахунок статті (порожньо = основний)"><option value="">↳ осн.</option>${accs.map(a=>`<option value="${a.id}">${a.icon?a.icon+' ':''}${esc(a.name)}</option>`).join('')}</select>` : ''}
       <button type="button" class="btn ghost sm sp-del" title="Прибрати">${ic('close')}</button></div>`);
     if (catId != null) r.querySelector('.sp-cat').value = String(catId);
-    if (accId != null) r.querySelector('.sp-acc').value = String(accId);
+    const accSel = r.querySelector('.sp-acc');
+    if (accId != null && accSel) accSel.value = String(accId);
     r.querySelector('.sp-amt').addEventListener('input', recomputeSplit);
     r.querySelector('.sp-del').onclick = () => { r.remove(); recomputeSplit(); };
     splitRows.appendChild(r);
@@ -2166,6 +2177,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
   function rebuildSplitRows(){   // оновити рахунки (валюта основного змінилась), зберігаючи значення
     const vals = [...splitRows.querySelectorAll('.exrow')].map(r => ({ cat: r.querySelector('.sp-cat').value, amt: r.querySelector('.sp-amt').value, acc: r.querySelector('.sp-acc') ? r.querySelector('.sp-acc').value : '' }));
     splitRows.innerHTML = '';
+    renderSplitHead();
     vals.forEach(v => addSplitRow(v.cat ? parseInt(v.cat) : null, v.amt, v.acc ? parseInt(v.acc) : null));
     recomputeSplit();
   }
@@ -2175,7 +2187,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     if (catWrap) catWrap.classList.toggle('hidden', on);
     const amtEl = $('#f-amt', body); amtEl.readOnly = on; amtEl.style.opacity = on ? '.65' : '';
     if (rfon) { rfon.closest('label').classList.toggle('hidden', on); if (on && rfon.checked) { rfon.checked = false; $('#f-rfbox', body).classList.add('hidden'); } }
-    if (on) { if (!splitRows.children.length) { addSplitRow(e.category_id ?? null, e.amount ?? ''); addSplitRow(null, ''); } recomputeSplit(); }
+    if (on) { renderSplitHead(); if (!splitRows.children.length) { addSplitRow(e.category_id ?? null, e.amount ?? ''); addSplitRow(null, ''); } recomputeSplit(); }
   }
   $('#f-split-add', body).onclick = () => addSplitRow(null, '');
   splitOn.onchange = applySplitMode;
