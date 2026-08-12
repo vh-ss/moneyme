@@ -2949,6 +2949,9 @@ views.transactions = (app) => {
   if (showTxFilters) {
   const f = el(`<div class="card" style="padding:14px">
     <div><label class="lab">Пошук (нотатка, категорія, рахунок, сума)</label><input id="ff-q" placeholder="🔍 шукати…" value="${esc(txFilter.q)}"></div>
+    <div><label class="lab" style="margin-top:10px">Період</label>
+      <div class="pill" id="ff-presets" style="flex-wrap:wrap">
+        <button data-p="month">Цей місяць</button><button data-p="lastmonth">Минулий</button><button data-p="year">Рік</button><button data-p="all">Усе</button></div></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-top:10px">
       <div><label class="lab">Рахунок</label><select id="ff-acc"><option value="">Усі</option>${state.accounts.map(a=>`<option value="${a.id}" ${txFilter.account==a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
       <div><label class="lab">Категорія</label><select id="ff-cat"><option value="">Усі</option><option value="none" ${txFilter.category==='none'?'selected':''}>Без категорії</option>${[['EXPENSE','➖ Витрати'],['INCOME','➕ Надходження']].map(([k,lbl])=>{ const cs=state.categories.filter(c=>c.kind===k); return cs.length?`<optgroup label="${lbl}">${cs.map(c=>`<option value="${c.id}" ${txFilter.category==c.id?'selected':''}>${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</optgroup>`:''; }).join('')}</select></div>
@@ -2969,8 +2972,12 @@ views.transactions = (app) => {
   ['ff-acc','ff-cat','ff-kind','ff-from','ff-to','ff-tag'].forEach(id => { const el2 = $('#'+id, f); if (el2) el2.addEventListener('change', () => {
     txFilter.account=$('#ff-acc',f).value; txFilter.category=$('#ff-cat',f).value; txFilter.kind=$('#ff-kind',f).value; txFilter.from=$('#ff-from',f).value; txFilter.to=$('#ff-to',f).value; txFilter.tag=$('#ff-tag',f)?$('#ff-tag',f).value:''; renderList();
   }); });
-  f.querySelectorAll('.pill button').forEach(b => { b.classList.toggle('on', b.dataset.s===txFilter.sort);
+  f.querySelectorAll('.pill button[data-s]').forEach(b => { b.classList.toggle('on', b.dataset.s===txFilter.sort);
     b.onclick = () => { txFilter.sort = b.dataset.s; render(); }; });
+  // пресети періоду (як в Аналітиці): один клік — і Від/До підставляються
+  const curPreset = ['month','lastmonth','year','all'].find(p => { const r = presetRange(p); return txFilter.from === r.from && txFilter.to === r.to; }) || '';
+  f.querySelectorAll('#ff-presets button').forEach(b => { b.classList.toggle('on', b.dataset.p===curPreset);
+    b.onclick = () => { const r = presetRange(b.dataset.p); txFilter.from = r.from; txFilter.to = r.to; render(); }; });
   app.appendChild(f);
   }
 
