@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'b12d55cd49';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'c39210511a';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -493,7 +493,7 @@ const I18N_EN = {
   'Резервне копіювання':'Backup','Точки відновлення':'Restore points','Вигляд і приватність':'Appearance & privacy','Тема оформлення':'Theme','Очистити дані':'Clear data','Про застосунок':'About','Вигляд':'Appearance',
   'Довідка':'Help','📖 Відкрити інструкцію':'📖 Open the guide','Покрокова інструкція користувача зі скріншотами: рахунки, операції, бюджети, синхронізація та інше.':'Step-by-step illustrated user guide: accounts, transactions, budgets, sync and more.',
   'Всього (ліміт)':'Total (limit)','Використано':'Used','Доступно':'Available','Навантаження/міс':'Burden/mo','Ліміт':'Limit','Залишок боргу':'Debt left','Платіж за місяць':'Monthly payment','Чисті активи (₴-екв)':'Net worth (₴-eq)','приблизно, за поточним курсом валют':'approximate, at current rates','Чистий потік':'Net flow','Комісії':'Fees',
-  'Усі':'All','Тег':'Tag','За датою':'By date','Вручну':'Manual','Період витрат':'Spending period',
+  'Усі':'All','Тег':'Tag','За датою':'By date','Вручну':'Manual','Період витрат':'Spending period','Період':'Period','Сьогодні':'Today','Вчора':'Yesterday','Тиждень':'Week',
   'Цей місяць':'This month','Минулий':'Last','Рік':'Year','Усе':'All time',
   'Динаміка по місяцях':'Monthly dynamics','Витрати за статтями':'Expenses by category','Надходження за статтями':'Income by category','Витрати по рахунках':'Expenses by account','Витрати по банках':'Expenses by bank','Немає даних':'No data','Немає даних за період':'No data for period',
   'Експортуйте всі дані у файл JSON (його можна зберегти будь-де, зокрема на Google Drive) і відновіть за потреби.':'Export all data to a JSON file (store it anywhere, e.g. Google Drive) and restore when needed.',
@@ -2913,6 +2913,14 @@ views.transactions = (app) => {
   quick.children[1].onclick = () => openEntryForm('INCOME');
   app.appendChild(quick);
 
+  // Пресети періоду — ЗАВЖДИ видимі (поза фільтрами): один клік підставляє Від/До
+  const per = el(`<div class="pill" id="tx-presets" style="flex-wrap:wrap;margin-bottom:10px">
+    <button data-p="today">Сьогодні</button><button data-p="yesterday">Вчора</button><button data-p="week">Тиждень</button><button data-p="month">Цей місяць</button><button data-p="lastmonth">Минулий</button><button data-p="year">Рік</button><button data-p="all">Усе</button></div>`);
+  const curPreset = ['today','yesterday','week','month','lastmonth','year','all'].find(p => { const r = presetRange(p); return txFilter.from === r.from && txFilter.to === r.to; }) || '';
+  per.querySelectorAll('button').forEach(b => { b.classList.toggle('on', b.dataset.p===curPreset);
+    b.onclick = () => { const r = presetRange(b.dataset.p); txFilter.from = r.from; txFilter.to = r.to; render(); }; });
+  app.appendChild(per);
+
   // згортання блоку пошуку/фільтрів (розкривається за потреби)
   const fltActive = !!(txFilter.q || txFilter.account || txFilter.kind || txFilter.tag || txFilter.category
     || txFilter.from !== monthStartISO() || txFilter.to !== todayISO() || txFilter.sort !== 'date');
@@ -2928,9 +2936,6 @@ views.transactions = (app) => {
   if (showTxFilters) {
   const f = el(`<div class="card" style="padding:14px">
     <div><label class="lab">Пошук (нотатка, категорія, рахунок, сума)</label><input id="ff-q" placeholder="🔍 шукати…" value="${esc(txFilter.q)}"></div>
-    <div><label class="lab" style="margin-top:10px">Період</label>
-      <div class="pill" id="ff-presets" style="flex-wrap:wrap">
-        <button data-p="month">Цей місяць</button><button data-p="lastmonth">Минулий</button><button data-p="year">Рік</button><button data-p="all">Усе</button></div></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-top:10px">
       <div><label class="lab">Рахунок</label><select id="ff-acc"><option value="">Усі</option>${state.accounts.map(a=>`<option value="${a.id}" ${txFilter.account==a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
       <div><label class="lab">Категорія</label><select id="ff-cat"><option value="">Усі</option><option value="none" ${txFilter.category==='none'?'selected':''}>Без категорії</option>${[['EXPENSE','➖ Витрати'],['INCOME','➕ Надходження']].map(([k,lbl])=>{ const cs=state.categories.filter(c=>c.kind===k); return cs.length?`<optgroup label="${lbl}">${cs.map(c=>`<option value="${c.id}" ${txFilter.category==c.id?'selected':''}>${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</optgroup>`:''; }).join('')}</select></div>
@@ -2953,10 +2958,6 @@ views.transactions = (app) => {
   }); });
   f.querySelectorAll('.pill button[data-s]').forEach(b => { b.classList.toggle('on', b.dataset.s===txFilter.sort);
     b.onclick = () => { txFilter.sort = b.dataset.s; render(); }; });
-  // пресети періоду (як в Аналітиці): один клік — і Від/До підставляються
-  const curPreset = ['month','lastmonth','year','all'].find(p => { const r = presetRange(p); return txFilter.from === r.from && txFilter.to === r.to; }) || '';
-  f.querySelectorAll('#ff-presets button').forEach(b => { b.classList.toggle('on', b.dataset.p===curPreset);
-    b.onclick = () => { const r = presetRange(b.dataset.p); txFilter.from = r.from; txFilter.to = r.to; render(); }; });
   app.appendChild(f);
   }
 
@@ -3013,6 +3014,9 @@ const FREQ_LABEL = { monthly:'щомісяця', weekly:'щотижня', quarte
 function ymd(y,m,d){ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 function presetRange(name){
   const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+  if (name==='today') return { from: todayISO(), to: todayISO() };
+  if (name==='yesterday'){ const d = addDaysISO(todayISO(), -1); return { from: d, to: d }; }
+  if (name==='week') return { from: addDaysISO(todayISO(), -6), to: todayISO() };   // останні 7 днів
   if (name==='month') return { from: ymd(y,m+1,1), to: todayISO() };
   if (name==='lastmonth'){ const pm = new Date(y,m-1,1); const ly=pm.getFullYear(), lmo=pm.getMonth(); return { from: ymd(ly,lmo+1,1), to: ymd(ly,lmo+1,new Date(ly,lmo+1,0).getDate()) }; }
   if (name==='year') return { from: ymd(y,1,1), to: todayISO() };
