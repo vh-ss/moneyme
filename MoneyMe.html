@@ -2922,15 +2922,15 @@ views.transactions = (app) => {
   app.appendChild(per);
 
   // згортання блоку пошуку/фільтрів (розкривається за потреби)
-  const fltActive = !!(txFilter.q || txFilter.account || txFilter.kind || txFilter.tag || txFilter.category
-    || txFilter.from !== monthStartISO() || txFilter.to !== todayISO() || txFilter.sort !== 'date');
+  // Період (from/to) — окремий контрол над списком, НЕ рахуємо його як «фільтр застосовано»
+  const fltActive = !!(txFilter.q || txFilter.account || txFilter.kind || txFilter.tag || txFilter.category || txFilter.sort !== 'date');
   const toggle = el(`<button class="btn ${fltActive?'primary':''}" id="togglefilters" style="width:100%;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <span>🔍 Пошук і фільтри${fltActive?' · застосовано':''}</span><span>${showTxFilters?'▴':'▾'}</span></button>`);
   toggle.onclick = () => { showTxFilters = !showTxFilters; render(); };
   app.appendChild(toggle);
   if (fltActive && !showTxFilters) {
     const reset = el(`<button class="btn ghost sm" style="margin:-4px 0 10px">${ic('close')} Скинути фільтри</button>`);
-    reset.onclick = () => { txFilter = { account:'', kind:'', from: monthStartISO(), to: todayISO(), q:'', sort:'date', tag:'', category:'' }; render(); };
+    reset.onclick = () => { txFilter = { ...txFilter, account:'', kind:'', q:'', sort:'date', tag:'', category:'' }; render(); };   // скидаємо фільтри, період лишаємо
     app.appendChild(reset);
   }
   if (showTxFilters) {
