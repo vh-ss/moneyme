@@ -1595,21 +1595,41 @@ function openSelectMenu(anchor, sel){
     row.onclick = () => { close(); if (sel.value !== o.value) { sel.value = o.value; sel.dispatchEvent(new Event('change', { bubbles: true })); } sel._sync && sel._sync(); };
     return row;
   };
-  [...sel.children].forEach(node => {
-    if (node.tagName === 'OPTGROUP') { menu.appendChild(el(`<div class="chead">${esc(node.label)}</div>`)); [...node.children].forEach(o => menu.appendChild(optRow(o))); }
-    else if (node.tagName === 'OPTION') menu.appendChild(optRow(node));
-  });
-  document.body.appendChild(menu); translateTree(menu);
-  const r = anchor.getBoundingClientRect();
-  menu.style.minWidth = Math.max(r.width, 200) + 'px';
-  let mh = menu.getBoundingClientRect();
-  let left = Math.min(r.left, window.innerWidth - mh.width - 8);
-  let top = r.bottom + 4;
-  if (top + mh.height > window.innerHeight - 8) {
-    if (r.top - mh.height - 4 >= 8) top = r.top - mh.height - 4;             // місця внизу нема — відкриваємо вгору
-    else { top = 8; menu.style.maxHeight = (window.innerHeight - 16) + 'px'; } // надто довгий — на весь екран зі скролом
+  const hasGroups = [...sel.children].some(n => n.tagName === 'OPTGROUP');
+  // «Основні + показати інші»: на select можна виставити data-primary="id,id,…" — тоді спершу показуємо
+  // лише основні опції (+ поточну вибрану), а решту — за кнопкою «Показати інші (N)». Лише для пласких списків.
+  const primary = (sel.dataset.primary && !hasGroups) ? new Set(sel.dataset.primary.split(',')) : null;
+  if (primary) {
+    const opts = [...sel.children].filter(n => n.tagName === 'OPTION');
+    const shown = opts.filter(o => primary.has(o.value) || o.value === cur);
+    const hidden = opts.filter(o => !(primary.has(o.value) || o.value === cur));
+    shown.forEach(o => menu.appendChild(optRow(o)));
+    if (hidden.length) {
+      const more = el(`<div class="ci cimore"><span class="cilbl" style="color:var(--accent);font-weight:600">Показати інші (${hidden.length})</span></div>`);
+      more.onclick = (ev) => { ev.stopPropagation(); more.remove(); hidden.forEach(o => menu.appendChild(optRow(o))); translateTree(menu); place(); };
+      menu.appendChild(more);
+    }
+  } else {
+    [...sel.children].forEach(node => {
+      if (node.tagName === 'OPTGROUP') { menu.appendChild(el(`<div class="chead">${esc(node.label)}</div>`)); [...node.children].forEach(o => menu.appendChild(optRow(o))); }
+      else if (node.tagName === 'OPTION') menu.appendChild(optRow(node));
+    });
   }
-  menu.style.left = Math.max(8, left) + 'px'; menu.style.top = Math.max(8, top) + 'px';
+  document.body.appendChild(menu); translateTree(menu);
+  function place(){
+    const r = anchor.getBoundingClientRect();
+    menu.style.minWidth = Math.max(r.width, 200) + 'px';
+    menu.style.maxHeight = '';
+    let mh = menu.getBoundingClientRect();
+    let left = Math.min(r.left, window.innerWidth - mh.width - 8);
+    let top = r.bottom + 4;
+    if (top + mh.height > window.innerHeight - 8) {
+      if (r.top - mh.height - 4 >= 8) top = r.top - mh.height - 4;             // місця внизу нема — відкриваємо вгору
+      else { top = 8; menu.style.maxHeight = (window.innerHeight - 16) + 'px'; } // надто довгий — на весь екран зі скролом
+    }
+    menu.style.left = Math.max(8, left) + 'px'; menu.style.top = Math.max(8, top) + 'px';
+  }
+  place();
   const selRow = menu.querySelector('.ci.sel'); if (selRow) selRow.scrollIntoView({ block: 'nearest' });
   function close(){ menu.remove(); document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); }
   function onDown(e){ if (!menu.contains(e.target)) close(); }
@@ -2090,6 +2110,21 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     </div>` : ''}
     <div class="err hidden" id="f-err"></div>
   </div>`);
+  // «Основні рахунки»: у списку рахунків спершу показуємо найчастіші для цього типу операції, решту — за кнопкою «Показати інші».
+  (function setupPrimaryAccounts(){
+    const active = state.accounts.filter(a => !a.archived);
+    if (active.length <= 5) return;   // список і так короткий — згортати нема сенсу
+    const cnt = {};
+    state.transactions.forEach(t => {
+      if (t.kind !== kind) return;
+      const ids = new Set();
+      if (t.account_id != null) ids.add(t.account_id);
+      if (Array.isArray(t.splits)) t.splits.forEach(s => { if (s.account_id != null) ids.add(s.account_id); });
+      ids.forEach(id => cnt[id] = (cnt[id] || 0) + 1);
+    });
+    const primary = active.filter(a => cnt[a.id]).sort((x, y) => cnt[y.id] - cnt[x.id]).slice(0, 5).map(a => a.id);
+    if (primary.length && active.length > primary.length + 1) $('#f-acc', body).dataset.primary = primary.join(',');
+  })();
   const rfon = $('#f-rfon', body);
   if (rfon) {
     const rfRows = $('#f-rf-rows', body);
