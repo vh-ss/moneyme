@@ -2087,6 +2087,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     <div id="f-split-wrap">
       <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:2px"><input type="checkbox" id="f-split-on" style="width:auto"> Розділити на кілька статей</label>
       <div class="hidden" id="f-split-box" style="margin-top:6px">
+        <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:2px 2px 8px"><input type="checkbox" id="f-split-check" checked style="width:auto"> 🧾 Розбити чек <span class="muted small">(перша стаття — залишок)</span></label>
         <div id="f-split-head" style="display:flex;gap:6px;font-size:11px;color:var(--muted);margin:0 2px 3px"></div>
         <div id="f-split-rows"></div>
         <button type="button" class="btn ghost sm" id="f-split-add" style="margin-top:6px">+ Стаття</button>
@@ -2168,19 +2169,28 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
   const splitRows = $('#f-split-rows', body);
   const splitOn = $('#f-split-on', body);
   const catWrap = $('#f-cat', body).closest('div');   // блок єдиної категорії (ховаємо при split)
-  // Модель «згори-вниз»: загальна сума (#f-amt) — джерело істини (сума чека), її вводить користувач.
-  // Перший рядок = ЗАЛИШОК = загальна − сума окремих статей; окремі рядки «відщеплюють» від нього.
+  const splitCheck = $('#f-split-check', body);
+  function checkMode(){ return splitCheck.checked; }   // «Розбити чек»: перший рядок = залишок
+  // Два режими розділення:
+  //  • «Розбити чек» (checkMode): загальна сума (#f-amt) — джерело істини; перший рядок = ЗАЛИШОК = загальна − окремі статті.
+  //  • Незалежні статті: кожен рядок самостійний; загальна = їх сума (#f-amt лише для читання).
   function recomputeSplit(){
     const cur = accountCur(parseInt($('#f-acc',body).value)||0);
-    const total = round2(num($('#f-amt', body).value) || 0);
     const rows = [...splitRows.querySelectorAll('.exrow')];
-    const others = round2(rows.slice(1).reduce((s,r)=>s+(num(r.querySelector('.sp-amt').value)||0),0));
-    const rem = round2(total - others);
-    const mainAmt = rows[0] && rows[0].querySelector('.sp-amt');
-    if (mainAmt) mainAmt.value = total > 0 ? String(rem) : '';
     const sumEl = $('#f-split-sum', body);
-    if (rem < -0.005) sumEl.innerHTML = `<span style="color:var(--red)">Окремі статті перевищують суму на ${money(-rem, cur)}</span>`;
-    else sumEl.innerHTML = `Разом: <b>${money(total, cur)}</b> · перша стаття (залишок): <b>${money(rem, cur)}</b>`;
+    if (checkMode()) {
+      const total = round2(num($('#f-amt', body).value) || 0);
+      const others = round2(rows.slice(1).reduce((s,r)=>s+(num(r.querySelector('.sp-amt').value)||0),0));
+      const rem = round2(total - others);
+      const mainAmt = rows[0] && rows[0].querySelector('.sp-amt');
+      if (mainAmt) mainAmt.value = total > 0 ? String(rem) : '';
+      if (rem < -0.005) sumEl.innerHTML = `<span style="color:var(--red)">Окремі статті перевищують суму на ${money(-rem, cur)}</span>`;
+      else sumEl.innerHTML = `Разом: <b>${money(total, cur)}</b> · перша стаття (залишок): <b>${money(rem, cur)}</b>`;
+    } else {
+      const sum = round2(rows.reduce((s,r)=>s+(num(r.querySelector('.sp-amt').value)||0),0));
+      const amtEl = $('#f-amt', body); amtEl.value = sum ? String(sum) : '';
+      sumEl.innerHTML = `Разом: <b>${money(sum, cur)}</b>`;
+    }
   }
   function splitAccOpts(){ const cur = accountCur(parseInt($('#f-acc', body).value) || 0); return state.accounts.filter(a => !a.archived && a.currency_code === cur); }
   // Заголовок таблиці статей; колонку «Рахунок» показуємо лише коли є ≥2 рахунки тієї валюти
@@ -2209,33 +2219,41 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
   }
   function rebuildSplitRows(){   // оновити рахунки (валюта основного змінилась), зберігаючи значення
     const vals = [...splitRows.querySelectorAll('.exrow')].map(r => ({ cat: r.querySelector('.sp-cat').value, amt: r.querySelector('.sp-amt').value, acc: r.querySelector('.sp-acc') ? r.querySelector('.sp-acc').value : '' }));
+    const check = checkMode();
     splitRows.innerHTML = '';
     renderSplitHead();
-    vals.forEach((v, i) => addSplitRow(v.cat ? parseInt(v.cat) : null, i===0 ? '' : v.amt, v.acc ? parseInt(v.acc) : null, i===0));
+    vals.forEach((v, i) => addSplitRow(v.cat ? parseInt(v.cat) : null, (check && i===0) ? '' : v.amt, v.acc ? parseInt(v.acc) : null, check && i===0));
     recomputeSplit();
+  }
+  function syncAmtEditable(){   // сума редагована лише в режимі чека; в незалежному — рахується з рядків
+    const amtEl = $('#f-amt', body); const check = checkMode();
+    amtEl.readOnly = splitOn.checked && !check; amtEl.style.opacity = (splitOn.checked && !check) ? '.65' : '';
   }
   function applySplitMode(){
     const on = splitOn.checked;
     $('#f-split-box', body).classList.toggle('hidden', !on);
     if (catWrap) catWrap.classList.toggle('hidden', on);
-    const amtEl = $('#f-amt', body); amtEl.readOnly = false; amtEl.style.opacity = '';   // сума лишається редагованою — це загальна сума чека
+    syncAmtEditable();
     if (rfon) { rfon.closest('label').classList.toggle('hidden', on); if (on && rfon.checked) { rfon.checked = false; $('#f-rfbox', body).classList.add('hidden'); } }
     if (on) {
       renderSplitHead();
       if (!splitRows.children.length) {
         const mainCat = $('#f-cat', body).value ? parseInt($('#f-cat', body).value) : (e.category_id ?? null);
-        addSplitRow(mainCat, '', null, true);   // головна стаття (залишок) на вибрану категорію
-        addSplitRow(null, '', null, false);     // порожній рядок для першого відщеплення
+        addSplitRow(mainCat, '', null, checkMode());   // перший рядок = залишок (лише в режимі чека)
+        addSplitRow(null, '', null, false);            // ще один рядок статті
       }
       recomputeSplit();
     }
   }
   $('#f-split-add', body).onclick = () => addSplitRow(null, '', null, false);
   splitOn.onchange = applySplitMode;
+  splitCheck.onchange = () => { syncAmtEditable(); rebuildSplitRows(); };   // зміна режиму → перебудувати рядки (перший стає/перестає бути залишком)
   $('#f-acc', body).addEventListener('change', () => { if (splitOn.checked) rebuildSplitRows(); });   // інша валюта → оновити рахунки статей
   if (e.splits && e.splits.length) {
     splitOn.checked = true;
-    e.splits.forEach((s, i) => addSplitRow(s.category_id, i===0 ? '' : s.amount, s.account_id, i===0));
+    splitCheck.checked = e.splitCheck !== false;   // старі/нові розбиття без прапорця → режим чека (за замовч.)
+    const check = checkMode();
+    e.splits.forEach((s, i) => addSplitRow(s.category_id, (check && i===0) ? '' : s.amount, s.account_id, check && i===0));
     if (!num($('#f-amt', body).value)) $('#f-amt', body).value = String(round2(e.splits.reduce((x, s) => x + (s.amount || 0), 0)));
   }
   applySplitMode();
@@ -2279,19 +2297,21 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     onSave: (close) => {
       const err = $('#f-err', body);
       let splits = null;
+      const splitIsCheck = splitOn.checked && $('#f-split-check', body).checked;
       if (splitOn.checked) {
         const mainAcc = parseInt($('#f-acc', body).value);
-        const total = round2(num($('#f-amt', body).value) || 0);
         const rowsArr = [...splitRows.querySelectorAll('.exrow')];
-        const others = round2(rowsArr.slice(1).reduce((s,r)=>s+(num(r.querySelector('.sp-amt').value)||0),0));
-        if (round2(others - total) > 0.005) { err.textContent = 'Окремі статті перевищують загальну суму'; err.classList.remove('hidden'); return; }
-        const rem = round2(total - others);   // перший рядок = залишок
-        splits = rowsArr.map((r, idx) => {
-          const s = { category_id: r.querySelector('.sp-cat').value ? parseInt(r.querySelector('.sp-cat').value) : null, amount: idx === 0 ? rem : round2(num(r.querySelector('.sp-amt').value)) };
-          const ac = r.querySelector('.sp-acc') && r.querySelector('.sp-acc').value;
-          if (ac && parseInt(ac) !== mainAcc) s.account_id = parseInt(ac);   // інший рахунок для цієї статті
-          return s;
-        }).filter(s => s.amount > 0);
+        const mkAcc = (r, s) => { const ac = r.querySelector('.sp-acc') && r.querySelector('.sp-acc').value; if (ac && parseInt(ac) !== mainAcc) s.account_id = parseInt(ac); return s; };
+        const cat = (r) => r.querySelector('.sp-cat').value ? parseInt(r.querySelector('.sp-cat').value) : null;
+        if (splitIsCheck) {
+          const total = round2(num($('#f-amt', body).value) || 0);
+          const others = round2(rowsArr.slice(1).reduce((s,r)=>s+(num(r.querySelector('.sp-amt').value)||0),0));
+          if (round2(others - total) > 0.005) { err.textContent = 'Окремі статті перевищують загальну суму'; err.classList.remove('hidden'); return; }
+          const rem = round2(total - others);   // перший рядок = залишок
+          splits = rowsArr.map((r, idx) => mkAcc(r, { category_id: cat(r), amount: idx === 0 ? rem : round2(num(r.querySelector('.sp-amt').value)) })).filter(s => s.amount > 0);
+        } else {
+          splits = rowsArr.map(r => mkAcc(r, { category_id: cat(r), amount: round2(num(r.querySelector('.sp-amt').value)) })).filter(s => s.amount > 0);
+        }
         if (!splits.length) { err.textContent = 'Додайте хоча б одну статтю із сумою більше 0'; err.classList.remove('hidden'); return; }
       }
       const amt = splits ? round2(splits.reduce((s,x)=>s+x.amount,0)) : num($('#f-amt', body).value);
@@ -2316,7 +2336,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
         note: $('#f-note', body).value.trim() || null,
         tags: parseTags($('#f-tags', body).value),
       };
-      if (splits) rec.splits = splits;
+      if (splits) { rec.splits = splits; rec.splitCheck = splitIsCheck; }
       // розподіл за тегами: якщо тегів ≥2 і заповнено суми — перевіряємо, що їх сума = сумі операції
       let tagAmounts = null;
       if (rec.tags.length >= 2) {
@@ -2339,7 +2359,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
           }
         }
         Object.assign(existing, rec);
-        if (!splits) delete existing.splits;   // прибрали розбиття — чистимо старі splits
+        if (!splits) { delete existing.splits; delete existing.splitCheck; }   // прибрали розбиття — чистимо старі splits
         if (!tagAmounts) delete existing.tagAmounts;   // прибрали розподіл за тегами
         if (!att.length) delete existing.attachments;   // прибрали всі вкладення
         // повернення при редагуванні: видаляємо всі наявні повʼязані (надгробки через save()) і перестворюємо
