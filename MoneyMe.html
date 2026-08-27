@@ -1601,8 +1601,9 @@ function openSelectMenu(anchor, sel){
   const primary = (sel.dataset.primary && !hasGroups) ? new Set(sel.dataset.primary.split(',')) : null;
   if (primary) {
     const opts = [...sel.children].filter(n => n.tagName === 'OPTION');
-    const shown = opts.filter(o => primary.has(o.value) || o.value === cur);
-    const hidden = opts.filter(o => !(primary.has(o.value) || o.value === cur));
+    const keep = (o) => primary.has(o.value) || o.value === cur || o.value === '';   // основні + вибрана + порожня («Без категорії»/«Усі»)
+    const shown = opts.filter(keep);
+    const hidden = opts.filter(o => !keep(o));
     shown.forEach(o => menu.appendChild(optRow(o)));
     if (hidden.length) {
       const more = el(`<div class="ci cimore"><span class="cilbl" style="color:var(--accent);font-weight:600">Показати інші (${hidden.length})</span></div>`);
@@ -2125,6 +2126,20 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
     const primary = active.filter(a => cnt[a.id]).sort((x, y) => cnt[y.id] - cnt[x.id]).slice(0, 5).map(a => a.id);
     if (primary.length && active.length > primary.length + 1) $('#f-acc', body).dataset.primary = primary.join(',');
   })();
+  // Так само згортаємо категорії: спершу найчастіші для цього типу, решта — за «Показати інші».
+  const primaryCatIds = (function(){
+    if (cats.length <= 6) return [];
+    const cnt = {};
+    state.transactions.forEach(t => {
+      if (t.kind !== kind) return;
+      const ids = new Set();
+      if (t.category_id != null) ids.add(t.category_id);
+      if (Array.isArray(t.splits)) t.splits.forEach(s => { if (s.category_id != null) ids.add(s.category_id); });
+      ids.forEach(id => cnt[id] = (cnt[id] || 0) + 1);
+    });
+    return cats.filter(c => cnt[c.id]).sort((x, y) => cnt[y.id] - cnt[x.id]).slice(0, 6).map(c => c.id);
+  })();
+  if (primaryCatIds.length && cats.length > primaryCatIds.length + 1) $('#f-cat', body).dataset.primary = primaryCatIds.join(',');
   const rfon = $('#f-rfon', body);
   if (rfon) {
     const rfRows = $('#f-rf-rows', body);
@@ -2221,6 +2236,7 @@ function openEntryForm(kind, existing, presetAccountId, prefill) {
       <input class="sp-amt" inputmode="decimal" placeholder="${isMain?'залишок':'сума'}" value="${(amt!=null&&amt!=='')?amt:''}" ${isMain?'readonly title="Залишок = загальна сума − окремі статті"':''} style="flex:0 0 88px;text-align:right${isMain?';opacity:.6':''}">
       ${multi ? `<select class="sp-acc" style="flex:0 0 96px;min-width:0" title="Рахунок статті (порожньо = основний)"><option value="">↳ осн.</option>${accs.map(a=>`<option value="${a.id}">${a.icon?a.icon+' ':''}${esc(a.name)}</option>`).join('')}</select>` : ''}
       ${isMain ? '<span style="flex:0 0 30px"></span>' : `<button type="button" class="btn ghost sm sp-del" title="Прибрати">${ic('close')}</button>`}</div>`);
+    if (primaryCatIds.length) r.querySelector('.sp-cat').dataset.primary = primaryCatIds.join(',');   // «основні + показати інші» і в статтях
     if (catId != null) r.querySelector('.sp-cat').value = String(catId);
     const accSel = r.querySelector('.sp-acc');
     if (accId != null && accSel) accSel.value = String(accId);
