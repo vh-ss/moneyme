@@ -4534,7 +4534,8 @@ function openLoanSchedule(l, bank){
 }
 // Категорії з перевитратою бюджету в поточному циклі (для алертів).
 function overBudgetCats(){ return state.categories.filter(c => c.kind === 'EXPENSE' && (c.budget || 0) > 0).map(c => { const r = budgetRange(c); const eb = effectiveBudget(c); const spent = categorySpent(c.id, r.from, r.to); return { c, eb, spent, pct: eb > 0 ? Math.round(spent / eb * 100) : 0 }; }).filter(b => b.spent > b.eb).sort((a, b) => b.pct - a.pct); }
-function recordRecurring(r){
+// override — сума до списання у валюті РАХУНКУ (ручне коригування); якщо не задано — рахуємо за курсом.
+function recordRecurring(r, override){
   // операцію датуємо днем запису (а прострочену — її запланованою датою), щоб вона була видима «зараз»
   const txDate = (r.next_date && r.next_date <= todayISO()) ? r.next_date : todayISO();
   const accC = accountCur(r.account_id), rc = recurCur(r);
@@ -4542,10 +4543,12 @@ function recordRecurring(r){
   let amt = round2(r.amount || 0);
   let note = r.note || r.name || null;
   if (rc !== accC) {
-    const conv = recurToAccCur(r.amount, r);
+    const conv = override != null ? round2(override) : recurToAccCur(r.amount, r);
     if (conv == null) { alertModal(`Немає курсу для перерахунку ${curSym(rc)} → ${curSym(accC)}. Оновіть курси на Огляді й спробуйте ще раз.`); return; }
     amt = conv;
     note = `${note ? note + ' · ' : ''}${money(r.amount, rc)}`;   // лишаємо оригінал у нотатці (напр. «Claude · 120,00 $»)
+  } else if (override != null) {
+    amt = round2(override);
   }
   state.transactions.push({ id: nextId('tx'), ord: nextOrd(), kind: r.kind, date: txDate,
     note, account_id: r.account_id, category_id: r.category_id || null,
@@ -4553,6 +4556,28 @@ function recordRecurring(r){
   r.next_date = nextRecurDate(r.next_date || txDate, r.freq);
   save(); render();
   showToast('Операцію створено', null, null, 2500);
+}
+// «Внести зараз» для однієї позиції: для валютних — СПЕРШУ оновлюємо курс, потім даємо відкоригувати суму вручну.
+async function recordRecurringPrompt(r){
+  const accC = accountCur(r.account_id), rc = recurCur(r);
+  if (rc === accC) { recordRecurring(r); return; }   // без конвертації — одразу
+  const rec = document.activeElement;
+  if (rec && rec.tagName === 'BUTTON') { rec.disabled = true; rec.textContent = 'Оновлюю курс…'; }
+  await ensureBankRatesFresh(true);   // завжди свіжий банківський курс перед списанням
+  const conv = recurToAccCur(r.amount, r);
+  const usedBank = recurUsesBankRate(r);
+  const rateNote = conv != null ? `курс ${usedBank ? 'банку' : 'НБУ'}${bankRatesCache.fetched_at ? ' · ' + fmtDate((bankRatesCache.fetched_at||'').slice(0,10)) : ''}` : 'курс невідомий';
+  const body = el(`<div>
+    <div class="muted small">Оригінал платежу: <b>${money(r.amount, rc)}</b></div>
+    <label class="lab" style="margin-top:10px">Сума до списання (${curSym(accC)}) — можна відкоригувати</label>
+    <input id="rr-amt" inputmode="decimal" value="${conv != null ? conv : ''}" placeholder="0.00" style="font-size:20px;font-weight:700">
+    <div class="muted small" id="rr-hint" style="margin-top:6px">${esc(rateNote)}</div>
+  </div>`);
+  const ok = await appDialog({ title: 'Внести платіж', body, okLabel: 'Внести', cancelLabel: 'Скасувати' });
+  if (!ok) { render(); return; }
+  const val = num($('#rr-amt', body).value);
+  if (!(val > 0)) { alertModal('Введіть суму більше 0'); return; }
+  recordRecurring(r, val);
 }
 
 views.recurring = (app) => {
@@ -4567,7 +4592,7 @@ views.recurring = (app) => {
   const due = dueRecurring();
   if (due.length) {
     const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>⏰ Очікують внесення: ${due.length}</span></div>`);
-    const b = el(`<button class="btn sm">Внести всі</button>`); b.onclick = () => { due.forEach(r => recordRecurring(r)); };
+    const b = el(`<button class="btn sm">Внести всі</button>`); b.onclick = async () => { b.disabled = true; b.textContent = 'Оновлюю курс…'; await ensureBankRatesFresh(true); due.forEach(r => recordRecurring(r)); };   // batch: свіжий курс, без ручного коригування
     n.appendChild(b); app.appendChild(n);
   }
 
@@ -4592,7 +4617,7 @@ views.recurring = (app) => {
       </div>
       <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"></div></div>`);
     const acts = card.lastElementChild;
-    const rec = el(`<button class="btn sm ${isDue?'primary':''}">Внести зараз</button>`); rec.onclick = () => recordRecurring(r);
+    const rec = el(`<button class="btn sm ${isDue?'primary':''}">Внести зараз</button>`); rec.onclick = () => recordRecurringPrompt(r);
     const tog = el(`<button class="btn ghost sm">${r.active===false?'Увімкнути':'Пауза'}</button>`); tog.onclick = () => { r.active = r.active===false; save(); render(); };
     const ed = el(`<button class="btn ghost sm">${ic('edit')}</button>`); ed.onclick = () => openRecurringForm(r);
     const del = el(`<button class="btn danger sm">${ic('close')}</button>`); del.onclick = () => deleteWithUndo('Регулярний платіж видалено', () => { state.recurring = state.recurring.filter(x=>x.id!==r.id); });
