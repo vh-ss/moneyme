@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '9ce8837ab0';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '348ad05b61';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3272,11 +3272,23 @@ function openMonthlyReport(){
 function dayBarsSVG(items){   // items: [{date, total}]
   const n = Math.max(items.length, 1), w = 100 / n;
   const max = Math.max(1, ...items.map(d => Math.max(0, d.total)));
-  const H = 140; let bars = '';
+  const H = 140; let grid = '', bars = '';
+  // Сітка: підсвічування колонок вихідних + вертикальні лінії на межах днів + горизонтальні лінії.
+  // vector-effect="non-scaling-stroke" — лінії лишаються 1px попри розтягнення (preserveAspectRatio=none).
+  items.forEach((d, i) => {
+    const x = i * w;
+    const [y, m, dd] = d.date.slice(0, 10).split('-').map(Number);
+    const wd = new Date(y, m - 1, dd).getDay();
+    if (wd === 0 || wd === 6) grid += `<rect x="${x.toFixed(2)}" y="0" width="${w.toFixed(2)}" height="${H}" fill="rgba(239,68,68,.06)"/>`;   // вихідні — легка смуга
+    grid += `<line x1="${x.toFixed(2)}" y1="0" x2="${x.toFixed(2)}" y2="${H}" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  });
+  grid += `<line x1="100" y1="0" x2="100" y2="${H}" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;   // права межа
+  [0.25, 0.5, 0.75].forEach(f => { const gy = (H - f * (H - 6)).toFixed(2); grid += `<line x1="0" y1="${gy}" x2="100" y2="${gy}" stroke="var(--softline)" stroke-width="1" vector-effect="non-scaling-stroke"/>`; });
+  grid += `<line x1="0" y1="${H}" x2="100" y2="${H}" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;   // базова лінія
   items.forEach((d, i) => { const bw = w * 0.6, base = i * w + (w - bw) / 2;
     const h = (Math.max(0, d.total) / max) * (H - 6);
     bars += `<rect x="${base.toFixed(2)}" y="${(H - h).toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}" rx="0.5" fill="#ef4444"><title>${esc(fmtDate(d.date))}: ${esc(money(round2(d.total)))}</title></rect>`; });
-  return el(`<svg width="100%" height="${H}" viewBox="0 0 100 ${H}" preserveAspectRatio="none" style="overflow:visible;display:block">${bars}</svg>`);
+  return el(`<svg width="100%" height="${H}" viewBox="0 0 100 ${H}" preserveAspectRatio="none" style="overflow:visible;display:block">${grid}${bars}</svg>`);
 }
 // Звіт «Аналітика по днях»: витрати по днях (день+сума) + графік, з фільтром за статтею витрат.
 function renderDayReport(app, inR){
