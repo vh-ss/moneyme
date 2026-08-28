@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '348ad05b61';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '7677d8d84a';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3269,10 +3269,26 @@ function openMonthlyReport(){
 }
 
 // ——— Звіт «По днях»: одна серія стовпчиків (витрати), хронологічно ———
-function dayBarsSVG(items){   // items: [{date, total}]
+const DAYBARS_H = 140;
+// «Гарний» крок сітки для діапазону (щоб рівні були круглі: 1/2/2.5/5 ×10ⁿ), приблизно 4 лінії.
+function niceStep(maxV){
+  const raw = (maxV || 1) / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  const norm = raw / mag;
+  const s = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10;
+  return s * mag;
+}
+// Компактний підпис суми: 3000→«3к», 3500→«3,5к», <1000 — як є.
+function kFmt(v){
+  const a = Math.abs(v);
+  if (a >= 1000) { const k = Math.round(v / 100) / 10; return String(k).replace('.', ',') + 'к'; }
+  return String(Math.round(v));
+}
+// items: [{date, total}]; maxV — спільний максимум; gridVals — значення горизонтальних ліній сітки.
+function dayBarsSVG(items, maxV, gridVals){
   const n = Math.max(items.length, 1), w = 100 / n;
-  const max = Math.max(1, ...items.map(d => Math.max(0, d.total)));
-  const H = 140; let grid = '', bars = '';
+  const max = maxV || Math.max(1, ...items.map(d => Math.max(0, d.total)));
+  const H = DAYBARS_H; let grid = '', bars = '';
   // Сітка: підсвічування колонок вихідних + вертикальні лінії на межах днів + горизонтальні лінії.
   // vector-effect="non-scaling-stroke" — лінії лишаються 1px попри розтягнення (preserveAspectRatio=none).
   items.forEach((d, i) => {
@@ -3283,12 +3299,25 @@ function dayBarsSVG(items){   // items: [{date, total}]
     grid += `<line x1="${x.toFixed(2)}" y1="0" x2="${x.toFixed(2)}" y2="${H}" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
   });
   grid += `<line x1="100" y1="0" x2="100" y2="${H}" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;   // права межа
-  [0.25, 0.5, 0.75].forEach(f => { const gy = (H - f * (H - 6)).toFixed(2); grid += `<line x1="0" y1="${gy}" x2="100" y2="${gy}" stroke="var(--softline)" stroke-width="1" vector-effect="non-scaling-stroke"/>`; });
+  (gridVals || []).forEach(v => { const gy = (H - (v / max) * (H - 6)).toFixed(2); grid += `<line x1="0" y1="${gy}" x2="100" y2="${gy}" stroke="var(--softline)" stroke-width="1" vector-effect="non-scaling-stroke"/>`; });
   grid += `<line x1="0" y1="${H}" x2="100" y2="${H}" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;   // базова лінія
   items.forEach((d, i) => { const bw = w * 0.6, base = i * w + (w - bw) / 2;
     const h = (Math.max(0, d.total) / max) * (H - 6);
     bars += `<rect x="${base.toFixed(2)}" y="${(H - h).toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}" rx="0.5" fill="#ef4444"><title>${esc(fmtDate(d.date))}: ${esc(money(round2(d.total)))}</title></rect>`; });
   return el(`<svg width="100%" height="${H}" viewBox="0 0 100 ${H}" preserveAspectRatio="none" style="overflow:visible;display:block">${grid}${bars}</svg>`);
+}
+// Графік по днях із вертикальною віссю (підписи рівнів сітки) — обгортка над dayBarsSVG.
+function dayChart(items){
+  const H = DAYBARS_H;
+  const maxV = Math.max(1, ...items.map(d => Math.max(0, d.total)));
+  const step = niceStep(maxV);
+  const gridVals = []; for (let v = step; v <= maxV * 1.0001 && gridVals.length < 8; v += step) gridVals.push(round2(v));
+  const plot = el(`<div style="position:relative"></div>`);
+  plot.appendChild(dayBarsSVG(items, maxV, gridVals));
+  // підписи вертикальної осі: значення кожної лінії сітки (ліворуч, на самій лінії)
+  gridVals.forEach(v => { const yPx = (H - (v / maxV) * (H - 6)).toFixed(1);
+    plot.appendChild(el(`<span style="position:absolute;left:1px;top:${yPx}px;transform:translateY(-50%);font-size:9px;line-height:1;color:var(--muted);background:color-mix(in srgb,var(--card) 72%,transparent);padding:0 3px;border-radius:3px;pointer-events:none">${kFmt(v)}</span>`)); });
+  return plot;
 }
 // Звіт «Аналітика по днях»: витрати по днях (день+сума) + графік, з фільтром за статтею витрат.
 function renderDayReport(app, inR){
@@ -3318,7 +3347,7 @@ function renderDayReport(app, inR){
   </div>`));
 
   const chart = el(`<section class="card" style="padding:14px 16px;margin-top:14px"></section>`);
-  chart.appendChild(dayBarsSVG(days.map(d => ({ date: d, total: dayMap[d] }))));
+  chart.appendChild(dayChart(days.map(d => ({ date: d, total: dayMap[d] }))));
   chart.appendChild(dayAxisLabels(days));
   app.appendChild(chart);
 
