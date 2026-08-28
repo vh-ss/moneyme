@@ -362,7 +362,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '63539dbaab';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '9ce8837ab0';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3480,9 +3480,11 @@ views.analytics = (app) => {
     const cardEl = el(`<div class="card" style="padding:14px"><h2 style="margin-bottom:10px">${title}</h2></div>`);
     if (data.length === 0) { cardEl.appendChild(el(`<div class="empty">Немає даних</div>`)); }
     else {
-      const wrap = el(`<div class="row" style="align-items:center;flex-wrap:wrap"></div>`);
+      const wrap = el(`<div class="row" style="align-items:center;flex-wrap:wrap;justify-content:center"></div>`);
       const pieBox = el(`<div style="flex:0 0 auto"></div>`); pieBox.appendChild(pieSVG(data));
-      const leg = el(`<ul class="legend" style="flex:1;min-width:150px"></ul>`);
+      // min-width високий, щоб на вузькому екрані (телефон) легенда переносилась ПІД діаграму на всю ширину —
+      // інакше назви статей стискаються до «Б.». На широкому екрані діаграма й легенда лишаються поруч.
+      const leg = el(`<ul class="legend" style="flex:1;min-width:210px"></ul>`);
       data.forEach(d => leg.appendChild(el(`<li><span class="ld" style="background:${d.color}"></span>
         <span class="ln">${d.icon?d.icon+' ':''}${esc(d.name)}</span>
         <b class="tabnum">${money(d.total)}</b>
