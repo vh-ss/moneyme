@@ -3419,9 +3419,8 @@ function renderDayReport(app, inR){
       sub.style.display = open ? 'block' : 'none';
       const c = $('.day-caret', row); if (c) c.style.transform = open ? 'rotate(90deg)' : '';
     };
-    row.addEventListener('dblclick', (e) => { if (e.target.closest('button')) return; toggle(); });
-    let _lastTap = 0;   // подвійний тап на тач (як у txRow)
-    row.addEventListener('touchend', (e) => { if (e.target.closest('button')) return; const now = Date.now(); if (now - _lastTap < 350) { e.preventDefault(); _lastTap = 0; toggle(); } else _lastTap = now; });
+    // Розкриття дня — ОДИН клік/тап (це акордеон, не деструктив): на iOS подвійний тап конфліктував із зумом Safari.
+    row.addEventListener('click', (e) => { if (e.target.closest('button')) return; toggle(); });
     listCard.appendChild(row); listCard.appendChild(sub);
   });
   // приховані операції — окремою секцією, щоб їх завжди можна було повернути
