@@ -3231,6 +3231,11 @@ function dayAxisLabels(days){
 let anFilter = { from: monthStartISO(), to: todayISO(), preset: 'month' };
 let anReport = 'main';   // варіант звіту: 'main' (дашборд) | 'byday' (витрати по днях)
 let anDayCat = '';        // фільтр звіту «По днях»: '' = усі статті, інакше id категорії-витрати
+// Приховані дні звіту «По днях» (нетипові витрати / велика покупка) — виключаються з графіка й статистики.
+// Локальне налаштування перегляду (не синхронізується): множина ISO-дат.
+let dayHidden = (() => { try { return new Set(JSON.parse(localStorage.getItem('moneyme.demo.dayHidden') || '[]')); } catch (e) { return new Set(); } })();
+function saveDayHidden(){ try { localStorage.setItem('moneyme.demo.dayHidden', JSON.stringify([...dayHidden])); } catch (e) {} }
+function toggleDayHidden(d){ if (dayHidden.has(d)) dayHidden.delete(d); else dayHidden.add(d); saveDayHidden(); render(); }
 // ——— Місячний звіт (одним екраном, з друком/PDF) ———
 function monthRangeOf(ym){ const from = ym + '-01'; const [y,m] = ym.split('-').map(Number); const last = new Date(y, m, 0).getDate(); return { from, to: `${ym}-${String(last).padStart(2,'0')}` }; }
 function addMonthsYM(ym, d){ const [y,m] = ym.split('-').map(Number); const dt = new Date(y, m-1+d, 1); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`; }
@@ -3356,24 +3361,27 @@ function renderDayReport(app, inR){
   state.transactions.forEach(t => { if (t.kind !== 'EXPENSE' || !inR(t)) return;
     const amt = anDayCat ? partUAH(t, txCatAmount(t, Number(anDayCat))) : txUAH(t);
     if (!amt) return; const d = t.date.slice(0, 10); dayMap[d] = (dayMap[d] || 0) + amt; });
-  const days = Object.keys(dayMap).filter(d => Math.abs(dayMap[d]) > 0.005).sort();   // хронологічно
+  const allDays = Object.keys(dayMap).filter(d => Math.abs(dayMap[d]) > 0.005).sort();   // усі дні з витратами
+  if (!allDays.length) { app.appendChild(el(`<div class="empty" style="margin-top:14px">За цей період витрат немає.</div>`)); return; }
+  const days = allDays.filter(d => !dayHidden.has(d));            // видимі дні (у графіку й статистиці)
+  const hiddenDaysList = allDays.filter(d => dayHidden.has(d));   // приховані дні з витратами
   const total = days.reduce((s, d) => s + dayMap[d], 0);
+  const hiddenTotal = hiddenDaysList.reduce((s, d) => s + dayMap[d], 0);
 
-  if (!days.length) { app.appendChild(el(`<div class="empty" style="margin-top:14px">За цей період витрат немає.</div>`)); return; }
-
-  // Для ГРАФІКА — усі календарні дні періоду (не пропускаємо дні без витрат), а список — лише дні з витратами.
+  // Для ГРАФІКА — усі календарні дні періоду (не пропускаємо дні без витрат), ОКРІМ прихованих; список — дні з витратами.
   let chartDays = days;
   const cf = anFilter.from, ct = anFilter.to;
   if (cf && ct && cf <= ct) {
     const span = Math.round((Date.parse(ct) - Date.parse(cf)) / 86400000) + 1;
-    if (span >= 1 && span <= 400) { chartDays = []; for (let i = 0; i < span; i++) chartDays.push(addDaysISO(cf, i)); }
+    if (span >= 1 && span <= 400) { chartDays = []; for (let i = 0; i < span; i++) { const d = addDaysISO(cf, i); if (!dayHidden.has(d)) chartDays.push(d); } }
   }
-  // «Днів» і середнє — на ВЕСЬ період (усі календарні дні), а не лише дні з витратами; кількість днів із витратами — окремо.
+  // «Днів» і середнє — на ВЕСЬ період (усі календарні дні, крім прихованих); кількість днів із витратами — окремо.
   const periodDays = chartDays.length, spendDays = days.length;
   app.appendChild(el(`<div class="card" style="padding:12px 14px;margin-top:14px;display:flex;gap:8px 18px;flex-wrap:wrap;font-size:14px">
     <div><span class="muted">Разом: </span><b class="tabnum" style="color:var(--red)">${money(round2(total))}</b></div>
     <div><span class="muted">Днів: </span><b>${periodDays}</b>${spendDays !== periodDays ? `<span class="muted"> · з витратами ${spendDays}</span>` : ''}</div>
-    <div><span class="muted">У середньому: </span><b class="tabnum">${money(round2(total/periodDays))}</b><span class="muted">/день</span></div>
+    <div><span class="muted">У середньому: </span><b class="tabnum">${money(round2(total / (periodDays || 1)))}</b><span class="muted">/день</span></div>
+    ${hiddenDaysList.length ? `<div><span class="muted">🙈 Приховано: </span><b>${hiddenDaysList.length}</b><span class="muted"> дн. · ${money(round2(hiddenTotal))}</span></div>` : ''}
   </div>`));
 
   const chart = el(`<section class="card" style="padding:14px 16px;margin-top:14px"></section>`);
@@ -3382,17 +3390,18 @@ function renderDayReport(app, inR){
   app.appendChild(chart);
 
   const listCard = el(`<section class="card" style="padding:4px 6px;margin-top:14px"></section>`);
-  const ordered = days.slice().reverse();   // новіші зверху
-  ordered.forEach((d, i) => {
+  const makeDayRow = (d, hidden) => {
     // витрати того дня (з урахуванням фільтра за статтею), новіші зверху
     const dayTx = state.transactions
       .filter(t => t.kind === 'EXPENSE' && inR(t) && t.date.slice(0, 10) === d
         && (anDayCat ? Math.abs(txCatAmount(t, Number(anDayCat))) > 0.005 : true))
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-    const isLast = i === ordered.length - 1;
-    const row = el(`<div class="row" style="justify-content:space-between;gap:12px;padding:9px 10px;cursor:pointer;user-select:none${isLast ? '' : ';border-bottom:1px solid var(--line)'}">
+    const row = el(`<div class="row" style="justify-content:space-between;gap:12px;padding:9px 10px;cursor:pointer;user-select:none;border-bottom:1px solid var(--softline)${hidden ? ';opacity:.6' : ''}">
       <span><span class="day-caret" style="display:inline-block;width:1.1em;color:var(--muted);transition:transform .15s">▸</span>${esc(fmtDate(d))} <span class="muted" style="font-size:12px">· ${dayTx.length}</span></span>
-      <b class="tabnum" style="color:var(--red)">${money(round2(dayMap[d]))}</b></div>`);
+      <span class="row" style="gap:8px;align-items:center;flex:0 0 auto">
+        <b class="tabnum" style="color:${hidden ? 'var(--muted)' : 'var(--red)'}">${money(round2(dayMap[d]))}</b>
+        <button type="button" class="btn ghost sm dhide" title="${hidden ? 'Показати день у звіті' : 'Сховати день (нетипові витрати / велика покупка)'}">${hidden ? '👁' : '🙈'}</button>
+      </span></div>`);
     const sub = el(`<div class="day-sub" style="display:none;padding:2px 4px 10px"></div>`);
     dayTx.forEach(t => sub.appendChild(txRow(t)));   // dblclick по операції → перегляд (як скрізь)
     const toggle = () => {
@@ -3403,8 +3412,14 @@ function renderDayReport(app, inR){
     row.addEventListener('dblclick', (e) => { if (e.target.closest('button')) return; toggle(); });
     let _lastTap = 0;   // подвійний тап на тач (як у txRow)
     row.addEventListener('touchend', (e) => { if (e.target.closest('button')) return; const now = Date.now(); if (now - _lastTap < 350) { e.preventDefault(); _lastTap = 0; toggle(); } else _lastTap = now; });
+    $('.dhide', row).onclick = (e) => { e.stopPropagation(); toggleDayHidden(d); };   // сховати/показати день
     listCard.appendChild(row); listCard.appendChild(sub);
-  });
+  };
+  days.slice().reverse().forEach(d => makeDayRow(d, false));   // новіші зверху
+  if (hiddenDaysList.length) {
+    listCard.appendChild(el(`<div class="muted small" style="padding:10px 10px 4px;border-top:1px solid var(--line)">Приховані дні (${hiddenDaysList.length}) — не входять у графік і статистику</div>`));
+    hiddenDaysList.slice().reverse().forEach(d => makeDayRow(d, true));
+  }
   app.appendChild(listCard);
 }
 views.analytics = (app) => {
