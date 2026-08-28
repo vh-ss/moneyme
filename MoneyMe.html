@@ -3346,9 +3346,16 @@ function renderDayReport(app, inR){
     <div><span class="muted">У середньому: </span><b class="tabnum">${money(round2(total/days.length))}</b><span class="muted">/день</span></div>
   </div>`));
 
+  // Для ГРАФІКА — усі календарні дні періоду (не пропускаємо дні без витрат), а список/статистика — лише дні з витратами.
+  let chartDays = days;
+  const cf = anFilter.from, ct = anFilter.to;
+  if (cf && ct && cf <= ct) {
+    const span = Math.round((Date.parse(ct) - Date.parse(cf)) / 86400000) + 1;
+    if (span >= 1 && span <= 400) { chartDays = []; for (let i = 0; i < span; i++) chartDays.push(addDaysISO(cf, i)); }
+  }
   const chart = el(`<section class="card" style="padding:14px 16px;margin-top:14px"></section>`);
-  chart.appendChild(dayChart(days.map(d => ({ date: d, total: dayMap[d] }))));
-  chart.appendChild(dayAxisLabels(days));
+  chart.appendChild(dayChart(chartDays.map(d => ({ date: d, total: dayMap[d] || 0 }))));
+  chart.appendChild(dayAxisLabels(chartDays));
   app.appendChild(chart);
 
   const listCard = el(`<section class="card" style="padding:4px 6px;margin-top:14px"></section>`);
