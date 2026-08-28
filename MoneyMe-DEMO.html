@@ -3212,6 +3212,20 @@ function chartLabels(labels){
   const shown = labels.map((l,i)=> (i%step===0 || i===n-1) ? l : '');
   return el(`<div style="display:flex;justify-content:space-between;margin-top:4px">${shown.map(l=>`<span class="muted" style="font-size:11px;white-space:nowrap">${esc(l)}</span>`).join('')}</div>`);
 }
+// Підписи осі по днях: КОЖЕН день (число) + день тижня (пн/вт… чи Mon/Tue…), вихідні виділені.
+// Для дуже довгих періодів (>45 днів) не влізе — тоді звичайне проріджування дат.
+const WEEKDAY_ABBR = { uk: ['нд','пн','вт','ср','чт','пт','сб'], en: ['Su','Mo','Tu','We','Th','Fr','Sa'] };
+function dayAxisLabels(days){
+  if (days.length > 45) return chartLabels(days.map(d => d.slice(8,10) + '.' + d.slice(5,7)));
+  const wd = WEEKDAY_ABBR[lang === 'en' ? 'en' : 'uk'];
+  const cells = days.map(d => {
+    const [y,m,dd] = d.slice(0,10).split('-').map(Number);
+    const w = new Date(y, m-1, dd).getDay();
+    const weekend = (w === 0 || w === 6);
+    return `<span style="flex:1 1 0;min-width:0;text-align:center;line-height:1.15${weekend?';color:var(--red)':''}"><span style="font-size:10px;display:block;font-weight:600">${dd}</span><span style="font-size:9px;display:block;opacity:.85">${wd[w]}</span></span>`;
+  });
+  return el(`<div class="muted" style="display:flex;gap:1px;margin-top:4px">${cells.join('')}</div>`);
+}
 
 //==================== Вигляд: Аналітика ====================
 let anFilter = { from: monthStartISO(), to: todayISO(), preset: 'month' };
@@ -3314,7 +3328,7 @@ function renderDayReport(app, inR){
 
   const chart = el(`<section class="card" style="padding:14px 16px;margin-top:14px"></section>`);
   chart.appendChild(dayBarsSVG(days.map(d => ({ date: d, total: dayMap[d] }))));
-  chart.appendChild(chartLabels(days.map(d => d.slice(8,10) + '.' + d.slice(5,7))));
+  chart.appendChild(dayAxisLabels(days));
   app.appendChild(chart);
 
   const listCard = el(`<section class="card" style="padding:4px 6px;margin-top:14px"></section>`);
