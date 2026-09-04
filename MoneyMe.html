@@ -4574,28 +4574,46 @@ function metalsTotalUAH(){
   for (const h of list) { const v = metalValueUAH(h); if (v == null) return null; sum += v; }
   return round2(sum);
 }
-// Знімок цін і вартості портфеля (один на добу) — для графіка та показника зміни.
+// Курс долара (для доларових цін металів). null — якщо курсу нема.
+function metalUsdRate(){ const r = rateFor('USD'); return (typeof r === 'number' && r > 0) ? r : null; }
+// Ціни у ДОЛАРАХ: у гривні метал може дорожчати лише через курс, тож долар фіксуємо окремо.
+function metalRateOztUsd(code){ const u = metalUsdRate(), r = metalRateOzt(code); return (u == null || r == null) ? null : r / u; }
+function metalRateGramUsd(code){ const r = metalRateOztUsd(code); return r == null ? null : r / OZT_G; }
+// Знімок цін і вартості портфеля (один на добу) — для графіка та показників зміни (₴ і $).
 function recordMetalsSnapshot(){
   const px = {}; METAL_CODES.forEach(c => { const r = metalRateOzt(c); if (r != null) px[c] = r; });
   if (!Object.keys(px).length) return;   // курсів ще нема
   if (!Array.isArray(state.metalsHistory)) state.metalsHistory = [];
-  const v = metalsTotalUAH(), t = todayISO();
+  const v = metalsTotalUAH(), t = todayISO(), usd = metalUsdRate();
   const last = state.metalsHistory[state.metalsHistory.length - 1];
-  const rec = { date: t, uah: (v == null ? 0 : v), px };
+  const rec = { date: t, uah: (v == null ? 0 : v), px, usd };   // usd — курс на момент знімка, щоб рахувати $-ціни заднім числом
   if (last && last.date === t) Object.assign(last, rec); else state.metalsHistory.push(rec);
   state.metalsHistory = state.metalsHistory.slice(-180);
   persist();   // без оновлення updatedAt — знімок цін не має перебивати реальні правки при синху
 }
-// Попередня (не сьогоднішня) зафіксована ціна металу — база для показника зміни.
-function metalPrevPrice(code){
+// Попередній (не сьогоднішній) знімок, де є ціна цього металу.
+function metalPrevSnap(code){
   const h = state.metalsHistory || [], t = todayISO();
-  for (let i = h.length - 1; i >= 0; i--) { const p = h[i]; if (p && p.date !== t && p.px && p.px[code] > 0) return p.px[code]; }
+  for (let i = h.length - 1; i >= 0; i--) { const p = h[i]; if (p && p.date !== t && p.px && p.px[code] > 0) return p; }
   return null;
 }
+function metalPrevPrice(code){ const p = metalPrevSnap(code); return p ? p.px[code] : null; }
+function metalPrevPriceUsd(code){ const p = metalPrevSnap(code); return (p && p.usd > 0) ? p.px[code] / p.usd : null; }
 function metalChangePct(code){
   const cur = metalRateOzt(code), prev = metalPrevPrice(code);
   if (cur == null || prev == null || !(prev > 0)) return null;
   return round2((cur - prev) / prev * 100);
+}
+function metalChangePctUsd(code){
+  const cur = metalRateOztUsd(code), prev = metalPrevPriceUsd(code);
+  if (cur == null || prev == null || !(prev > 0)) return null;
+  return round2((cur - prev) / prev * 100);
+}
+// Попередній знімок вартості портфеля (для зміни ₴/$ від минулого разу).
+function metalsPrevSnap(){
+  const h = state.metalsHistory || [], t = todayISO();
+  for (let i = h.length - 1; i >= 0; i--) { const p = h[i]; if (p && p.date !== t && p.uah > 0) return p; }
+  return null;
 }
 
 //==================== Вигляд: Дорогоцінні метали ====================
@@ -4614,6 +4632,21 @@ views.metals = (app) => {
   const costedVal = round2(costed.reduce((s, h) => { const v = metalValueUAH(h); return s + (v == null ? 0 : v); }, 0));
   const plT = plTag(totalCost ? round2((costedVal - totalCost) / totalCost * 100) : null);
   const note = ratesCache.date ? `курс НБУ на ${fmtDate(ratesCache.date)}` : (ratesCache.error ? 'курси недоступні' : 'завантаження курсів…');
+  // Зміна вартості портфеля від попереднього знімка — окремо у ₴ і у $ (щоб бачити, де це курс, а де метал).
+  let chgLine = '';
+  {
+    const prev = metalsPrevSnap();
+    if (prev && total != null && total > 0) {
+      const dU = round2(total - prev.uah), pU = prev.uah > 0 ? round2(dU / prev.uah * 100) : null;
+      const parts = [`<span style="color:${dU >= 0 ? 'var(--green)' : 'var(--red)'}">${dU >= 0 ? '+' : ''}${money(dU, 'UAH')}${pU != null ? ` (${dU >= 0 ? '+' : ''}${pU}%)` : ''}</span>`];
+      if (usdRate && prev.usd > 0) {
+        const curUsd = round2(total / usdRate), prevUsd = round2(prev.uah / prev.usd);
+        const dD = round2(curUsd - prevUsd), pD = prevUsd > 0 ? round2(dD / prevUsd * 100) : null;
+        parts.push(`<span style="color:${dD >= 0 ? 'var(--green)' : 'var(--red)'}">${dD >= 0 ? '+' : ''}${money(dD, 'USD')}${pD != null ? ` (${dD >= 0 ? '+' : ''}${pD}%)` : ''}</span>`);
+      }
+      chgLine = `<div class="muted small tabnum" style="margin-top:2px">Зміна з ${fmtDate(prev.date)}: ${parts.join(' · ')}</div>`;
+    }
+  }
   const sum = el(`<section class="card" style="padding:16px;margin-top:12px">
     <div class="row" style="justify-content:space-between;align-items:center"><div class="muted small">Загальна вартість металів</div>
       <button class="btn ghost sm" id="mt-refresh" title="Оновити курси">${ic('refresh')} Курси</button></div>
@@ -4623,6 +4656,7 @@ views.metals = (app) => {
       ${plT ? `<div class="tabnum" style="font-weight:700;color:${plT.color}">${plT.txt}</div>` : ''}
     </div>
     ${totalCost ? `<div class="muted small tabnum" style="margin-top:2px">Закупка ${money(totalCost, 'UAH')} · ${(costedVal - totalCost >= 0 ? '+' : '')}${money(round2(costedVal - totalCost), 'UAH')}</div>` : ''}
+    ${chgLine}
     <div class="muted small" style="margin-top:6px">${esc(note)}</div>
   </section>`);
   $('#mt-refresh', sum).onclick = () => ensureRatesFresh(true);
@@ -4632,12 +4666,13 @@ views.metals = (app) => {
   const pxc = el(`<section class="card" style="padding:14px 16px;margin-top:12px"><div class="muted small" style="margin-bottom:4px">Котирування НБУ</div></section>`);
   METAL_CODES.forEach(code => {
     const m = metalMeta(code), g = metalRateGram(code), o = metalRateOzt(code);
-    const ch = plTag(metalChangePct(code));
-    pxc.appendChild(el(`<div class="row" style="justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--softline)">
-      <span style="min-width:0"><b>${metalIcon(code)} ${esc(m.name)}</b> <span class="muted small">${m.sym}</span>${ch ? ` <span class="small tabnum" style="color:${ch.color}">${ch.txt}</span>` : ''}</span>
-      <span class="tabnum" style="text-align:right;flex:0 0 auto">
-        <b>${g == null ? '—' : money(round2(g), 'UAH')}</b><span class="muted small">/г</span>
-        <span class="muted small"> · ${o == null ? '—' : money(round2(o), 'UAH')}/унц.</span>
+    const gu = metalRateGramUsd(code), ou = metalRateOztUsd(code);
+    const ch = plTag(metalChangePct(code)), chu = plTag(metalChangePctUsd(code));
+    pxc.appendChild(el(`<div class="row" style="justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--softline);align-items:flex-start;flex-wrap:wrap">
+      <span style="min-width:0"><b>${metalIcon(code)} ${esc(m.name)}</b> <span class="muted small">${m.sym}</span></span>
+      <span class="tabnum" style="text-align:right;flex:1 1 auto;min-width:0">
+        <div><b>${g == null ? '—' : money(round2(g), 'UAH')}</b><span class="muted small">/г</span><span class="muted small"> · ${o == null ? '—' : money(round2(o), 'UAH')}/унц.</span>${ch ? ` <span class="small" style="color:${ch.color}">${ch.txt}</span>` : ''}</div>
+        <div class="small" style="margin-top:1px"><b>${gu == null ? '—' : money(round2(gu), 'USD')}</b><span class="muted">/г</span><span class="muted"> · ${ou == null ? '—' : money(round2(ou), 'USD')}/унц.</span>${chu ? ` <span style="color:${chu.color}">${chu.txt}</span>` : ''}</div>
       </span></div>`));
   });
   app.appendChild(pxc);
