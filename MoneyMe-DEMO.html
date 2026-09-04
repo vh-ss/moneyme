@@ -347,6 +347,7 @@
     <a data-view="accounts"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18" stroke-width="2.2"/><path d="M6.5 14.5h4"/></svg></span><span class="nt">Рахунки</span></a>
     <a data-view="credits"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9.5 12 4l8.5 5.5"/><path d="M5 9.5V20M19 9.5V20M3.5 20h17M9.5 20v-6.5M14.5 20v-6.5"/></svg></span><span class="nt">Кредити</span></a>
     <a data-view="crypto"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7 13.18 10.38 16.76 10.46 13.9 12.62 14.94 16.05 12 14 9.06 16.05 10.1 12.62 7.24 10.46 10.82 10.38Z" fill="currentColor" stroke="none"/></svg></span><span class="nt">Крипто</span></a>
+    <a data-view="metals"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 13.8h11.6l1.7 4.9H4.5z"/><path d="M9.1 7.6h5.8l1.3 4.1H7.8z"/></svg></span><span class="nt">Метали</span></a>
     <a data-view="goals"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5"/></svg></span><span class="nt">Цілі</span></a>
     <a data-view="recurring"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 0 1 14.4-6.1"/><path d="M18.5 2.5v4h-4"/><path d="M20.5 12a8.5 8.5 0 0 1-14.4 6.1"/><path d="M5.5 21.5v-4h4"/></svg></span><span class="nt">Регулярні</span></a>
     <a data-view="categories"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 11.3 11 3.7a2 2 0 0 1 1.4-.6h5.7A1.9 1.9 0 0 1 20 5v5.7a2 2 0 0 1-.6 1.4l-7.6 7.6a2 2 0 0 1-2.8 0L3.4 14.1a2 2 0 0 1 0-2.8Z"/><circle cx="16" cy="8" r="1.5" fill="currentColor" stroke="none"/></svg></span><span class="nt">Категорії</span></a>
@@ -403,7 +404,7 @@ const Sync = {
 // ——— Синхронізація: per-record LWW (Last-Write-Wins) + надгробки видалень ———
 // Кожен запис має updatedAt; видалення лишає «надгробок» {id: updatedAt}. Злиття бере найновіший
 // запис по кожному id (надгробок виграє, якщо не старіший за live) — комутативно, не залежить від порядку.
-const SYNC_TYPES = ['accounts','categories','transactions','banks','loans','recurring','goals','crypto'];
+const SYNC_TYPES = ['accounts','categories','transactions','banks','loans','recurring','goals','crypto','metals'];
 function deviceId(){ let d = localStorage.getItem('moneyme.demo.sync.deviceId'); if (!d) { d = 'd' + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); localStorage.setItem('moneyme.demo.sync.deviceId', d); } return d; }
 function deviceFileName(){ return 'moneyme-' + deviceId() + '.json'; }
 const TOMBSTONE_TTL = 90 * 24 * 3600 * 1000;   // надгробки живуть ~90 днів, далі чистяться
@@ -450,12 +451,14 @@ function normalize() {
   if (!state.goals) { state.goals = []; changed = true; }           // цілі накопичення
   if (state.crypto === undefined) { state.crypto = []; changed = true; }   // крипто-портфель (порожній за замовчуванням)
   if (!Array.isArray(state.cryptoHistory)) { state.cryptoHistory = []; changed = true; }   // історія вартості портфеля
+  if (state.metals === undefined) { state.metals = []; changed = true; }   // дорогоцінні метали (порожньо за замовчуванням)
+  if (!Array.isArray(state.metalsHistory)) { state.metalsHistory = []; changed = true; }   // історія цін/вартості металів
   if (!state.tombstones || typeof state.tombstones !== 'object') { state.tombstones = {}; changed = true; }   // надгробки видалень для синху (per-record LWW)
   SYNC_TYPES.forEach(t => { if (!state.tombstones[t]) { state.tombstones[t] = {}; changed = true; } });
   // міграція: старим записам без updatedAt даємо мітку всього стану (щоб «новіший пристрій виграє» при злитті)
   { const baseUpd = state.updatedAt || '2020-01-01T00:00:00.000Z'; SYNC_TYPES.forEach(t => (state[t] || []).forEach(r => { if (r && r.id != null && !r.updatedAt) { r.updatedAt = baseUpd; changed = true; } })); }
-  if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1 }; changed = true; }
-  ['acc','cat','tx','bank','loan','rec','goal','cry'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = (k==='cry') ? ((state.crypto||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : 1; changed = true; } });
+  if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1, met:1 }; changed = true; }
+  ['acc','cat','tx','bank','loan','rec','goal','cry','met'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = (k==='cry') ? ((state.crypto||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : (k==='met') ? ((state.metals||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : 1; changed = true; } });
   (state.categories || []).forEach(c => {
     if (c.budget === undefined && c.kind === 'EXPENSE') { c.budget = 0; changed = true; }
     if (c.kind === 'EXPENSE' && !c.budget_period) { c.budget_period = 'monthly'; changed = true; }
@@ -688,7 +691,7 @@ function translateTree(root){
   root.querySelectorAll('[title]').forEach(e => { const r = tStr(e.getAttribute('title')); if (r !== e.getAttribute('title')) e.setAttribute('title', r); });
   root.querySelectorAll('option').forEach(o => { const r = tStr(o.textContent); if (r !== o.textContent) o.textContent = r; });
 }
-const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], crypto:['Крипто','Crypto'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
+const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], crypto:['Крипто','Crypto'], metals:['Метали','Metals'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
 function setNavLabels(){ document.querySelectorAll('.nav a').forEach(a => { const m = NAV_LABELS[a.dataset.view]; const nt = a.querySelector('.nt'); if (m) { const lbl = (lang === 'en') ? m[1] : m[0]; if (nt) nt.textContent = lbl; a.setAttribute('aria-label', lbl); } }); }
 // #app перебудовується щоразу з українського джерела, тож переклад у EN ставимо поверх; назад у UK — просто не перекладаємо.
 function applyLang(){ setNavLabels(); if (lang === 'en') translateTree(document.getElementById('app')); }
@@ -1026,7 +1029,7 @@ function seed() {
    ['Одяг','#14b8a6','👕'],['Інше','#64748b','📦']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'EXPENSE',color:c,icon:i}));
   [['Зарплата','#16a34a','💼'],['Підробіток','#0ea5e9','💸'],['Подарунки','#eab308','🎁'],
    ['Інше','#64748b','📥']].forEach(([n,c,i]) => cats.push({id:cid++,name:n,kind:'INCOME',color:c,icon:i}));
-  return { version: SCHEMA_VERSION, seq: { acc:1, cat:cid, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1 }, accounts: [], categories: cats, transactions: [], banks: [], loans: [], recurring: [], goals: [], crypto: [], cryptoHistory: [] };
+  return { version: SCHEMA_VERSION, seq: { acc:1, cat:cid, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1, met:1 }, accounts: [], categories: cats, transactions: [], banks: [], loans: [], recurring: [], goals: [], crypto: [], cryptoHistory: [], metals: [], metalsHistory: [] };
 }
 // Колізійно-стійкі id (час·1000 + random): унікальні між пристроями — щоб merge не плутав
 // дві різні нові операції з однаковим послідовним номером. Лишаються числовими (форми роблять parseInt).
@@ -1508,7 +1511,7 @@ document.querySelectorAll('.nav a').forEach(a => {
 { const more = document.getElementById('navmore'); if (more) more.addEventListener('click', e => { e.preventDefault(); openNavMore(); }); }
 
 // Свайпи вліво/вправо — перехід між вкладками (тач).
-const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','crypto','goals','recurring','categories','settings'];
+const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','crypto','metals','goals','recurring','categories','settings'];
 applyNavMenu();   // застосувати збережені налаштування меню (приховані розділи → під «…»)
 // Порядок свайпу = видимі розділи меню (приховані під «…» пропускаємо). Поточний
 // розділ лишаємо в послідовності, навіть якщо він прихований — щоб можна було «вийти» з нього свайпом.
@@ -2856,9 +2859,10 @@ views.dashboard = (app) => {
   const byCur = {};
   state.accounts.filter(a => !a.archived).forEach(a => { byCur[a.currency_code] = (byCur[a.currency_code]||0) + accountBalance(a.id); });
   const allCurs = Object.keys(byCur);
-  [...dashCurSet].forEach(c => { if (c !== 'CRYPTO' && !allCurs.includes(c)) dashCurSet.delete(c); });
+  [...dashCurSet].forEach(c => { if (c !== 'CRYPTO' && c !== 'METALS' && !allCurs.includes(c)) dashCurSet.delete(c); });
   const selected = dashCurSet.size ? allCurs.filter(c => dashCurSet.has(c)) : allCurs;
   const showCrypto = hasCrypto() && (dashCurSet.size === 0 || dashCurSet.has('CRYPTO'));   // крипта в активах, якщо ввімкнено
+  const showMetals = hasMetals() && (dashCurSet.size === 0 || dashCurSet.has('METALS'));   // метали в активах, якщо ввімкнено
 
   const from = monthStartISO(), to = todayISO();
   let inc=0, exp=0, fees=0;
@@ -2877,6 +2881,7 @@ views.dashboard = (app) => {
   let uah = 0, missing = false;
   selected.forEach(c => { const v = toUAH(byCur[c], c); if (v == null) missing = true; else uah += v; });
   if (showCrypto) { const cu = cryptoTotalUAH(); if (cu == null) missing = true; else uah += cu; }
+  if (showMetals) { const mu = metalsTotalUAH(); if (mu == null) missing = true; else uah += mu; }   // метали як актив
   const usdRate = rateFor('USD');
   const uahInUsd = usdRate ? round2(uah / usdRate) : null;   // доларовий еквівалент загального балансу
   const ratesNote = ratesCache.date ? `курс НБУ на ${fmtDate(ratesCache.date)}`
@@ -2907,18 +2912,20 @@ views.dashboard = (app) => {
 
   // чіпи фільтра валют
   const cf = $('#curfilter', head);
-  if (allCurs.length > 1 || hasCrypto()) {
+  if (allCurs.length > 1 || hasCrypto() || hasMetals()) {
     const mkChip = (label, active, onClick) => { const b = el(`<button class="curchip${active?' on':''}">${label}</button>`); b.onclick = onClick; return b; };
     cf.appendChild(mkChip('Всі', dashCurSet.size===0, () => { dashCurSet.clear(); render(); }));
     allCurs.forEach(c => cf.appendChild(mkChip(curSym(c), dashCurSet.has(c), () => { dashCurSet.has(c)?dashCurSet.delete(c):dashCurSet.add(c); render(); })));
     if (hasCrypto()) cf.appendChild(mkChip('₿', dashCurSet.has('CRYPTO'), () => { dashCurSet.has('CRYPTO')?dashCurSet.delete('CRYPTO'):dashCurSet.add('CRYPTO'); render(); }));
+    if (hasMetals()) cf.appendChild(mkChip('Au', dashCurSet.has('METALS'), () => { dashCurSet.has('METALS')?dashCurSet.delete('METALS'):dashCurSet.add('METALS'); render(); }));
   }
   $('#rrefresh', head).onclick = () => ensureRatesFresh(true);
 
   const bc = $('#bc', head);
-  if (selected.length === 0 && !showCrypto) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
+  if (selected.length === 0 && !showCrypto && !showMetals) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   if (showCrypto) bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Криптопортфель">₿ ${money(cryptoTotalUsd(),'USD')}</div>`));
+  if (showMetals) { const mv = metalsTotalUAH(); bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Дорогоцінні метали">🥇 ${mv==null?'—':money(mv,'UAH')}</div>`)); }
   app.appendChild(head);
 
   // бюджети категорій з лімітом (поточний місяць) — без тих, що 0%
@@ -4547,6 +4554,203 @@ function openCryptoTrade(base, side){
 }
 function round2plusCrypto(x){ return Math.round((Number(x) || 0) * 1e8) / 1e8; }   // як cryptoRound, але дозволяє 0 без clamp до >0 (для проміжних розрахунків)
 
+//==================== Дорогоцінні метали ====================
+// Ціни беремо з НБУ — того самого запиту, що й валюти (ensureRatesFresh):
+// у відповіді НБУ XAU/XAG/XPT/XPD = ГРИВЕНЬ ЗА 1 ТРОЙСЬКУ УНЦІЮ. Окремий API не потрібен.
+const OZT_G = 31.1034768;   // грамів у тройській унції
+const METALS = {
+  XAU: { name: 'Золото',  sym: 'Au', icon: '🟡', color: '#eab308' },
+  XAG: { name: 'Срібло',  sym: 'Ag', icon: '⚪', color: '#94a3b8' },
+  XPT: { name: 'Платина', sym: 'Pt', icon: '🔷', color: '#38bdf8' },
+  XPD: { name: 'Паладій', sym: 'Pd', icon: '🟣', color: '#a78bfa' },
+};
+const METAL_CODES = ['XAU', 'XAG', 'XPT', 'XPD'];
+const METAL_FORMS = ['Злиток', 'Монета', 'Прикраса', 'Брухт', 'Інше'];
+function metalMeta(code){ return METALS[code] || { name: code, sym: code, icon: '•', color: '#64748b' }; }
+// Курс НБУ: ₴ за тройську унцію / за грам. null — курсів ще нема.
+function metalRateOzt(code){ const r = rateFor(code); return (typeof r === 'number' && r > 0) ? r : null; }
+function metalRateGram(code){ const r = metalRateOzt(code); return r == null ? null : r / OZT_G; }
+// Чиста вага у грамах: вага (у грамах або унціях) × проба/1000.
+function metalPureGrams(h){
+  const w = Number(h && h.weight) || 0;
+  const grams = (h && h.unit === 'ozt') ? w * OZT_G : w;
+  const purity = (h && Number(h.purity) > 0) ? Number(h.purity) : 999;
+  return grams * (purity / 1000);
+}
+// Поточна вартість активу у ₴; null — якщо немає курсу.
+function metalValueUAH(h){ const r = metalRateGram(h && h.metal); return r == null ? null : round2(metalPureGrams(h) * r); }
+function hasMetals(){ return (state.metals || []).length > 0; }
+// Загальна вартість металів у ₴; null — якщо бракує курсу (щоб «Огляд» позначив приблизність).
+function metalsTotalUAH(){
+  const list = state.metals || [];
+  if (!list.length) return 0;
+  let sum = 0;
+  for (const h of list) { const v = metalValueUAH(h); if (v == null) return null; sum += v; }
+  return round2(sum);
+}
+// Знімок цін і вартості портфеля (один на добу) — для графіка та показника зміни.
+function recordMetalsSnapshot(){
+  const px = {}; METAL_CODES.forEach(c => { const r = metalRateOzt(c); if (r != null) px[c] = r; });
+  if (!Object.keys(px).length) return;   // курсів ще нема
+  if (!Array.isArray(state.metalsHistory)) state.metalsHistory = [];
+  const v = metalsTotalUAH(), t = todayISO();
+  const last = state.metalsHistory[state.metalsHistory.length - 1];
+  const rec = { date: t, uah: (v == null ? 0 : v), px };
+  if (last && last.date === t) Object.assign(last, rec); else state.metalsHistory.push(rec);
+  state.metalsHistory = state.metalsHistory.slice(-180);
+  persist();   // без оновлення updatedAt — знімок цін не має перебивати реальні правки при синху
+}
+// Попередня (не сьогоднішня) зафіксована ціна металу — база для показника зміни.
+function metalPrevPrice(code){
+  const h = state.metalsHistory || [], t = todayISO();
+  for (let i = h.length - 1; i >= 0; i--) { const p = h[i]; if (p && p.date !== t && p.px && p.px[code] > 0) return p.px[code]; }
+  return null;
+}
+function metalChangePct(code){
+  const cur = metalRateOzt(code), prev = metalPrevPrice(code);
+  if (cur == null || prev == null || !(prev > 0)) return null;
+  return round2((cur - prev) / prev * 100);
+}
+
+//==================== Вигляд: Дорогоцінні метали ====================
+views.metals = (app) => {
+  ensureRatesFresh();        // ціни металів — з того самого джерела, що й валюти (НБУ)
+  recordMetalsSnapshot();
+  const head = el(`<div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h1 style="margin:0">Дорогоцінні метали</h1><div class="row" style="gap:6px"></div></div>`);
+  const add = el(`<button class="btn primary sm">+ Додати</button>`); add.onclick = () => openMetalForm();
+  head.lastElementChild.appendChild(add); app.appendChild(head);
+
+  // ——— Зведення ———
+  const total = metalsTotalUAH();
+  const usdRate = rateFor('USD');
+  const costed = (state.metals || []).filter(h => Number(h.cost) > 0);
+  const totalCost = costed.length ? round2(costed.reduce((s, h) => s + Number(h.cost), 0)) : null;
+  const costedVal = round2(costed.reduce((s, h) => { const v = metalValueUAH(h); return s + (v == null ? 0 : v); }, 0));
+  const plT = plTag(totalCost ? round2((costedVal - totalCost) / totalCost * 100) : null);
+  const note = ratesCache.date ? `курс НБУ на ${fmtDate(ratesCache.date)}` : (ratesCache.error ? 'курси недоступні' : 'завантаження курсів…');
+  const sum = el(`<section class="card" style="padding:16px;margin-top:12px">
+    <div class="row" style="justify-content:space-between;align-items:center"><div class="muted small">Загальна вартість металів</div>
+      <button class="btn ghost sm" id="mt-refresh" title="Оновити курси">${ic('refresh')} Курси</button></div>
+    <div class="row" style="align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:4px">
+      <div class="tabnum" style="font-size:28px;font-weight:800">${total == null ? '—' : money(total, 'UAH')}</div>
+      ${(total != null && usdRate) ? `<div class="muted tabnum">≈ ${money(round2(total / usdRate), 'USD')}</div>` : ''}
+      ${plT ? `<div class="tabnum" style="font-weight:700;color:${plT.color}">${plT.txt}</div>` : ''}
+    </div>
+    ${totalCost ? `<div class="muted small tabnum" style="margin-top:2px">Закупка ${money(totalCost, 'UAH')} · ${(costedVal - totalCost >= 0 ? '+' : '')}${money(round2(costedVal - totalCost), 'UAH')}</div>` : ''}
+    <div class="muted small" style="margin-top:6px">${esc(note)}</div>
+  </section>`);
+  $('#mt-refresh', sum).onclick = () => ensureRatesFresh(true);
+  app.appendChild(sum);
+
+  // ——— Котирування НБУ (₴ за грам і за унцію) + зміна від попереднього запису ———
+  const pxc = el(`<section class="card" style="padding:14px 16px;margin-top:12px"><div class="muted small" style="margin-bottom:4px">Котирування НБУ</div></section>`);
+  METAL_CODES.forEach(code => {
+    const m = metalMeta(code), g = metalRateGram(code), o = metalRateOzt(code);
+    const ch = plTag(metalChangePct(code));
+    pxc.appendChild(el(`<div class="row" style="justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--softline)">
+      <span style="min-width:0"><b>${m.icon} ${esc(m.name)}</b> <span class="muted small">${m.sym}</span>${ch ? ` <span class="small tabnum" style="color:${ch.color}">${ch.txt}</span>` : ''}</span>
+      <span class="tabnum" style="text-align:right;flex:0 0 auto">
+        <b>${g == null ? '—' : money(round2(g), 'UAH')}</b><span class="muted small">/г</span>
+        <span class="muted small"> · ${o == null ? '—' : money(round2(o), 'UAH')}/унц.</span>
+      </span></div>`));
+  });
+  app.appendChild(pxc);
+
+  // ——— Графік вартості портфеля ———
+  const hist = (state.metalsHistory || []).filter(p => p && p.uah > 0).slice(-90);
+  if (hist.length > 1) {
+    const pts = hist.map(p => ({ label: p.date.slice(5), value: p.uah }));
+    const hc = el(`<section class="card" style="padding:14px 16px;margin-top:12px"><div class="muted small" style="margin-bottom:6px">Вартість портфеля, ₴</div></section>`);
+    hc.appendChild(netWorthSVG(pts)); hc.appendChild(chartLabels(pts.map(p => p.label)));
+    app.appendChild(hc);
+  }
+
+  // ——— Активи ———
+  const list = (state.metals || []).map(h => ({ h, val: metalValueUAH(h) })).sort((a, b) => (b.val || 0) - (a.val || 0));
+  const card = el(`<section class="card" style="padding:6px 10px;margin-top:12px"></section>`);
+  if (!list.length) card.appendChild(el(`<div class="empty">Активів немає. Додайте злиток, монету чи прикрасу.</div>`));
+  list.forEach(({ h, val }, idx) => {
+    const m = metalMeta(h.metal);
+    const pg = metalPureGrams(h);
+    const plH = plTag((Number(h.cost) > 0 && val != null) ? round2((val - h.cost) / h.cost * 100) : null);
+    const row = el(`<div class="txrow" style="gap:10px;border-left:3px solid ${m.color};padding-left:9px;border-radius:8px;background:${m.color}14">
+      <span class="muted small tabnum" style="flex:0 0 18px;text-align:right">${idx + 1}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">${m.icon} ${esc(m.name)}${h.form ? ` <span class="muted small">· ${esc(h.form)}</span>` : ''}${val == null ? ' <span class="small" style="color:var(--amber)">нема курсу</span>' : ''}</div>
+        <div class="muted small tabnum">${fmtAmt(h.weight)} ${h.unit === 'ozt' ? 'унц.' : 'г'} · проба ${h.purity || 999}${pg > 0 ? ` · чистого ${fmtAmt(round2(pg))} г` : ''}</div>
+        ${h.place ? `<div class="muted small" style="margin-top:3px">📍 ${esc(h.place)}</div>` : ''}
+        ${h.note ? `<div class="muted small" style="margin-top:3px;white-space:pre-wrap">${esc(h.note)}</div>` : ''}
+      </div>
+      <div style="text-align:right;flex:0 0 auto;min-width:86px">
+        <div class="tabnum" style="font-weight:700">${val == null ? '—' : money(val, 'UAH')}</div>
+        ${plH ? `<div class="small tabnum" style="color:${plH.color};line-height:1.35">${plH.txt}</div><div class="small tabnum" style="color:${plH.color};line-height:1.35">${val - h.cost >= 0 ? '+' : ''}${money(round2(val - h.cost), 'UAH')}</div>` : ''}
+      </div>
+      <div class="row" style="gap:4px;flex:0 0 auto"></div>
+    </div>`);
+    const acts = row.lastElementChild;
+    const delMetal = () => confirmDeleteImpact(`${m.name}`, [], { force: true, hint: `${fmtAmt(h.weight)} ${h.unit === 'ozt' ? 'унц.' : 'г'}${val != null ? ' ≈ ' + money(val, 'UAH') : ''}`, onConfirm: () => deleteWithUndo(`${m.name} видалено`, () => { state.metals = state.metals.filter(x => x.id !== h.id); }) });
+    const more = el(`<button class="btn ghost sm" title="Дії">${ic('dots')}</button>`);
+    more.onclick = () => { const r = more.getBoundingClientRect(); openContextMenu(r.right, r.bottom + 4, [{ label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => openMetalForm(h) }, { sep: true }, { label: 'Видалити', icon: ic('close'), color: 'var(--red)', onClick: delMetal }]); };
+    acts.appendChild(more);
+    card.appendChild(row);
+  });
+  app.appendChild(card);
+
+  if (list.length) {
+    const box = el(`<div style="margin-top:14px"></div>`);
+    const clr = el(`<button class="btn ghost sm" style="color:var(--red)">Очистити метали</button>`);
+    clr.onclick = () => { confirmModal('Очистити метали?', 'Видалити ВСІ активи в металах? (можна скасувати)', { danger: true, okLabel: 'Очистити' }).then(ok => { if (ok) deleteWithUndo('Метали очищено', () => { state.metals = []; }); }); };
+    box.appendChild(clr); app.appendChild(box);
+  }
+};
+
+function openMetalForm(existing){
+  const e = existing || { metal: 'XAU', unit: 'g', purity: 999, weight: '', form: 'Злиток' };
+  const body = el(`<div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Метал</label><select id="mt-metal">${METAL_CODES.map(c => `<option value="${c}" ${e.metal === c ? 'selected' : ''}>${METALS[c].icon} ${esc(METALS[c].name)}</option>`).join('')}</select></div>
+      <div style="flex:1"><label class="lab">Вид</label><select id="mt-form">${METAL_FORMS.map(f => `<option value="${esc(f)}" ${e.form === f ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
+    </div>
+    <div class="row">
+      <div style="flex:1.2"><label class="lab">Вага</label><input id="mt-weight" inputmode="decimal" value="${e.weight ?? ''}" placeholder="напр. 31.1"></div>
+      <div style="flex:1.4"><label class="lab">Одиниця</label><select id="mt-unit"><option value="g" ${e.unit !== 'ozt' ? 'selected' : ''}>грам</option><option value="ozt" ${e.unit === 'ozt' ? 'selected' : ''}>тройська унція</option></select></div>
+      <div style="flex:1"><label class="lab">Проба</label><input id="mt-purity" inputmode="decimal" value="${e.purity ?? 999}" placeholder="999"></div>
+    </div>
+    <div class="muted small" style="margin-top:-2px">Проба — вміст чистого металу (999 — чистий, 585 — 14K). Вартість рахується від чистої ваги.</div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Сума закупки, ₴</label><input id="mt-cost" inputmode="decimal" value="${e.cost ?? ''}" placeholder="скільки вклали"></div>
+      <div style="flex:1"><label class="lab">Де зберігається</label><input id="mt-place" value="${esc(e.place || '')}" placeholder="напр. банківська комірка"></div>
+    </div>
+    <div><label class="lab">Коментар (необовʼязково)</label><input id="mt-note" value="${esc(e.note || '')}" placeholder="нотатка до активу"></div>
+    <div class="muted small" id="mt-preview" style="margin-top:8px"></div>
+    <div class="err hidden" id="mt-err"></div>
+  </div>`);
+  const upd = () => {
+    const code = $('#mt-metal', body).value;
+    const h = { metal: code, weight: num($('#mt-weight', body).value), unit: $('#mt-unit', body).value, purity: num($('#mt-purity', body).value) };
+    const v = metalValueUAH(h), g = metalRateGram(code);
+    $('#mt-preview', body).innerHTML = (v == null)
+      ? 'Курс НБУ ще не завантажено — вартість зʼявиться після оновлення курсів.'
+      : `Чистого металу <b>${fmtAmt(round2(metalPureGrams(h)))} г</b> · за курсом ${money(round2(g), 'UAH')}/г → <b>${money(v, 'UAH')}</b>`;
+  };
+  ['#mt-metal', '#mt-weight', '#mt-unit', '#mt-purity'].forEach(s => { const n = $(s, body); n.addEventListener('input', upd); n.addEventListener('change', upd); });
+  upd();
+  openModal(existing ? 'Редагувати актив' : 'Новий актив', body, { saveLabel: 'Зберегти', onSave: (close) => {
+    const err = $('#mt-err', body);
+    const weight = num($('#mt-weight', body).value);
+    if (!(weight > 0)) { err.textContent = 'Введіть вагу більше 0'; err.classList.remove('hidden'); return; }
+    const purity = num($('#mt-purity', body).value) || 999;
+    if (!(purity > 0) || purity > 1000) { err.textContent = 'Проба має бути від 1 до 1000'; err.classList.remove('hidden'); return; }
+    const costStr = $('#mt-cost', body).value.trim();
+    const rec = { metal: $('#mt-metal', body).value, weight, unit: $('#mt-unit', body).value, purity: round2(purity),
+      form: $('#mt-form', body).value, cost: costStr ? num(costStr) : null,
+      place: $('#mt-place', body).value.trim(), note: $('#mt-note', body).value.trim() };
+    if (existing) Object.assign(existing, rec);
+    else { rec.id = nextId('met'); state.metals.push(rec); }
+    save(); close(); render();
+  }});
+}
+
 //==================== Регулярні платежі ====================
 function dueRecurring(){ const t = todayISO(); return state.recurring.filter(r => r.active !== false && r.next_date && r.next_date <= t); }
 // Регулярні, які СКОРО спишуться (у межах `days` днів, але ще не настав термін) — для попередження заздалегідь.
@@ -5503,8 +5707,10 @@ function mergeAll(states){
   });
   const ch = {}; states.forEach(s => (s.cryptoHistory || []).forEach(p => { if (p && p.date) ch[p.date] = p; }));
   out.cryptoHistory = Object.values(ch).sort((a, b) => a.date < b.date ? -1 : 1).slice(-180);
+  const mh = {}; states.forEach(s => (s.metalsHistory || []).forEach(p => { if (p && p.date) mh[p.date] = p; }));
+  out.metalsHistory = Object.values(mh).sort((a, b) => a.date < b.date ? -1 : 1).slice(-180);
   out.seq = out.seq || {};
-  ['acc','cat','tx','bank','loan','rec','goal','cry'].forEach(k => { let mx = 1; states.forEach(s => { mx = Math.max(mx, (s.seq && s.seq[k]) || 1); }); out.seq[k] = mx; });
+  ['acc','cat','tx','bank','loan','rec','goal','cry','met'].forEach(k => { let mx = 1; states.forEach(s => { mx = Math.max(mx, (s.seq && s.seq[k]) || 1); }); out.seq[k] = mx; });
   out.version = SCHEMA_VERSION;
   return out;
 }
