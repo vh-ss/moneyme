@@ -363,7 +363,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'e28d561891';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '5ceb4cc3db';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -2904,7 +2904,7 @@ views.dashboard = (app) => {
   if (selected.length === 0 && !showCrypto && !showMetals) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   if (showCrypto) bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Криптопортфель">₿ ${money(cryptoTotalUsd(),'USD')}</div>`));
-  if (showMetals) { const mv = metalsTotalUAH(); bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Дорогоцінні метали">🥇 ${mv==null?'—':money(mv,'UAH')}</div>`)); }
+  if (showMetals) { const mv = metalsTotalUAH(); bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Дорогоцінні метали">${metalIcon('XAU',26)} ${mv==null?'—':money(mv,'UAH')}</div>`)); }
   app.appendChild(head);
 
   // бюджети категорій з лімітом (поточний місяць) — без тих, що 0%
@@ -4538,14 +4538,21 @@ function round2plusCrypto(x){ return Math.round((Number(x) || 0) * 1e8) / 1e8; }
 // у відповіді НБУ XAU/XAG/XPT/XPD = ГРИВЕНЬ ЗА 1 ТРОЙСЬКУ УНЦІЮ. Окремий API не потрібен.
 const OZT_G = 31.1034768;   // грамів у тройській унції
 const METALS = {
-  XAU: { name: 'Золото',  sym: 'Au', icon: '🟡', color: '#eab308' },
-  XAG: { name: 'Срібло',  sym: 'Ag', icon: '⚪', color: '#94a3b8' },
-  XPT: { name: 'Платина', sym: 'Pt', icon: '🔷', color: '#38bdf8' },
-  XPD: { name: 'Паладій', sym: 'Pd', icon: '🟣', color: '#a78bfa' },
+  XAU: { name: 'Золото',  sym: 'Au', color: '#eab308' },
+  XAG: { name: 'Срібло',  sym: 'Ag', color: '#94a3b8' },
+  XPT: { name: 'Платина', sym: 'Pt', color: '#38bdf8' },
+  XPD: { name: 'Паладій', sym: 'Pd', color: '#a78bfa' },
 };
 const METAL_CODES = ['XAU', 'XAG', 'XPT', 'XPD'];
 const METAL_FORMS = ['Злиток', 'Монета', 'Прикраса', 'Брухт', 'Інше'];
-function metalMeta(code){ return METALS[code] || { name: code, sym: code, icon: '•', color: '#64748b' }; }
+function metalMeta(code){ return METALS[code] || { name: code, sym: code, color: '#64748b' }; }
+// Значок металу — два злитки у стилі застосунку (геометрія + колір металу), замість емодзі.
+function metalIcon(code, size){
+  const m = metalMeta(code), s = size || 16;
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true" style="vertical-align:-3px;flex:0 0 auto">`
+    + `<path d="M9.2 6.6h5.6l1.6 4.6H7.6z" fill="${m.color}" opacity=".55"/>`
+    + `<path d="M6.2 13.4h11.6l2 5.6H4.2z" fill="${m.color}"/></svg>`;
+}
 // Курс НБУ: ₴ за тройську унцію / за грам. null — курсів ще нема.
 function metalRateOzt(code){ const r = rateFor(code); return (typeof r === 'number' && r > 0) ? r : null; }
 function metalRateGram(code){ const r = metalRateOzt(code); return r == null ? null : r / OZT_G; }
@@ -4627,7 +4634,7 @@ views.metals = (app) => {
     const m = metalMeta(code), g = metalRateGram(code), o = metalRateOzt(code);
     const ch = plTag(metalChangePct(code));
     pxc.appendChild(el(`<div class="row" style="justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--softline)">
-      <span style="min-width:0"><b>${m.icon} ${esc(m.name)}</b> <span class="muted small">${m.sym}</span>${ch ? ` <span class="small tabnum" style="color:${ch.color}">${ch.txt}</span>` : ''}</span>
+      <span style="min-width:0"><b>${metalIcon(code)} ${esc(m.name)}</b> <span class="muted small">${m.sym}</span>${ch ? ` <span class="small tabnum" style="color:${ch.color}">${ch.txt}</span>` : ''}</span>
       <span class="tabnum" style="text-align:right;flex:0 0 auto">
         <b>${g == null ? '—' : money(round2(g), 'UAH')}</b><span class="muted small">/г</span>
         <span class="muted small"> · ${o == null ? '—' : money(round2(o), 'UAH')}/унц.</span>
@@ -4655,9 +4662,9 @@ views.metals = (app) => {
     const row = el(`<div class="txrow" style="gap:10px;border-left:3px solid ${m.color};padding-left:9px;border-radius:8px;background:${m.color}14">
       <span class="muted small tabnum" style="flex:0 0 18px;text-align:right">${idx + 1}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600">${m.icon} ${esc(m.name)}${h.form ? ` <span class="muted small">· ${esc(h.form)}</span>` : ''}${val == null ? ' <span class="small" style="color:var(--amber)">нема курсу</span>' : ''}</div>
+        <div style="font-weight:600">${metalIcon(h.metal)} ${esc(m.name)}${h.form ? ` <span class="muted small">· ${esc(h.form)}</span>` : ''}${val == null ? ' <span class="small" style="color:var(--amber)">нема курсу</span>' : ''}</div>
         <div class="muted small tabnum">${fmtAmt(h.weight)} ${h.unit === 'ozt' ? 'унц.' : 'г'} · проба ${h.purity || 999}${pg > 0 ? ` · чистого ${fmtAmt(round2(pg))} г` : ''}</div>
-        ${h.place ? `<div class="muted small" style="margin-top:3px">📍 ${esc(h.place)}</div>` : ''}
+        ${(h.date || h.place) ? `<div class="muted small" style="margin-top:3px">${h.date ? fmtDate(h.date) : ''}${(h.date && h.place) ? ' · ' : ''}${h.place ? '📍 ' + esc(h.place) : ''}</div>` : ''}
         ${h.note ? `<div class="muted small" style="margin-top:3px;white-space:pre-wrap">${esc(h.note)}</div>` : ''}
       </div>
       <div style="text-align:right;flex:0 0 auto;min-width:86px">
@@ -4687,7 +4694,7 @@ function openMetalForm(existing){
   const e = existing || { metal: 'XAU', unit: 'g', purity: 999, weight: '', form: 'Злиток' };
   const body = el(`<div>
     <div class="row">
-      <div style="flex:1"><label class="lab">Метал</label><select id="mt-metal">${METAL_CODES.map(c => `<option value="${c}" ${e.metal === c ? 'selected' : ''}>${METALS[c].icon} ${esc(METALS[c].name)}</option>`).join('')}</select></div>
+      <div style="flex:1"><label class="lab">Метал</label><select id="mt-metal">${METAL_CODES.map(c => `<option value="${c}" ${e.metal === c ? 'selected' : ''}>${esc(METALS[c].name)}</option>`).join('')}</select></div>
       <div style="flex:1"><label class="lab">Вид</label><select id="mt-form">${METAL_FORMS.map(f => `<option value="${esc(f)}" ${e.form === f ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
     </div>
     <div class="row">
@@ -4697,9 +4704,10 @@ function openMetalForm(existing){
     </div>
     <div class="muted small" style="margin-top:-2px">Проба — вміст чистого металу (999 — чистий, 585 — 14K). Вартість рахується від чистої ваги.</div>
     <div class="row">
+      <div style="flex:1"><label class="lab">Дата придбання</label><input id="mt-date" type="date" value="${e.date || todayISO()}"></div>
       <div style="flex:1"><label class="lab">Сума закупки, ₴</label><input id="mt-cost" inputmode="decimal" value="${e.cost ?? ''}" placeholder="скільки вклали"></div>
-      <div style="flex:1"><label class="lab">Де зберігається</label><input id="mt-place" value="${esc(e.place || '')}" placeholder="напр. банківська комірка"></div>
     </div>
+    <div><label class="lab">Де зберігається</label><input id="mt-place" value="${esc(e.place || '')}" placeholder="напр. банківська комірка"></div>
     <div><label class="lab">Коментар (необовʼязково)</label><input id="mt-note" value="${esc(e.note || '')}" placeholder="нотатка до активу"></div>
     <div class="muted small" id="mt-preview" style="margin-top:8px"></div>
     <div class="err hidden" id="mt-err"></div>
@@ -4722,7 +4730,7 @@ function openMetalForm(existing){
     if (!(purity > 0) || purity > 1000) { err.textContent = 'Проба має бути від 1 до 1000'; err.classList.remove('hidden'); return; }
     const costStr = $('#mt-cost', body).value.trim();
     const rec = { metal: $('#mt-metal', body).value, weight, unit: $('#mt-unit', body).value, purity: round2(purity),
-      form: $('#mt-form', body).value, cost: costStr ? num(costStr) : null,
+      form: $('#mt-form', body).value, date: $('#mt-date', body).value || todayISO(), cost: costStr ? num(costStr) : null,
       place: $('#mt-place', body).value.trim(), note: $('#mt-note', body).value.trim() };
     if (existing) Object.assign(existing, rec);
     else { rec.id = nextId('met'); state.metals.push(rec); }
