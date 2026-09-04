@@ -363,7 +363,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '440c620546';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'dba4090189';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -4611,24 +4611,40 @@ function metalChangePctUsd(code){
 }
 // Вартість активу у доларах за поточним курсом.
 function metalValueUsd(h){ const v = metalValueUAH(h), u = metalUsdRate(); return (v == null || u == null) ? null : round2(v / u); }
-// Сума закупки у доларах — за курсом НА ДАТУ ПРИДБАННЯ (h.usdAtBuy), інакше P&L у $ був би фікцією.
-function metalCostUsd(h){ const c = Number(h && h.cost), u = Number(h && h.usdAtBuy); return (c > 0 && u > 0) ? round2(c / u) : null; }
-// Архівний курс USD на дату придбання — з НБУ (кешуємо в самому активі, тож запит робиться один раз на дату).
+// ЗАФІКСОВАНА сума закупки у доларах: беремо збережене значення (h.costUsd), інакше — рахуємо
+// за курсом на дату придбання (h.usdAtBuy). Саме від цих чисел рахується % у кожній валюті.
+function metalCostUsd(h){
+  if (Number(h && h.costUsd) > 0) return round2(Number(h.costUsd));
+  const c = Number(h && h.cost), u = Number(h && h.usdAtBuy);
+  return (c > 0 && u > 0) ? round2(c / u) : null;
+}
+// Архівний курс USD на конкретну дату (НБУ), з памʼяттю в межах сесії.
+const _usdRateOnCache = {};
+async function usdRateOn(dateISO){
+  if (!dateISO) return null;
+  if (_usdRateOnCache[dateISO] !== undefined) return _usdRateOnCache[dateISO];
+  try {
+    const res = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=usd&date=${dateISO.replace(/-/g, '')}&json`, { cache: 'force-cache' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const r = Array.isArray(data) && data[0] && data[0].rate;
+    _usdRateOnCache[dateISO] = (typeof r === 'number' && r > 0) ? r : null;
+  } catch (e) { _usdRateOnCache[dateISO] = null; }
+  return _usdRateOnCache[dateISO];
+}
+// Курс USD на дату придбання для активів, де його ще нема (щоб порахувати закупку в $ для старих записів).
 let _metalBuyRatesFetching = false;
 async function ensureMetalBuyRates(){
   if (_metalBuyRatesFetching) return;
-  const need = (state.metals || []).filter(h => h.date && Number(h.cost) > 0 && !(Number(h.usdAtBuy) > 0));
+  const need = (state.metals || []).filter(h => h.date && Number(h.cost) > 0 && !(Number(h.costUsd) > 0) && !(Number(h.usdAtBuy) > 0));
   if (!need.length) return;
   _metalBuyRatesFetching = true;
   let ok = false;
   try {
     const dates = [...new Set(need.map(h => h.date))].slice(0, 8);   // не більше 8 запитів за раз
     for (const d of dates) {
-      const res = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=usd&date=${d.replace(/-/g, '')}&json`, { cache: 'force-cache' });
-      if (!res.ok) continue;
-      const data = await res.json();
-      const r = Array.isArray(data) && data[0] && data[0].rate;
-      if (typeof r === 'number' && r > 0) state.metals.forEach(h => { if (h.date === d && !(Number(h.usdAtBuy) > 0)) { h.usdAtBuy = r; ok = true; } });
+      const r = await usdRateOn(d);
+      if (r) state.metals.forEach(h => { if (h.date === d && !(Number(h.usdAtBuy) > 0)) { h.usdAtBuy = r; ok = true; } });
     }
   } catch (e) { /* архів недоступний — просто не покажемо $-прибуток */ }
   finally { _metalBuyRatesFetching = false; }
@@ -4735,6 +4751,7 @@ views.metals = (app) => {
         <div style="font-weight:600">${metalIcon(h.metal)} ${esc(m.name)}${h.form ? ` <span class="muted small">· ${esc(h.form)}</span>` : ''}${val == null ? ' <span class="small" style="color:var(--amber)">нема курсу</span>' : ''}</div>
         <div class="muted small tabnum">${fmtAmt(h.weight)} ${h.unit === 'ozt' ? 'унц.' : 'г'} · проба ${h.purity || 999}${pg > 0 ? ` · чистого ${fmtAmt(round2(pg))} г` : ''}</div>
         ${(h.date || h.place) ? `<div class="muted small" style="margin-top:3px">${h.date ? fmtDate(h.date) : ''}${(h.date && h.place) ? ' · ' : ''}${h.place ? '📍 ' + esc(h.place) : ''}</div>` : ''}
+        ${Number(h.cost) > 0 ? `<div class="muted small tabnum" style="margin-top:2px">Куплено за ${money(h.cost, 'UAH')}${costU != null ? ` · ${money(costU, 'USD')}` : ''}</div>` : ''}
         ${h.note ? `<div class="muted small" style="margin-top:3px;white-space:pre-wrap">${esc(h.note)}</div>` : ''}
       </div>
       <div style="text-align:right;flex:0 0 auto;min-width:96px">
@@ -4776,9 +4793,11 @@ function openMetalForm(existing){
     </div>
     <div class="muted small" style="margin-top:-2px">Проба — вміст чистого металу (999 — чистий, 585 — 14K). Вартість рахується від чистої ваги.</div>
     <div class="row">
-      <div style="flex:1"><label class="lab">Дата придбання</label><input id="mt-date" type="date" value="${e.date || todayISO()}"></div>
-      <div style="flex:1"><label class="lab">Сума закупки, ₴</label><input id="mt-cost" inputmode="decimal" value="${e.cost ?? ''}" placeholder="скільки вклали"></div>
+      <div style="flex:1.2"><label class="lab">Дата придбання</label><input id="mt-date" type="date" value="${e.date || todayISO()}"></div>
+      <div style="flex:1"><label class="lab">Закупка, ₴</label><input id="mt-cost" inputmode="decimal" value="${e.cost ?? ''}" placeholder="скільки вклали"></div>
+      <div style="flex:1"><label class="lab">Закупка, $</label><input id="mt-costusd" inputmode="decimal" value="${e.costUsd ?? ''}" placeholder="авто"></div>
     </div>
+    <div class="muted small" id="mt-buyrate" style="margin-top:-2px"></div>
     <div><label class="lab">Де зберігається</label><input id="mt-place" value="${esc(e.place || '')}" placeholder="напр. банківська комірка"></div>
     <div><label class="lab">Коментар (необовʼязково)</label><input id="mt-note" value="${esc(e.note || '')}" placeholder="нотатка до активу"></div>
     <div class="muted small" id="mt-preview" style="margin-top:8px"></div>
@@ -4794,15 +4813,32 @@ function openMetalForm(existing){
   };
   ['#mt-metal', '#mt-weight', '#mt-unit', '#mt-purity'].forEach(s => { const n = $(s, body); n.addEventListener('input', upd); n.addEventListener('change', upd); });
   upd();
+  // Закупка в $: підставляємо за курсом НБУ на дату придбання; якщо користувач правив поле руками — не чіпаємо.
+  const costEl = $('#mt-cost', body), costUEl = $('#mt-costusd', body), dateEl = $('#mt-date', body);
+  if (!existing || e.costUsd == null) costUEl.dataset.auto = '1';
+  costUEl.addEventListener('input', () => { delete costUEl.dataset.auto; });
+  const syncBuyUsd = async () => {
+    const d = dateEl.value, c = num(costEl.value);
+    const hint = $('#mt-buyrate', body);
+    if (!d) { hint.textContent = ''; return; }
+    const r = await usdRateOn(d);
+    if (r == null) { hint.textContent = 'Курс НБУ на цю дату недоступний — впишіть суму в $ вручну.'; return; }
+    hint.innerHTML = `Курс НБУ на ${fmtDate(d)}: <b>${(+r.toFixed(4)).toLocaleString('uk-UA')} ₴/$</b> — суму в $ підставлено автоматично, можна змінити.`;
+    if (costUEl.dataset.auto && c > 0) costUEl.value = String(round2(c / r));
+  };
+  costEl.addEventListener('input', syncBuyUsd);
+  dateEl.addEventListener('change', syncBuyUsd);
+  syncBuyUsd();
   openModal(existing ? 'Редагувати актив' : 'Новий актив', body, { saveLabel: 'Зберегти', onSave: (close) => {
     const err = $('#mt-err', body);
     const weight = num($('#mt-weight', body).value);
     if (!(weight > 0)) { err.textContent = 'Введіть вагу більше 0'; err.classList.remove('hidden'); return; }
     const purity = num($('#mt-purity', body).value) || 999;
     if (!(purity > 0) || purity > 1000) { err.textContent = 'Проба має бути від 1 до 1000'; err.classList.remove('hidden'); return; }
-    const costStr = $('#mt-cost', body).value.trim();
+    const costStr = $('#mt-cost', body).value.trim(), costUStr = $('#mt-costusd', body).value.trim();
     const rec = { metal: $('#mt-metal', body).value, weight, unit: $('#mt-unit', body).value, purity: round2(purity),
-      form: $('#mt-form', body).value, date: $('#mt-date', body).value || todayISO(), cost: costStr ? num(costStr) : null,
+      form: $('#mt-form', body).value, date: $('#mt-date', body).value || todayISO(),
+      cost: costStr ? num(costStr) : null, costUsd: costUStr ? num(costUStr) : null,   // ціна купівлі зафіксована в обох валютах
       place: $('#mt-place', body).value.trim(), note: $('#mt-note', body).value.trim() };
     if (existing) Object.assign(existing, rec);
     else { rec.id = nextId('met'); state.metals.push(rec); }
