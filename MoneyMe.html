@@ -4658,6 +4658,82 @@ function metalsPrevSnap(){
   return null;
 }
 
+// ——— Історія котирувань за рік (архів НБУ, діапазон дат) — для графіка ———
+const METAL_HIST_KEY = 'moneyme.metalHist';
+let metalHist = (() => { try { return JSON.parse(localStorage.getItem(METAL_HIST_KEY) || '{}') || {}; } catch (e) { return {}; } })();
+function saveMetalHist(){ try { localStorage.setItem(METAL_HIST_KEY, JSON.stringify(metalHist)); } catch (e) {} }
+// Курси НБУ на конкретну дату: один запит віддає ОДРАЗУ всі метали + долар (~5 КБ).
+// Діапазонний ендпоінт НБУ не має CORS, тож будуємо історію з поточкових запитів по тижнях.
+async function fetchNbuDay(dateISO){
+  const res = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?date=${dateISO.replace(/-/g, '')}&json`, { cache: 'force-cache' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  const out = {};
+  (Array.isArray(data) ? data : []).forEach(x => { if (x && x.cc && typeof x.rate === 'number' && x.rate > 0 && (METALS[x.cc] || x.cc === 'USD')) out[x.cc] = x.rate; });
+  return out;
+}
+// Цільові дати історії: щотижня за останній рік + сьогодні.
+function metalHistDates(){
+  const t = todayISO(), out = [];
+  for (let i = 52; i >= 0; i--) out.push(addDaysISO(t, -i * 7));
+  if (out[out.length - 1] !== t) out.push(t);
+  return out;
+}
+let _metalHistFetching = false;
+// Історичні курси не змінюються — кешуємо назавжди й доливаємо лише відсутні дати.
+async function ensureMetalHistory(){
+  if (_metalHistFetching) return;
+  const want = metalHistDates().filter(d => !metalHist[d]);
+  if (!want.length) return;
+  _metalHistFetching = true;
+  let ok = false;
+  try {
+    for (let i = 0; i < want.length; i += 6) {   // по 6 паралельних запитів
+      const chunk = want.slice(i, i + 6);
+      const res = await Promise.all(chunk.map(d => fetchNbuDay(d).catch(() => null)));
+      res.forEach((r, k) => { metalHist[chunk[k]] = r || {}; if (r && Object.keys(r).length) ok = true; });   // {} — щоб не смикати дату повторно
+    }
+    saveMetalHist();
+  } finally { _metalHistFetching = false; }
+  if (ok) render();   // лише при успіху — інакше цикл перемальовувань
+}
+// Точки графіка (₴/г або $/г) за останні `days` днів.
+function metalSeries(code, cur, days){
+  const from = addDaysISO(todayISO(), -days), out = [];
+  Object.keys(metalHist).sort().forEach(d => {
+    if (d < from) return;
+    const rec = metalHist[d]; if (!rec) return;
+    const m = rec[code]; if (!(m > 0)) return;
+    let v = m;
+    if (cur === 'USD') { const u = rec.USD; if (!(u > 0)) return; v = m / u; }
+    out.push({ d, v: v / OZT_G });   // показуємо за грам
+  });
+  return out;
+}
+function priceLineSVG(pts, color, min, max, H){
+  const W = 100, range = (max - min) || 1;
+  const x = i => pts.length <= 1 ? W / 2 : (i / (pts.length - 1)) * W;
+  const y = v => H - 6 - ((v - min) / range) * (H - 12);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(2)} ${y(p.v).toFixed(2)}`).join(' ');
+  const area = `M0 ${H - 6} ` + pts.map((p, i) => `L${x(i).toFixed(2)} ${y(p.v).toFixed(2)}`).join(' ') + ` L${W} ${H - 6} Z`;
+  return el(`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="overflow:visible;display:block">
+    <path d="${area}" fill="${color}" opacity="0.14"/>
+    <path d="${line}" fill="none" stroke="${color}" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`);
+}
+// Графік із підписами мін/макс на осі (масштаб — під дані, а не від нуля).
+function metalChartBox(series, color, cur){
+  const H = 150, vals = series.map(p => p.v);
+  const lo = Math.min(...vals); let hi = Math.max(...vals);
+  if (!(hi > lo)) hi = lo + 1;
+  const pad = (hi - lo) * 0.08, min = lo - pad, max = hi + pad, range = max - min;
+  const yPx = v => H - 6 - ((v - min) / range) * (H - 12);
+  const box = el(`<div style="position:relative"></div>`);
+  box.appendChild(priceLineSVG(series, color, min, max, H));
+  [hi, lo].forEach(v => box.appendChild(el(`<span style="position:absolute;left:1px;top:${yPx(v).toFixed(1)}px;transform:translateY(-50%);font-size:9px;line-height:1;color:var(--muted);background:color-mix(in srgb,var(--card) 72%,transparent);padding:0 3px;border-radius:3px;pointer-events:none">${money(round2(v), cur)}</span>`)));
+  return box;
+}
+let metalChartCode = 'XAU', metalChartCur = 'UAH', metalChartDays = 365;
+
 //==================== Вигляд: Дорогоцінні метали ====================
 views.metals = (app) => {
   ensureRatesFresh();        // ціни металів — з того самого джерела, що й валюти (НБУ)
@@ -4725,6 +4801,32 @@ views.metals = (app) => {
       </span></div>`));
   });
   app.appendChild(pxc);
+
+  // ——— Графік курсу металу за період (архів НБУ), у ₴ або $ ———
+  ensureMetalHistory();
+  const gc = el(`<section class="card" style="padding:14px 16px;margin-top:12px"></section>`);
+  gc.appendChild(el(`<div class="muted small" style="margin-bottom:8px">Курс за період · ${metalChartCur === 'USD' ? '$' : '₴'} за грам</div>`));
+  const mchips = el(`<div class="pill" style="flex-wrap:wrap;margin-bottom:6px"></div>`);
+  METAL_CODES.forEach(c => { const b = el(`<button${c === metalChartCode ? ' class="on"' : ''}>${esc(metalMeta(c).name)}</button>`); b.onclick = () => { metalChartCode = c; render(); }; mchips.appendChild(b); });
+  gc.appendChild(mchips);
+  const ctl = el(`<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>`);
+  const pch = el(`<div class="pill" style="flex-wrap:wrap"></div>`);
+  [[90, '3 міс'], [180, '6 міс'], [365, '1 рік']].forEach(([d, l]) => { const b = el(`<button${metalChartDays === d ? ' class="on"' : ''}>${l}</button>`); b.onclick = () => { metalChartDays = d; render(); }; pch.appendChild(b); });
+  const cch = el(`<div class="pill" style="flex-wrap:wrap"></div>`);
+  [['UAH', '₴'], ['USD', '$']].forEach(([c, l]) => { const b = el(`<button${metalChartCur === c ? ' class="on"' : ''}>${l}</button>`); b.onclick = () => { metalChartCur = c; render(); }; cch.appendChild(b); });
+  ctl.appendChild(pch); ctl.appendChild(cch); gc.appendChild(ctl);
+  const series = metalSeries(metalChartCode, metalChartCur, metalChartDays);
+  if (series.length > 1) {
+    const first = series[0], last = series[series.length - 1];
+    const dPct = first.v > 0 ? round2((last.v - first.v) / first.v * 100) : null;
+    const dT = plTag(dPct);
+    gc.appendChild(metalChartBox(series, metalMeta(metalChartCode).color, metalChartCur));
+    gc.appendChild(el(`<div class="row" style="justify-content:space-between;margin-top:4px"><span class="muted" style="font-size:11px">${fmtDate(first.d)}</span><span class="muted" style="font-size:11px">${fmtDate(last.d)}</span></div>`));
+    gc.appendChild(el(`<div class="small tabnum" style="margin-top:6px"><span class="muted">${money(round2(first.v), metalChartCur)} → </span><b>${money(round2(last.v), metalChartCur)}</b>${dT ? ` <span style="color:${dT.color}">${dT.txt}</span>` : ''}</div>`));
+  } else {
+    gc.appendChild(el(`<div class="muted small">${Object.keys(metalHist).length ? 'Історія НБУ недоступна.' : 'Завантаження історії…'}</div>`));
+  }
+  app.appendChild(gc);
 
   // ——— Графік вартості портфеля ———
   const hist = (state.metalsHistory || []).filter(p => p && p.uah > 0).slice(-90);
