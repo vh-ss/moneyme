@@ -1192,10 +1192,7 @@ function deleteTx(tx) {
 // Власне видалення (після підтвердження). Якщо це платіж за кредитом (loan_id) — повертаємо суму у залишок боргу.
 function doDeleteTx(tx) {
   deleteWithUndo(tx.kind === 'TRANSFER' ? 'Переказ видалено' : 'Операцію видалено', () => {
-    if (tx.loan_id) {
-      const loan = state.loans.find(l => l.id === tx.loan_id);
-      if (loan) loan.paid = round2(Math.max(0, (loan.paid || 0) - (tx.amount || 0)));
-    }
+    if (tx.loan_id) loanPaymentRollback(state.loans.find(l => l.id === tx.loan_id), tx);   // сума в борг + дата списання назад
     if (tx.recurring_id) {   // це регулярний платіж — відкочуємо дату наступного списання на цикл назад
       const r = state.recurring.find(x => x.id === tx.recurring_id);
       if (r && r.next_date) r.next_date = prevRecurDate(r.next_date, r.freq);
@@ -1415,15 +1412,30 @@ function loanActive(l){ return loanOutstanding(l) > 0.005; }
 function bankOutstanding(bankId){ return round2(state.loans.filter(l=>l.bank_id===bankId).reduce((s,l)=>s+loanOutstanding(l),0)); }
 function bankAvailable(bank){ return round2((bank.limit || 0) - bankOutstanding(bank.id)); }
 function bankMonthlyBurden(bankId){ return round2(state.loans.filter(l=>l.bank_id===bankId && loanActive(l)).reduce((s,l)=>s+loanMonthly(l),0)); }
-// Чи внесено платіж по кредиту в поточному циклі (за ~місяць до дати списання).
-function loanPaidThisCycle(l){
-  if (!l.due_date) return false;
-  const cycleStart = addMonthsISO(l.due_date, -1);
-  return state.transactions.some(t => t.loan_id === l.id && t.kind === 'EXPENSE' && t.date >= cycleStart && t.date <= todayISO());
+// Дата списання через n місяців. Якщо в кредиті збережено «день місяця» (due_day) — тримаємося його,
+// щоб дата не «сповзала» після коротких місяців (31 → 30 → 28 …); інакше беремо день із поточної дати.
+function loanNextDue(l, n){
+  if (!l || !l.due_date) return l ? l.due_date : null;
+  const [y, m] = l.due_date.split('-').map(Number);
+  const day = Number(l.due_day) >= 1 ? Number(l.due_day) : Number(l.due_date.slice(8, 10));
+  const t = new Date(y, m - 1 + (n == null ? 1 : n), 1);
+  const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  return isoOf(new Date(t.getFullYear(), t.getMonth(), Math.min(day, last)));
 }
-// Кредит «очікує платіж»: активний, термін у межах 3 днів/прострочено, і платіж цього циклу ще не внесено.
+// Кредит «очікує платіж»: активний, дата списання в межах 3 днів або вже минула.
+// Джерело істини — САМА дата списання: платіж через діалог і «Сплачено ✓» переносять її на наступний цикл.
+// (Раніше тут додатково шукались платежі за місяць до дати, але платіж, що ВЖЕ переніс дату, зараховувався
+//  вдруге — у наступний цикл. Оплатив у день списання чи пізніше → наступного місяця нагадування не було,
+//  навіть коли платіж прострочено.)
 function loanPending(l){
-  return loanActive(l) && !!l.due_date && l.due_date <= addDaysISO(todayISO(), 3) && !loanPaidThisCycle(l);
+  return loanActive(l) && !!l.due_date && l.due_date <= addDaysISO(todayISO(), 3);
+}
+// Відкат платежу за кредитом (видалення операції/рахунку): сума — назад у борг; якщо платіж переносив
+// дату списання (tx.loan_due) — повертаємо її на один цикл назад, але не раніше за цикл цього платежу.
+function loanPaymentRollback(loan, tx){
+  if (!loan || !tx) return;
+  loan.paid = round2(Math.max(0, (loan.paid || 0) - (tx.amount || 0)));
+  if (tx.loan_due && loan.due_date && loan.due_date > tx.loan_due) loan.due_date = loanNextDue(loan, -1);
 }
 // Скільки платежів лишилось при поточному платежі M, залишку O і місячній ставці i.
 function remainingMonths(O, M, i){
@@ -2966,7 +2978,7 @@ views.dashboard = (app) => {
     const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>💳 Платежі за кредитами: ${items}</span><span class="row" style="gap:6px"></span></div>`);
     const acts = n.lastElementChild;
     const done = el(`<button class="btn sm" title="Платежі вже зроблено — перенести на наступний цикл">Сплачено ✓</button>`);
-    done.onclick = () => { loanDue.forEach(l => { l.due_date = addMonthsISO(l.due_date, 1); }); save(); render(); };
+    done.onclick = () => { loanDue.forEach(l => { l.due_date = loanNextDue(l, 1); }); save(); render(); };
     const b = el(`<button class="btn sm">До кредитів</button>`); b.onclick = () => navigate('credits');
     acts.appendChild(done); acts.appendChild(b); app.appendChild(n);
 
@@ -3142,7 +3154,8 @@ views.transactions = (app) => {
 
 //==================== Дати / аналітика: службові функції ====================
 function isoOf(d){ const tz = d.getTimezoneOffset()*60000; return new Date(d.getTime()-tz).toISOString().slice(0,10); }
-function addMonthsISO(iso, n){ const [y,m,d] = iso.split('-').map(Number); return isoOf(new Date(y, m-1+n, d)); }
+// +n місяців із «прилипанням» до останнього дня: 31.01 + 1 міс = 28(29).02, а не 03.03 (раніше короткий місяць пропускався).
+function addMonthsISO(iso, n){ const [y,m,d] = iso.split('-').map(Number); const last = new Date(y, m-1+n+1, 0).getDate(); return isoOf(new Date(y, m-1+n, Math.min(d, last))); }
 function addDaysISO(iso, n){ return isoOf(new Date(Date.parse(iso) + n*86400000)); }
 const FREQ_MONTHS = { quarterly: 3, yearly: 12 };
 function nextRecurDate(iso, freq){ return freq==='weekly' ? addDaysISO(iso, 7) : addMonthsISO(iso, FREQ_MONTHS[freq] || 1); }
@@ -3699,10 +3712,7 @@ views.accounts = (app) => {
       const doDelete = () => deleteWithUndo(`Рахунок «${a.name}» видалено`, () => {
         // повертаємо суми кредитів за платежами, що видаляються разом з рахунком
         state.transactions.forEach(t => {
-          if ((t.account_id===a.id || t.to_account_id===a.id) && t.loan_id) {
-            const loan = state.loans.find(l=>l.id===t.loan_id);
-            if (loan) loan.paid = round2(Math.max(0, (loan.paid||0) - (t.amount||0)));
-          }
+          if ((t.account_id===a.id || t.to_account_id===a.id) && t.loan_id) loanPaymentRollback(state.loans.find(l=>l.id===t.loan_id), t);
         });
         state.accounts = state.accounts.filter(x=>x.id!==a.id);
         state.transactions = state.transactions.filter(t=>t.account_id!==a.id && t.to_account_id!==a.id);
@@ -5633,7 +5643,8 @@ function openLoanPayment(l, bank) {
     amount = Math.min(round2(amount), loanOutstanding(l));
     if (amount <= 0) return;
     l.paid = round2(Math.min(l.principal, (l.paid || 0) + amount));
-    if (l.due_date && loanActive(l)) l.due_date = addMonthsISO(l.due_date, 1);   // наступне списання — за місяць
+    let paidCycle = null;   // за який цикл цей платіж — щоб при видаленні точно відкотити дату
+    if (l.due_date && loanActive(l)) { paidCycle = l.due_date; l.due_date = loanNextDue(l, 1); }   // наступне списання — за місяць
     const accId = $$('#pp-acc').value ? parseInt($$('#pp-acc').value) : null;
     if (accId) {
       const catId = $$('#pp-cat').value ? parseInt($$('#pp-cat').value) : null;
@@ -5641,7 +5652,7 @@ function openLoanPayment(l, bank) {
         id: nextId('tx'), ord: nextOrd(), kind: 'EXPENSE',
         date: $$('#pp-date').value || todayISO(),
         note: 'Платіж за кредитом «' + (l.name || 'Кредит') + '»',
-        account_id: accId, category_id: catId, amount, loan_id: l.id,
+        account_id: accId, category_id: catId, amount, loan_id: l.id, ...(paidCycle ? { loan_due: paidCycle } : {}),
       });
     }
     save(); close(); render();
@@ -5736,7 +5747,8 @@ function openLoanForm(existing, presetBankId) {
     const rec = {
       bank_id: parseInt($$('#l-bank').value), name: $$('#l-name').value.trim() || null,
       principal, months, has_interest: hasInt, rate: hasInt ? num($$('#l-rate').value) : 0,
-      due_date: $$('#l-due').value || null, paid: round2(Math.max(0, num($$('#l-paid').value))),
+      due_date: $('#l-due').value || null, due_day: $('#l-due').value ? Number($('#l-due').value.slice(8, 10)) : null,
+      paid: round2(Math.max(0, num($('#l-paid').value))),
     };
     if (existing) Object.assign(existing, rec);
     else { rec.id = nextId('loan'); state.loans.push(rec); }

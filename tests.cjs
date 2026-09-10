@@ -250,6 +250,52 @@ eq('budget $ без курсу → фолбек як є', S.budgetBaseUAH({ budg
   ok('attachmentPlan: свіжого сироту не чіпаємо (grace)', !plan.toDeleteDrive.includes('att_new'));
 }
 
+// ——— Кредити: дата списання та нагадування (регресія: «зависли» платежі без нагадування) ———
+eq('addMonthsISO 31.01+1 → 28.02', S.addMonthsISO('2026-01-31', 1), '2026-02-28');
+eq('addMonthsISO 31.08+1 → 30.09 (без перескоку місяця)', S.addMonthsISO('2026-08-31', 1), '2026-09-30');
+eq('addMonthsISO високосний 31.01+1 → 29.02', S.addMonthsISO('2024-01-31', 1), '2024-02-29');
+eq('addMonthsISO через рік 31.12+1', S.addMonthsISO('2026-12-31', 1), '2027-01-31');
+eq('addMonthsISO -1 від 31.03 → 28.02', S.addMonthsISO('2026-03-31', -1), '2026-02-28');
+eq('addMonthsISO звичайний 15.03-1', S.addMonthsISO('2026-03-15', -1), '2026-02-15');
+eq('loanNextDue якір 31: 30.09 → 31.10', S.loanNextDue({ due_date: '2026-09-30', due_day: 31 }, 1), '2026-10-31');
+eq('loanNextDue якір 31: 31.01 → 28.02', S.loanNextDue({ due_date: '2026-01-31', due_day: 31 }, 1), '2026-02-28');
+eq('loanNextDue без якоря: 15.05 → 15.06', S.loanNextDue({ due_date: '2026-05-15' }, 1), '2026-06-15');
+eq('loanNextDue назад: 15.06 → 15.05', S.loanNextDue({ due_date: '2026-06-15' }, -1), '2026-05-15');
+{
+  // state у пісочниці — змінюємо властивості (не перевизначаємо змінну)
+  const setState = (loans, txs) => vm.runInContext(`state.loans = ${JSON.stringify(loans)}; state.transactions = ${JSON.stringify(txs)};`, sandbox);
+  const T = vm.runInContext("todayISO()", sandbox), d = (k) => S.addDaysISO(T, k);
+  const base = { principal: 12000, paid: 1000, months: 12 };
+  {
+    // Оплатив рівно в день минулого списання (дата перенеслась) → цього місяця нагадування МАЄ бути
+    const due = d(2), prev = S.addMonthsISO(due, -1), loan = { id: 1, ...base, due_date: due };
+    setState([loan], [{ id: 9, kind: 'EXPENSE', date: prev, amount: 1000, loan_id: 1, loan_due: prev }]);
+    eq('loanPending: платіж у день минулого списання не ховає нинішнє', S.loanPending(loan), true);
+  }
+  {
+    // Минулий платіж із запізненням → нинішній прострочений МАЄ світитись
+    const due = d(-10), prev = S.addMonthsISO(due, -1), loan = { id: 2, ...base, due_date: due };
+    setState([loan], [{ id: 8, kind: 'EXPENSE', date: d(-12), amount: 1000, loan_id: 2, loan_due: prev }]);
+    eq('loanPending: прострочений показується попри минулий платіж', S.loanPending(loan), true);
+  }
+  setState([], []);
+  eq('loanPending: до списання > 3 днів — ні', S.loanPending({ id: 3, ...base, due_date: d(20) }), false);
+  eq('loanPending: закритий кредит — ні', S.loanPending({ id: 4, principal: 1000, paid: 1000, due_date: d(-1) }), false);
+  eq('loanPending: без дати списання — ні', S.loanPending({ id: 5, ...base, due_date: null }), false);
+  {
+    // Видалення платежу: сума назад у борг, дата — рівно на один цикл, не раніше за цикл самого платежу
+    const loan = { id: 6, principal: 5000, paid: 2000, due_date: '2026-11-05', due_day: 5 };
+    S.loanPaymentRollback(loan, { amount: 1000, loan_id: 6, loan_due: '2026-10-05' });
+    eq('loanPaymentRollback: сума повернулась у борг', loan.paid, 1000);
+    eq('loanPaymentRollback: дата на цикл назад', loan.due_date, '2026-10-05');
+    S.loanPaymentRollback(loan, { amount: 0, loan_id: 6, loan_due: '2026-10-05' });
+    eq('loanPaymentRollback: не відкочує раніше за цикл платежу', loan.due_date, '2026-10-05');
+    const legacy = { id: 7, principal: 5000, paid: 2000, due_date: '2026-11-05' };
+    S.loanPaymentRollback(legacy, { amount: 500, loan_id: 7 });   // старий платіж без loan_due — дату не чіпаємо
+    eq('loanPaymentRollback: legacy без loan_due — дата без змін', legacy.due_date, '2026-11-05');
+  }
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);
