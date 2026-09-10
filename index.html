@@ -363,7 +363,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'f3901ad8f5';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'f53f51d8f9';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -511,7 +511,7 @@ const I18N_EN = {
   'Категорій немає.':'No categories.','Ще немає рахунків.':'No accounts yet.','Немає рахунків у цій групі.':'No accounts in this group.','Кредитів немає.':'No credits.','Регулярних платежів немає.':'No recurring payments.','Цілей немає.':'No goals.','Немає активних кредитів':'No active credits',
   'Витрати':'Expenses','Надходження':'Income','Перекази':'Transfers','Від':'From','До':'To','Тег':'Tag','За датою':'By date','Вручну':'Manual',
   'Загальне навантаження за місяць':'Total monthly burden','Всього (ліміт)':'Total (limit)','Використано':'Used','Доступно':'Available','Навантаження/міс':'Burden/mo','Ліміт':'Limit',
-  'Введіть назву':'Enter a name','Введіть суму цілі':'Enter goal amount','Оберіть рахунки':'Select accounts','Внести зараз':'Add now','Внести всі':'Add all','Сплачено ✓':'Paid ✓','Переглянути':'View','До кредитів':'To credits',
+  'Введіть назву':'Enter a name','Введіть суму цілі':'Enter goal amount','Оберіть рахунки':'Select accounts','Внести зараз':'Add now','Внести всі':'Add all','Переглянути':'View','До кредитів':'To credits',
   'Курс':'Rate','Сума зарах.':'Credited amount',
   '— не вказано —':'— not set —','— без банку —':'— no bank —','— не створювати операцію —':"— don't create a transaction —",
   'Стартовий залишок':'Starting balance','Банк (необовʼязково)':'Bank (optional)','Дедлайн (необовʼязково)':'Deadline (optional)','Місячний бюджет':'Monthly budget','Переносити невитрачене на наступний місяць':'Carry over unspent to next month','Разом за місяць':'Monthly total','Разом за рік':'Yearly total','Основний':'Main','По днях':'By day','Стаття витрат':'Expense category','Усі статті витрат':'All expense categories','Разом: ':'Total: ','За цей період витрат немає.':'No expenses in this period.','Днів: ':'Days: ','У середньому: ':'Average: ','/день':'/day',
@@ -539,7 +539,7 @@ const I18N_EN = {
   'скільки вклали':'how much invested','ціль зростання':'target up','ціль падіння':'target down','нотатка до активу':'note for asset',
   'Валюту не можна змінити — по рахунку вже є операції.':'Currency cannot be changed — the account already has transactions.','Біржі / гаманці':'Exchanges / wallets','Біржі та гаманці зі ваших активів. Перейменування й видалення застосовуються до всіх активів.':'Exchanges and wallets from your assets. Renaming and deletion apply to all assets.','Бірж ще немає. Додайте їх у формі активу («Розподіл по біржах»).':'No exchanges yet. Add them in the asset form (Split by exchanges).',
   'Залишок':'Balance','Тіло':'Principal','Після цього платежу кредит буде закрито.':'After this payment the credit will be paid off.','Закрити кредит повністю?':'Pay off credit in full?','Закрити кредит':'Pay off credit',
-  'Калькулятор дострокового погашення':'Early payoff calculator','Платежі вже зроблено — перенести на наступний цикл':'Payments already made — move to next cycle',
+  'Калькулятор дострокового погашення':'Early payoff calculator',
   // — round 4: повний аудит усіх рядків коду —
   'Крипто':'Crypto','Редагувати':'Edit','Перед синхронізацією':'Before sync','🔄 Синхронізовано з іншими пристроями':'🔄 Synced with other devices','Це видалення зачепить:':'This deletion will affect:',
   'Купити':'Buy','Продати':'Sell','Ціна':'Price','за':'for','Біржа':'Exchange','Оберіть пару':'Choose a pair','Оберіть біржу':'Choose an exchange',
@@ -1402,7 +1402,7 @@ function loanNextDue(l, n){
   return isoOf(new Date(t.getFullYear(), t.getMonth(), Math.min(day, last)));
 }
 // Кредит «очікує платіж»: активний, дата списання в межах 3 днів або вже минула.
-// Джерело істини — САМА дата списання: платіж через діалог і «Сплачено ✓» переносять її на наступний цикл.
+// Джерело істини — САМА дата списання: платіж через діалог переносить її на наступний цикл (платежів поза застосунком немає).
 // (Раніше тут додатково шукались платежі за місяць до дати, але платіж, що ВЖЕ переніс дату, зараховувався
 //  вдруге — у наступний цикл. Оплатив у день списання чи пізніше → наступного місяця нагадування не було,
 //  навіть коли платіж прострочено.)
@@ -2956,10 +2956,16 @@ views.dashboard = (app) => {
     const items = loanDue.map(l => `${esc(l.name||'Кредит')} — ${l.due_date < today ? 'прострочено з '+fmtDate(l.due_date) : 'до '+fmtDate(l.due_date)}`).join('; ');
     const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>💳 Платежі за кредитами: ${items}</span><span class="row" style="gap:6px"></span></div>`);
     const acts = n.lastElementChild;
-    const done = el(`<button class="btn sm" title="Платежі вже зроблено — перенести на наступний цикл">Сплачено ✓</button>`);
-    done.onclick = () => { loanDue.forEach(l => { l.due_date = loanNextDue(l, 1); }); save(); render(); };
+    // Платежі поза застосунком не існують — тому жодного «Сплачено»: одразу справжній діалог внесення платежу
+    // (зменшує борг, створює витрату й переносить дату списання).
+    loanDue.forEach(l => {
+      const bank = bankById(l.bank_id); if (!bank) return;
+      const pb = el(`<button class="btn sm primary">Внести${loanDue.length > 1 ? ' · ' + esc(l.name || 'Кредит') : ''}</button>`);
+      pb.onclick = () => openLoanPayment(l, bank);
+      acts.appendChild(pb);
+    });
     const b = el(`<button class="btn sm">До кредитів</button>`); b.onclick = () => navigate('credits');
-    acts.appendChild(done); acts.appendChild(b); app.appendChild(n);
+    acts.appendChild(b); app.appendChild(n);
 
     // перевірка: чи вистачає коштів на базовій картці банку (основному рахунку) для цих платежів
     const needByAcc = {}, noCard = [];
