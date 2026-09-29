@@ -966,10 +966,13 @@ function checkCryptoAlerts(){
   try { localStorage.setItem('moneyme.demo.cryptoAlerts', JSON.stringify(fired)); } catch (e) {}
   if (hits.length) showToast('🔔 Крипто-алерт: ' + hits.join('; '), 'Крипто', () => navigate('crypto'), 10000);
 }
+let _cryptoFetching = false;
 async function ensureCryptoFresh(force){
   const ids = [...new Set((state.crypto || []).map(h => h.cg).filter(Boolean))];
   if (!ids.length) return;
   if (!force && cryptoCache.date === todayISO() && Object.keys(cryptoCache.coins || {}).length) { recordCryptoSnapshot(); return; }
+  if (_cryptoFetching) return; _cryptoFetching = true;   // без паралельних запитів: views.crypto кличе це на КОЖЕН рендер
+  let ok = false;
   try {
     const res = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&sparkline=false&ids=' + ids.join(','), { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -980,8 +983,12 @@ async function ensureCryptoFresh(force){
     localStorage.setItem(CRYPTO_PRICES_KEY, JSON.stringify(cryptoCache));
     recordCryptoSnapshot();
     checkCryptoAlerts();
+    ok = true;
   } catch (e) { cryptoCache.error = e.message || 'не вдалося отримати ціни'; }
-  if (currentView === 'crypto' || currentView === 'dashboard') render();
+  finally { _cryptoFetching = false; }
+  // Перемальовуємо ЛИШЕ при успіху. Інакше: views.crypto → ensureCryptoFresh → помилка (429 від CoinGecko
+  // чи офлайн) → render() → views.crypto → … нескінченний цикл, який намертво вішав вкладку «Крипто».
+  if (ok && (currentView === 'crypto' || currentView === 'dashboard')) render();
 }
 
 function load() {
