@@ -777,7 +777,7 @@ function exportCSV(){
   const head = ['Дата','Тип','Сума','Валюта','Рахунок','На рахунок','Категорія','Курс','Сума зарах.','Комісія','Нотатка','Теги'];
   const rows = [...state.transactions].sort((a,b)=> a.date<b.date?-1 : a.date>b.date?1 : a.id-b.id).map(t => {
     const isCr = t.kind==='CRYPTO';
-    const typeLbl = isCr ? (t.side==='SELL'?'Продаж крипти':'Купівля крипти') : (KL[t.kind]||t.kind);
+    const typeLbl = isCr ? (t.side==='REWARD'?'Стейкінг (нагорода)':t.side==='SELL'?'Продаж крипти':'Купівля крипти') : (KL[t.kind]||t.kind);
     const catCol = isCr ? `${fmtAmt(t.base_qty||0)} ${t.base_sym||''} ⇄ ${fmtAmt(t.quote_qty||0)} ${t.quote_sym||''}`
       : isSplitTx(t)?t.splits.map(s=>(categoryById(s.category_id)?.name||'Без категорії')+' '+s.amount).join(' | '):(t.category_id?(categoryById(t.category_id)?.name||''):'');
     return [
@@ -1132,14 +1132,19 @@ function txInfoNode(tx){
   const isT = tx.kind === 'TRANSFER', isReimb = !!tx.reimbursement, isInc = tx.kind === 'INCOME', isCrypto = tx.kind === 'CRYPTO';
   const cur = accountCur(tx.account_id);
   const cat = tx.category_id ? categoryById(tx.category_id) : null;
-  const typeLabel = isCrypto ? (tx.side === 'SELL' ? 'Продаж крипти' : 'Купівля крипти') : isT ? 'Переказ' : isReimb ? 'Повернення' : isInc ? 'Надходження' : 'Витрата';
+  const typeLabel = isCrypto ? (tx.side === 'REWARD' ? 'Стейкінг (нагорода)' : tx.side === 'SELL' ? 'Продаж крипти' : 'Купівля крипти') : isT ? 'Переказ' : isReimb ? 'Повернення' : isInc ? 'Надходження' : 'Витрата';
   const typeColor = isCrypto ? (tx.side === 'SELL' ? 'var(--red)' : 'var(--green)') : isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : 'var(--red)';
   const amtStr = isCrypto ? (tx.side === 'SELL' ? '−' : '+') + `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}` : isT ? money(tx.amount, cur) : isReimb ? '+' + money(Math.abs(tx.amount), cur) : (isInc ? '+' : '−') + money(tx.amount, cur);
   const rows = [];
   if (isCrypto) {
-    rows.push([tx.side === 'SELL' ? 'Продано' : 'Куплено', `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}`]);
-    rows.push([tx.side === 'SELL' ? 'Отримано' : 'Сплачено', `${fmtAmt(tx.quote_qty || 0)} ${tx.quote_sym || ''}`]);
-    if (tx.base_qty > 0) rows.push(['Ціна', `${fmtAmt(round2(tx.quote_qty / tx.base_qty))} ${tx.quote_sym || ''} / ${tx.base_sym || ''}`]);
+    if (tx.side === 'REWARD') {
+      rows.push(['Нараховано', `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}`]);
+      rows.push(['Оплата', 'без оплати (стейкінг)']);
+    } else {
+      rows.push([tx.side === 'SELL' ? 'Продано' : 'Куплено', `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}`]);
+      rows.push([tx.side === 'SELL' ? 'Отримано' : 'Сплачено', `${fmtAmt(tx.quote_qty || 0)} ${tx.quote_sym || ''}`]);
+      if (tx.base_qty > 0) rows.push(['Ціна', `${fmtAmt(round2(tx.quote_qty / tx.base_qty))} ${tx.quote_sym || ''} / ${tx.base_sym || ''}`]);
+    }
     if (tx.exchange) rows.push(['Біржа', tx.exchange]);
     if (tx.usd) rows.push(['Вартість', money(tx.usd, 'USD')]);
   } else if (isT) {
@@ -1208,7 +1213,9 @@ function doDeleteTx(tx) {
       const base = (state.crypto || []).find(x => x.id === tx.base_id);
       const quote = (state.crypto || []).find(x => x.id === tx.quote_id);
       const bq = tx.base_qty || 0, qq = tx.quote_qty || 0, bc = tx.base_cost_delta || 0, qc = tx.quote_cost_delta || 0, ex = tx.exchange || null;
-      if (tx.side === 'SELL') {   // продали базу за котирування → повертаємо базу, забираємо котирування
+      if (tx.side === 'REWARD') {   // нагорода стейкінгу — просто забираємо нараховані токени (cost не чіпали)
+        if (base) adjustHoldingOnExchange(base, ex, -bq);
+      } else if (tx.side === 'SELL') {   // продали базу за котирування → повертаємо базу, забираємо котирування
         if (base) { adjustHoldingOnExchange(base, ex, bq); base.cost = round2((base.cost || 0) + bc); }
         if (quote) { adjustHoldingOnExchange(quote, ex, -qq); quote.cost = round2(Math.max(0, (quote.cost || 0) - qc)); }
       } else {                    // купили базу за котирування → забираємо базу, повертаємо котирування
@@ -2738,10 +2745,12 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
   const icon = isCrypto ? ic('coin') : isT ? ic('transfer') : isReimb ? ic('plus') : isSplit ? ic('split') : (cat?.icon || (isInc ? ic('plus') : ic('minus')));   // значок категорії (емодзі) або наш SVG
   const color = isCrypto ? '#f59e0b' : isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : isSplit ? '#8b5cf6' : (cat?.color || 'var(--red)');
   const cur = accountCur(t.account_id);
-  const title = isCrypto ? `${t.side === 'SELL' ? 'Продаж' : 'Купівля'} ${esc(t.base_sym || 'крипто')}` : isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isReimb ? `↩ Повернення${cat ? ' · ' + cat.name : ''}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
+  const title = isCrypto ? `${t.side === 'REWARD' ? 'Стейкінг' : t.side === 'SELL' ? 'Продаж' : 'Купівля'} ${esc(t.base_sym || 'крипто')}` : isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isReimb ? `↩ Повернення${cat ? ' · ' + cat.name : ''}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
   let sub;
   if (isCrypto) {
-    sub = `${t.side === 'SELL' ? 'отримано' : 'сплачено'} ${fmtAmt(t.quote_qty || 0)} ${esc(t.quote_sym || '')}${t.exchange ? ' · ' + esc(t.exchange) : ''}${t.usd ? ' · ' + money(t.usd, 'USD') : ''}`;
+    sub = t.side === 'REWARD'
+      ? `нагорода за стейкінг${t.exchange ? ' · ' + esc(t.exchange) : ''}${t.usd ? ' · ≈ ' + money(t.usd, 'USD') : ''}`
+      : `${t.side === 'SELL' ? 'отримано' : 'сплачено'} ${fmtAmt(t.quote_qty || 0)} ${esc(t.quote_sym || '')}${t.exchange ? ' · ' + esc(t.exchange) : ''}${t.usd ? ' · ' + money(t.usd, 'USD') : ''}`;
   } else if (isT) {
     const T = accountCur(t.to_account_id);
     const cross = cur !== T && t.to_amount != null;
@@ -4215,7 +4224,7 @@ views.crypto = (app) => {
     const a = row.lastElementChild;
     const delCrypto = () => confirmDeleteImpact(`${h.symbol}`, [], { force: true, hint: `${fmtAmt(h.amount)} ${h.symbol} ≈ ${money(cryptoValueUsd(h),'USD')}${(h.exchanges&&h.exchanges.length)?' · біржі: '+h.exchanges.map(x=>typeof x==='string'?x:x.name).filter(Boolean).join(', '):''}`, onConfirm: () => deleteWithUndo(`${h.symbol} видалено`, () => { state.crypto = state.crypto.filter(x => x.id !== h.id); }) });
     const more = el(`<button class="btn ghost sm" title="Дії">${ic('dots')}</button>`);
-    more.onclick = () => { const r = more.getBoundingClientRect(); openContextMenu(r.right, r.bottom + 4, [ { label: 'Купити', icon: ic('plus'), color: 'var(--green)', onClick: () => openCryptoTrade(h, 'BUY') }, { label: 'Продати', icon: ic('minus'), color: 'var(--red)', onClick: () => openCryptoTrade(h, 'SELL') }, { sep: true }, { label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => openCryptoForm(h) }, { sep: true }, { label: 'Видалити', icon: ic('close'), color: 'var(--red)', onClick: delCrypto } ]); };
+    more.onclick = () => { const r = more.getBoundingClientRect(); openContextMenu(r.right, r.bottom + 4, [ { label: 'Купити', icon: ic('plus'), color: 'var(--green)', onClick: () => openCryptoTrade(h, 'BUY') }, { label: 'Продати', icon: ic('minus'), color: 'var(--red)', onClick: () => openCryptoTrade(h, 'SELL') }, { label: 'Стейкінг +', icon: ic('plus'), color: '#a855f7', onClick: () => openCryptoReward(h) }, { sep: true }, { label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => openCryptoForm(h) }, { sep: true }, { label: 'Видалити', icon: ic('close'), color: 'var(--red)', onClick: delCrypto } ]); };
     a.appendChild(more);
     card.appendChild(row);
   });
@@ -4507,6 +4516,53 @@ function applyCryptoTrade(base, quote, side, baseQty, quoteQty, date, note, exch
     usd: d.usd, base_cost_delta: d.baseCostDelta, quote_cost_delta: d.quoteCostDelta, note: note || null };
   state.transactions.push(tx);
   return tx;
+}
+// Нагорода за стейкінг: токени приходять БЕЗ оплати — кількість росте, сума закупки (cost) НЕ змінюється,
+// тому середня ціна падає сама собою. Пари/котирування тут немає.
+function applyCryptoReward(h, qty, date, exchange, note){
+  const ex = exchange || null;
+  adjustHoldingOnExchange(h, ex, +qty);
+  const u = cryptoUnitUsd(h);
+  const tx = { id: nextId('tx'), ord: nextOrd(), kind: 'CRYPTO', side: 'REWARD', date: date || todayISO(),
+    base_id: h.id, base_sym: h.symbol, base_qty: qty, quote_qty: 0, exchange: ex,
+    usd: (u != null ? round2(qty * u) : null), note: note || null };
+  state.transactions.push(tx);
+  return tx;
+}
+function openCryptoReward(h){
+  const tracked = cryptoTracked(h);
+  const exOpts = (h.exchanges || []);
+  const body = el(`<div>
+    <div class="preview" style="display:flex;align-items:center;gap:8px;background:#f8fafc"><b>Стейкінг ${esc(h.symbol)}</b><span class="muted small">токени без оплати</span></div>
+    <div class="row">
+      <div style="flex:1"><label class="lab">Кількість ${esc(h.symbol)}</label><input id="cw-qty" inputmode="decimal" placeholder="0.00"></div>
+      <div style="flex:1"><label class="lab">Дата</label><input id="cw-date" type="date" value="${todayISO()}"></div>
+    </div>
+    ${tracked ? `<div><label class="lab">Біржа / гаманець</label><select id="cw-ex">${exOpts.map(x => `<option value="${esc(x.name)}">${esc(x.name)} (${fmtAmt(x.amount || 0)} ${esc(h.symbol)})</option>`).join('')}</select></div>` : ''}
+    <div><label class="lab">Коментар (необовʼязково)</label><input id="cw-note" placeholder="напр. нагорода за вересень"></div>
+    <div class="muted small" id="cw-hint" style="margin-top:6px"></div>
+    <div class="err hidden" id="cw-err"></div>
+  </div>`);
+  const $$ = s => $(s, body);
+  const upd = () => {
+    const qty = num($$('#cw-qty').value), u = cryptoUnitUsd(h);
+    const avg = ((h.cost || 0) > 0 && h.amount > 0) ? h.cost / h.amount : null;
+    const newAvg = ((h.cost || 0) > 0 && (h.amount + qty) > 0) ? h.cost / (h.amount + qty) : null;
+    $$('#cw-hint').innerHTML = qty > 0
+      ? `Стане <b>${fmtAmt(round2plusCrypto(h.amount + qty))} ${esc(h.symbol)}</b>${u != null ? ` · ≈ ${money(round2(qty * u), 'USD')}` : ''}`
+        + `${(avg != null && newAvg != null) ? ` · сер. ціна ${money(avg, 'USD')} → <b>${money(newAvg, 'USD')}</b>` : ''}`
+      : 'Сума закупки не змінюється — токени отримані безоплатно, тож середня ціна знизиться.';
+  };
+  body.addEventListener('input', upd); body.addEventListener('change', upd); upd();
+  openModal(`Стейкінг — ${h.symbol}`, body, { saveLabel: 'Нарахувати', onSave: (close) => {
+    const err = $$('#cw-err');
+    const qty = round2plusCrypto(num($$('#cw-qty').value));
+    if (!(qty > 0)) { err.textContent = 'Введіть кількість більше 0'; err.classList.remove('hidden'); return; }
+    const exName = tracked ? $$('#cw-ex').value : null;
+    if (tracked && !exName) { err.textContent = 'Оберіть біржу / гаманець'; err.classList.remove('hidden'); return; }
+    applyCryptoReward(h, qty, $$('#cw-date').value || todayISO(), exName, $$('#cw-note').value.trim() || null);
+    save(); close(); render();
+  }});
 }
 function openCryptoTrade(base, side){
   const isSell = side === 'SELL';
