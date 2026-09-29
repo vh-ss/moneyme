@@ -2940,42 +2940,17 @@ views.dashboard = (app) => {
   if (showMetals) { const mv = metalsTotalUAH(); bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Дорогоцінні метали">${metalIcon('XAU',26)} ${mv==null?'—':money(mv,'UAH')}</div>`)); }
   app.appendChild(head);
 
-  // бюджети категорій з лімітом (поточний місяць) — без тих, що 0%
-  const bcard = budgetsCard({ hideZero: true });
-  if (bcard) { bcard.style.marginTop = '14px'; app.appendChild(bcard); }
-
-  // алерт перевитрати бюджетів
-  const over = overBudgetCats();
-  if (over.length) {
-    const items = over.map(b => `${b.c.icon?b.c.icon+' ':''}${esc(b.c.name)} (${b.pct}%)`).join(', ');
-    const n = el(`<div class="notice" style="margin-top:10px;background:color-mix(in srgb,var(--red) 12%,transparent);border-color:color-mix(in srgb,var(--red) 35%,transparent);color:var(--red);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>⚠️ Перевитрата бюджету: ${items}</span></div>`);
-    const b = el(`<button class="btn sm">Категорії</button>`); b.onclick = () => navigate('categories'); n.appendChild(b);
-    app.appendChild(n);
-  }
-
-  // нагадування про регулярні платежі
-  const due = dueRecurring();
-  if (due.length) {
-    const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>⏰ Регулярних платежів до внесення: ${due.length}</span></div>`);
-    const b = el(`<button class="btn sm">Переглянути</button>`); b.onclick = () => navigate('recurring');
-    n.appendChild(b); app.appendChild(n);
-  }
-
-  // попередження про регулярні платежі, що скоро спишуться (за 3 дні наперед)
-  const soon = upcomingRecurring(3);
-  if (soon.length) {
-    const items = soon.map(r => `${esc(r.name||'Платіж')} — ${money(r.amount, recurCur(r))} ${fmtDate(r.next_date)}`).join('; ');
-    const n = el(`<div class="notice" style="margin-top:10px;background:color-mix(in srgb,var(--amber) 12%,transparent);border-color:color-mix(in srgb,var(--amber) 35%,transparent);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>🔔 Скоро спишеться (${soon.length}): ${items}</span></div>`);
-    const b = el(`<button class="btn sm">Переглянути</button>`); b.onclick = () => navigate('recurring');
-    n.appendChild(b); app.appendChild(n);
-  }
+  // ——— Сповіщення: НАЙТЕРМІНОВІШЕ ЗВЕРХУ ———
+  // Порядок важливий: кредит — це реальні гроші й пеня, тож він перший. Раніше він був останнім
+  // і на телефоні йшов за межу екрана під бюджетами та регулярними — його просто не бачили.
 
   // нагадування про платежі за кредитами (очікують і ще не сплачені цього циклу)
   const loanDue = state.loans.filter(loanPending);
   if (loanDue.length) {
     const today = todayISO();
+    const overdue = loanDue.some(l => l.due_date < today);   // прострочене — червоним, щоб не губилось
     const items = loanDue.map(l => `${esc(l.name||'Кредит')} — ${l.due_date < today ? 'прострочено з '+fmtDate(l.due_date) : 'до '+fmtDate(l.due_date)}`).join('; ');
-    const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>💳 Платежі за кредитами: ${items}</span><span class="row" style="gap:6px"></span></div>`);
+    const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap${overdue?';background:color-mix(in srgb,var(--red) 12%,transparent);border-color:color-mix(in srgb,var(--red) 35%,transparent)':''}"><span>💳 Платежі за кредитами: ${items}</span><span class="row" style="gap:6px"></span></div>`);
     const acts = n.lastElementChild;
     // Платежі поза застосунком не існують — тому жодного «Сплачено»: одразу справжній діалог внесення платежу
     // (зменшує борг, створює витрату й переносить дату списання).
@@ -3006,6 +2981,36 @@ views.dashboard = (app) => {
     [...new Set(noCard)].forEach(nm => warns.push(`У банку «${esc(nm)}» не вказано основний рахунок — перевірку коштів пропущено`));
     if (warns.length) app.appendChild(el(`<div class="notice warn" style="margin-top:6px">⚠ ${warns.join('<br>')}</div>`));
   }
+
+  // нагадування про регулярні платежі
+  const due = dueRecurring();
+  if (due.length) {
+    const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px"><span>⏰ Регулярних платежів до внесення: ${due.length}</span></div>`);
+    const b = el(`<button class="btn sm">Переглянути</button>`); b.onclick = () => navigate('recurring');
+    n.appendChild(b); app.appendChild(n);
+  }
+
+  // попередження про регулярні платежі, що скоро спишуться (за 3 дні наперед)
+  const soon = upcomingRecurring(3);
+  if (soon.length) {
+    const items = soon.map(r => `${esc(r.name||'Платіж')} — ${money(r.amount, recurCur(r))} ${fmtDate(r.next_date)}`).join('; ');
+    const n = el(`<div class="notice" style="margin-top:10px;background:color-mix(in srgb,var(--amber) 12%,transparent);border-color:color-mix(in srgb,var(--amber) 35%,transparent);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>🔔 Скоро спишеться (${soon.length}): ${items}</span></div>`);
+    const b = el(`<button class="btn sm">Переглянути</button>`); b.onclick = () => navigate('recurring');
+    n.appendChild(b); app.appendChild(n);
+  }
+
+  // алерт перевитрати бюджетів
+  const over = overBudgetCats();
+  if (over.length) {
+    const items = over.map(b => `${b.c.icon?b.c.icon+' ':''}${esc(b.c.name)} (${b.pct}%)`).join(', ');
+    const n = el(`<div class="notice" style="margin-top:10px;background:color-mix(in srgb,var(--red) 12%,transparent);border-color:color-mix(in srgb,var(--red) 35%,transparent);color:var(--red);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>⚠️ Перевитрата бюджету: ${items}</span></div>`);
+    const b = el(`<button class="btn sm">Категорії</button>`); b.onclick = () => navigate('categories'); n.appendChild(b);
+    app.appendChild(n);
+  }
+
+  // бюджети категорій з лімітом (поточний місяць) — без тих, що 0%
+  const bcard = budgetsCard({ hideZero: true });
+  if (bcard) { bcard.style.marginTop = '14px'; app.appendChild(bcard); }
 
   // рахунки з drag-and-drop
   const sec = el(`<section>
