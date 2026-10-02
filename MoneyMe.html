@@ -4100,6 +4100,7 @@ function cryptoRound(x){ return Math.max(0, Math.round((Number(x) || 0) * 1e8) /
 // Знак P&L: повертає {txt, color} для відсотка прибутку/збитку.
 function plTag(pct){ if (pct == null) return null; const up = pct >= 0; return { txt: (up?'▲ ':'▼ ') + (up?'+':'') + pct.toFixed(1) + '%', color: up?'var(--green)':'var(--red)' }; }
 let cryptoView = 'assets';   // режим перегляду: 'assets' (за активами) | 'exchanges' (за біржами)
+let cryptoChartDays = 90;   // період графіка історії портфеля (знімки зберігаються за ~180 днів)
 views.crypto = (app) => {
   ensureCryptoFresh();   // оновити ціни (раз на день; повертає одразу, якщо свіжі)
   const head = el(`<div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h1 style="margin:0">Криптовалюти</h1><div class="row" style="gap:6px"></div></div>`);
@@ -4153,12 +4154,25 @@ views.crypto = (app) => {
     app.appendChild(charts);
   }
 
-  // ——— Історія вартості портфеля (area) ———
-  const hist = (state.cryptoHistory || []).slice(-90);
-  if (hist.length >= 2) {
-    const pts = hist.map(p => ({ value: p.usd, label: p.date.slice(5).split('-').reverse().join('.') }));
-    const hc = el(`<section class="card" style="padding:14px;margin-top:12px"><div class="row" style="justify-content:space-between;align-items:baseline"><h2 style="margin:0">Історія портфеля</h2><b class="tabnum">${money(pts[pts.length-1].value,'USD')}</b></div></section>`);
-    hc.appendChild(netWorthSVG(pts)); hc.appendChild(chartLabels(pts.map(p => p.label))); app.appendChild(hc);
+  // ——— Історія вартості портфеля (той самий графік, що в металах: масштаб під дані + курсор) ———
+  const allHist = (state.cryptoHistory || []).filter(p => p && p.date && p.usd > 0);
+  if (allHist.length >= 2) {
+    const from = addDaysISO(todayISO(), -cryptoChartDays);
+    let series = allHist.filter(p => p.date >= from).map(p => ({ d: p.date, v: p.usd }));
+    if (series.length < 2) series = allHist.map(p => ({ d: p.date, v: p.usd }));   // замало точок у періоді — показуємо все, що є
+    const first = series[0], last = series[series.length - 1];
+    const dT = plTag(first.v > 0 ? round2((last.v - first.v) / first.v * 100) : null);
+    const hc = el(`<section class="card" style="padding:14px;margin-top:12px"><div class="row" style="justify-content:space-between;align-items:baseline"><h2 style="margin:0">Історія портфеля</h2><b class="tabnum">${money(last.v,'USD')}</b></div></section>`);
+    const pch = el(`<div class="pill" style="flex-wrap:wrap;margin:8px 0 10px"></div>`);
+    [[30, '1 міс'], [90, '3 міс'], [180, '6 міс']].forEach(([d, l]) => {
+      const b = el(`<button${cryptoChartDays === d ? ' class="on"' : ''}>${l}</button>`);
+      b.onclick = () => { cryptoChartDays = d; render(); }; pch.appendChild(b);
+    });
+    hc.appendChild(pch);
+    hc.appendChild(historyChartBox(series, '#f59e0b', 'USD'));
+    hc.appendChild(chartLabels(series.map(p => p.d.slice(8, 10) + '.' + p.d.slice(5, 7))));
+    hc.appendChild(el(`<div class="small tabnum" style="margin-top:6px"><span class="muted">${money(round2(first.v), 'USD')} → </span><b>${money(round2(last.v), 'USD')}</b>${dT ? ` <span style="color:${dT.color}">${dT.txt}</span>` : ''}</div>`));
+    app.appendChild(hc);
   } else {
     app.appendChild(el(`<div class="muted small" style="margin-top:10px">📈 Історія портфеля накопичується — графік зʼявиться за кілька днів користування.</div>`));
   }
@@ -4813,9 +4827,10 @@ function priceLineSVG(pts, color, min, max, H){
     <path d="${area}" fill="${color}" opacity="0.14"/>
     <path d="${line}" fill="none" stroke="${color}" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`);
 }
-// Графік із підписами мін/макс на осі (масштаб — під дані, а не від нуля)
-// + курсор: ведеш мишею/пальцем — показує ціну й дату в тій точці.
-function metalChartBox(series, color, cur){
+// Спільний графік історії (метали, крипто-портфель): підписи мін/макс на осі, масштаб — ПІД ДАНІ, а не від нуля
+// (інакше коливання виглядають пласкою лінією) + курсор: ведеш мишею/пальцем — показує значення й дату в тій точці.
+// series — [{ d:'YYYY-MM-DD', v:number }].
+function historyChartBox(series, color, cur){
   const H = 150, vals = series.map(p => p.v);
   const lo = Math.min(...vals); let hi = Math.max(...vals);
   if (!(hi > lo)) hi = lo + 1;
@@ -4939,7 +4954,7 @@ views.metals = (app) => {
     const first = series[0], last = series[series.length - 1];
     const dPct = first.v > 0 ? round2((last.v - first.v) / first.v * 100) : null;
     const dT = plTag(dPct);
-    gc.appendChild(metalChartBox(series, metalMeta(metalChartCode).color, metalChartCur));
+    gc.appendChild(historyChartBox(series, metalMeta(metalChartCode).color, metalChartCur));
     gc.appendChild(chartLabels(series.map(p => p.d.slice(8, 10) + '.' + p.d.slice(5, 7))));   // дати вздовж осі
     gc.appendChild(el(`<div class="small tabnum" style="margin-top:6px"><span class="muted">${money(round2(first.v), metalChartCur)} → </span><b>${money(round2(last.v), metalChartCur)}</b>${dT ? ` <span style="color:${dT.color}">${dT.txt}</span>` : ''}</div>`));
   } else {
