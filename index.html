@@ -363,7 +363,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'c8d86ba7e1';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'c3a948bda7';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -4760,6 +4760,36 @@ function recordMetalsSnapshot(){
   state.metalsHistory = state.metalsHistory.slice(-180);
   persist();   // без оновлення updatedAt — знімок цін не має перебивати реальні правки при синху
 }
+// Редактор історії вартості: показує збережені знімки й дає прибрати хибні.
+// Потрібен, бо знімок фіксує те, що було записано на той момент — якщо актив ввели з помилкою
+// (напр. вагу в унціях замість грамів), стара точка назавжди лишається в графіку, і перерахувати
+// її заднім числом неможливо: склад портфеля на минулі дати не зберігається.
+function openMetalsHistoryEditor(){
+  const body = el(`<div>
+    <div class="muted small">Знімки вартості портфеля. Приберіть хибні точки — наприклад, записані до того, як ви виправили вагу чи одиницю виміру.</div>
+    <div id="mh-list" style="margin-top:10px;max-height:46vh;overflow:auto"></div>
+    <div style="margin-top:12px"></div>
+  </div>`);
+  const draw = () => {
+    const list = $('#mh-list', body); list.innerHTML = '';
+    const items = (state.metalsHistory || []).slice().sort((a, b) => a.date < b.date ? 1 : -1);
+    if (!items.length) { list.appendChild(el(`<div class="muted small">Історія порожня — вона почне накопичуватись із наступним запуском.</div>`)); return; }
+    items.forEach(p => {
+      const row = el(`<div class="row" style="justify-content:space-between;align-items:center;gap:10px;padding:7px 2px;border-bottom:1px solid var(--softline)">
+        <span>${fmtDate(p.date)}</span><span class="row" style="gap:8px;align-items:center"><b class="tabnum">${money(round2(p.uah || 0), 'UAH')}</b></span></div>`);
+      const del = el(`<button class="btn danger sm" title="Видалити точку">${ic('close')}</button>`);
+      del.onclick = () => { deleteWithUndo(`Точку ${fmtDate(p.date)} видалено`, () => { state.metalsHistory = (state.metalsHistory || []).filter(x => x.date !== p.date); }); draw(); };
+      row.lastElementChild.appendChild(del);
+      list.appendChild(row);
+    });
+  };
+  draw();
+  const clr = el(`<button class="btn ghost sm" style="color:var(--red)">Очистити всю історію</button>`);
+  clr.onclick = () => confirmModal('Очистити історію вартості?', 'Усі збережені знімки буде видалено, графік почне накопичуватись заново. Самі активи не зміняться.', { danger: true, okLabel: 'Очистити' })
+    .then(ok => { if (ok) { deleteWithUndo('Історію вартості очищено', () => { state.metalsHistory = []; }); draw(); } });
+  body.lastElementChild.appendChild(clr);
+  openModal('Історія вартості', body);
+}
 // Попередній (не сьогоднішній) знімок, де є ціна цього металу.
 function metalPrevSnap(code){
   const h = state.metalsHistory || [], t = todayISO();
@@ -5052,7 +5082,12 @@ views.metals = (app) => {
   const pts = stepDailySeries((state.metalsHistory || []).filter(p => p && p.uah > 0), p => p.uah, 90)
     .map(p => ({ ...p, label: p.d.slice(8, 10) + '.' + p.d.slice(5, 7) }));
   if (pts.length > 1) {
-    const hc = el(`<section class="card" style="padding:14px 16px;margin-top:12px"><div class="muted small" style="margin-bottom:6px">Вартість портфеля, ₴</div></section>`);
+    const hc = el(`<section class="card" style="padding:14px 16px;margin-top:12px">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span class="muted small">Вартість портфеля, ₴</span><span class="row" style="gap:6px"></span></div></section>`);
+    const edit = el(`<button class="btn ghost sm" title="Переглянути й виправити знімки історії">${ic('edit')} Історія</button>`);
+    edit.onclick = () => openMetalsHistoryEditor();
+    hc.firstElementChild.lastElementChild.appendChild(edit);
     hc.appendChild(historyChartBox(pts, CHART_LINE, 'UAH'));
     hc.appendChild(chartLabels(pts.map(p => p.label)));
     app.appendChild(hc);
