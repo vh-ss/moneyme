@@ -3229,17 +3229,7 @@ function netWorthAt(dateISO){
   return round2(total);
 }
 function lastMonthEnds(n){ const arr=[]; const now=new Date(); for(let i=n-1;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i+1, 0); arr.push({ iso: isoOf(d), label: ymd(d.getFullYear(), d.getMonth()+1, 1).slice(2,7) }); } return arr; }
-function netWorthSVG(points){
-  const H=130, W=100; const vals=points.map(p=>p.value);
-  const min=Math.min(0,...vals), max=Math.max(1,...vals); const range=(max-min)||1;
-  const x=i=> points.length<=1?W/2 : (i/(points.length-1))*W;
-  const y=v=> H-6 - ((v-min)/range)*(H-12);
-  const line = points.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
-  const area = `M0 ${H-6} ` + points.map((p,i)=>`L${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ') + ` L${W} ${H-6} Z`;
-  return el(`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="overflow:visible;display:block">
-    <path d="${area}" fill="var(--accent)" opacity="0.13"/>
-    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.1" vector-effect="non-scaling-stroke"/></svg>`);
-}
+// (netWorthSVG прибрано: усі графіки значень перейшли на historyChartBox — масштаб під дані + курсор.)
 // Рядок підписів під графіком (звичайний HTML — без спотворення).
 function chartLabels(labels){
   const n = labels.length, step = Math.max(1, Math.ceil(n/6));
@@ -3569,24 +3559,25 @@ views.analytics = (app) => {
   const monthlyNet = round2(recIncU - recExpU - loanU);
   if (recIncU || recExpU || loanU) {
     const start = netWorthAt(todayISO());
-    const pts = [{ label: 'зараз', value: start }];
+    const pts = [{ label: 'зараз', value: start, iso: todayISO() }];
     let bal = start;
-    for (let i = 1; i <= 6; i++) { bal = round2(bal + monthlyNet); const ym = addMonthsYM(todayISO().slice(0,7), i); pts.push({ label: new Date(ym + '-01').toLocaleDateString(lang==='en'?'en-US':'uk-UA', { month: 'short' }), value: bal }); }
+    for (let i = 1; i <= 6; i++) { bal = round2(bal + monthlyNet); const ym = addMonthsYM(todayISO().slice(0,7), i); pts.push({ label: new Date(ym + '-01').toLocaleDateString(lang==='en'?'en-US':'uk-UA', { month: 'short' }), value: bal, iso: ym + '-01' }); }
     const fc = el(`<div class="card" style="padding:14px;margin-top:14px">
       <div class="row" style="justify-content:space-between;align-items:baseline;gap:8px"><h2 style="margin:0">Прогноз балансу</h2>
         <b class="tabnum" style="color:${monthlyNet>=0?'var(--green)':'var(--red)'}">${monthlyNet>=0?'+':''}${money(monthlyNet)}/міс</b></div>
       <div class="muted small" style="margin-top:2px">Лише регулярні платежі та кредити (без разових). Через 6 міс ≈ <b>${money(pts[pts.length-1].value)}</b>.</div></div>`);
-    fc.appendChild(netWorthSVG(pts)); fc.appendChild(chartLabels(pts.map(p => p.label)));
+    fc.appendChild(historyChartBox(pts.map(p => ({ d: p.iso, v: p.value, lbl: p.label })), 'var(--accent)', 'UAH'));
+    fc.appendChild(chartLabels(pts.map(p => p.label)));
     app.appendChild(fc);
   }
 
   // графік чистих активів (останні 12 місяців)
-  const nwPoints = lastMonthEnds(12).map(m => ({ label: m.label, value: netWorthAt(m.iso) }));
+  const nwPoints = lastMonthEnds(12).map(m => ({ label: m.label, value: netWorthAt(m.iso), iso: m.iso }));
   const nw = el(`<div class="card" style="padding:14px;margin-top:14px">
     <div class="row" style="justify-content:space-between;align-items:baseline"><h2>Чисті активи (₴-екв)</h2>
       <b class="tabnum">${money(nwPoints[nwPoints.length-1].value)}</b></div>
     <div class="muted small" style="margin-top:2px">приблизно, за поточним курсом валют</div></div>`);
-  nw.appendChild(netWorthSVG(nwPoints));
+  nw.appendChild(historyChartBox(nwPoints.map(p => ({ d: p.iso, v: p.value })), 'var(--accent)', 'UAH'));
   nw.appendChild(chartLabels(nwPoints.map(p=>p.label)));
   app.appendChild(nw);
 
@@ -4852,7 +4843,7 @@ function historyChartBox(series, color, cur){
     const y = yPx(p.v);
     cross.style.left = x + 'px'; cross.style.display = '';
     dot.style.left = x + 'px'; dot.style.top = y + 'px'; dot.style.display = '';
-    tip.innerHTML = `<b>${money(round2(p.v), cur)}</b> <span class="muted">${fmtDate(p.d)}</span>`;
+    tip.innerHTML = `<b>${money(round2(p.v), cur)}</b> <span class="muted">${esc(p.lbl || fmtDate(p.d))}</span>`;   // lbl — власна мітка точки (напр. «зараз», «груд.»)
     tip.style.display = '';
     tip.style.top = Math.max(0, y - 30) + 'px';
     const tw = tip.offsetWidth;                       // не даємо підказці вилізти за краї
@@ -4965,9 +4956,10 @@ views.metals = (app) => {
   // ——— Графік вартості портфеля ———
   const hist = (state.metalsHistory || []).filter(p => p && p.uah > 0).slice(-90);
   if (hist.length > 1) {
-    const pts = hist.map(p => ({ label: p.date.slice(5), value: p.uah }));
+    const pts = hist.map(p => ({ d: p.date, v: p.uah, label: p.date.slice(8, 10) + '.' + p.date.slice(5, 7) }));
     const hc = el(`<section class="card" style="padding:14px 16px;margin-top:12px"><div class="muted small" style="margin-bottom:6px">Вартість портфеля, ₴</div></section>`);
-    hc.appendChild(netWorthSVG(pts)); hc.appendChild(chartLabels(pts.map(p => p.label)));
+    hc.appendChild(historyChartBox(pts, 'var(--accent)', 'UAH'));
+    hc.appendChild(chartLabels(pts.map(p => p.label)));
     app.appendChild(hc);
   }
 
