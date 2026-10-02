@@ -3592,8 +3592,17 @@ views.analytics = (app) => {
     app.appendChild(fc);
   }
 
-  // графік чистих активів (останні 12 місяців)
-  const nwPoints = lastMonthEnds(12).map(m => ({ label: m.label, value: netWorthAt(m.iso), iso: m.iso }));
+  // графік чистих активів: останні 12 місяців, але НЕ РАНІШЕ за місяць першої операції.
+  // До початку обліку netWorthAt() повертає лише суму стартових залишків рахунків — виходила рівна
+  // лінія за місяці, яких у даних просто не було.
+  const firstTxDate = state.transactions.reduce((m, t) => (t.date && (!m || t.date < m)) ? t.date : m, null);
+  let nwMonths = lastMonthEnds(12);
+  if (firstTxDate) {
+    const fromMonth = firstTxDate.slice(0, 7) + '-01';
+    const kept = nwMonths.filter(m => m.iso >= fromMonth);
+    nwMonths = kept.length >= 2 ? kept : nwMonths.slice(-2);   // мінімум 2 точки, щоб було що малювати
+  }
+  const nwPoints = nwMonths.map(m => ({ label: m.label, value: netWorthAt(m.iso), iso: m.iso }));
   const nw = el(`<div class="card" style="padding:14px;margin-top:14px">
     <div class="row" style="justify-content:space-between;align-items:baseline"><h2>Чисті активи (₴-екв)</h2>
       <b class="tabnum">${money(nwPoints[nwPoints.length-1].value)}</b></div>

@@ -363,7 +363,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = 'bf01b0a18f';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '1549463c90';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3571,8 +3571,17 @@ views.analytics = (app) => {
     app.appendChild(fc);
   }
 
-  // графік чистих активів (останні 12 місяців)
-  const nwPoints = lastMonthEnds(12).map(m => ({ label: m.label, value: netWorthAt(m.iso), iso: m.iso }));
+  // графік чистих активів: останні 12 місяців, але НЕ РАНІШЕ за місяць першої операції.
+  // До початку обліку netWorthAt() повертає лише суму стартових залишків рахунків — виходила рівна
+  // лінія за місяці, яких у даних просто не було.
+  const firstTxDate = state.transactions.reduce((m, t) => (t.date && (!m || t.date < m)) ? t.date : m, null);
+  let nwMonths = lastMonthEnds(12);
+  if (firstTxDate) {
+    const fromMonth = firstTxDate.slice(0, 7) + '-01';
+    const kept = nwMonths.filter(m => m.iso >= fromMonth);
+    nwMonths = kept.length >= 2 ? kept : nwMonths.slice(-2);   // мінімум 2 точки, щоб було що малювати
+  }
+  const nwPoints = nwMonths.map(m => ({ label: m.label, value: netWorthAt(m.iso), iso: m.iso }));
   const nw = el(`<div class="card" style="padding:14px;margin-top:14px">
     <div class="row" style="justify-content:space-between;align-items:baseline"><h2>Чисті активи (₴-екв)</h2>
       <b class="tabnum">${money(nwPoints[nwPoints.length-1].value)}</b></div>
