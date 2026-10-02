@@ -363,7 +363,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '680add71df';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '495ff28632';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3628,7 +3628,7 @@ views.analytics = (app) => {
       fpill.appendChild(b);
     });
     fc.appendChild(fpill);
-    fc.appendChild(historyChartBox(pts.map(p => ({ d: p.iso, v: p.value, lbl: p.label })), 'var(--accent)', 'UAH'));
+    fc.appendChild(historyChartBox(pts.map(p => ({ d: p.iso, v: p.value, lbl: p.label })), monthlyNet >= 0 ? 'var(--green)' : 'var(--red)', 'UAH'));
     fc.appendChild(chartLabels(pts.map(p => p.label)));
     app.appendChild(fc);
   }
@@ -3645,7 +3645,7 @@ views.analytics = (app) => {
   if (nwPoints.length >= 2) {
     const d0 = nwPoints[0], dN = nwPoints[nwPoints.length - 1];
     const dT = plTag(d0.v ? round2((dN.v - d0.v) / Math.abs(d0.v) * 100) : null);
-    nw.appendChild(historyChartBox(nwPoints, 'var(--accent)', 'UAH'));
+    nw.appendChild(historyChartBox(nwPoints, CHART_LINE, 'UAH'));
     nw.appendChild(chartLabels(nwPoints.map(p => p.label)));
     nw.appendChild(el(`<div class="small tabnum" style="margin-top:6px"><span class="muted">${money(round2(d0.v))} → </span><b>${money(round2(dN.v))}</b>${dT ? ` <span style="color:${dT.color}">${dT.txt}</span>` : ''}</div>`));
   } else {
@@ -4880,6 +4880,9 @@ function metalSeries(code, cur, days){
   });
   return out;
 }
+// Колір «грошових» графіків (чисті активи, вартість портфеля). Крипта має свій бурштин,
+// метали — колір металу, тож лінія скрізь кольорова, а не майже чорна, як var(--accent).
+const CHART_LINE = '#0ea5e9';
 function priceLineSVG(pts, color, min, max, H){
   const W = 100, range = (max - min) || 1;
   const x = i => pts.length <= 1 ? W / 2 : (i / (pts.length - 1)) * W;
@@ -5030,7 +5033,7 @@ views.metals = (app) => {
   if (hist.length > 1) {
     const pts = hist.map(p => ({ d: p.date, v: p.uah, label: p.date.slice(8, 10) + '.' + p.date.slice(5, 7) }));
     const hc = el(`<section class="card" style="padding:14px 16px;margin-top:12px"><div class="muted small" style="margin-bottom:6px">Вартість портфеля, ₴</div></section>`);
-    hc.appendChild(historyChartBox(pts, 'var(--accent)', 'UAH'));
+    hc.appendChild(historyChartBox(pts, CHART_LINE, 'UAH'));
     hc.appendChild(chartLabels(pts.map(p => p.label)));
     app.appendChild(hc);
   }
