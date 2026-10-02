@@ -3271,6 +3271,28 @@ function avgMonthlyNet(n){
   }
   return cnt ? round2(sum / cnt) : null;
 }
+// Точки чистих активів за ОБРАНИЙ період аналітики. Крок адаптивний: до ~2 міс — по днях,
+// до ~13 міс — по тижнях, довше — по кінцях місяців. Раніше за першу операцію не йдемо:
+// до початку обліку netWorthAt() дає лише суму стартових залишків і малює рівну лінію «з нізвідки».
+function netWorthSeries(fromISO, toISO){
+  const first = state.transactions.reduce((m, t) => (t.date && (!m || t.date < m)) ? t.date : m, null);
+  const to = toISO || todayISO();
+  let from = fromISO || first || to;
+  if (first && from < first) from = first;
+  if (from > to) from = to;
+  const days = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 86400000));
+  const dates = [];
+  if (days <= 62) { const step = days <= 31 ? 1 : 2; for (let d = 0; d <= days; d += step) dates.push(addDaysISO(from, d)); }
+  else if (days <= 400) { for (let d = 0; d <= days; d += 7) dates.push(addDaysISO(from, d)); }
+  else { let ym = from.slice(0, 7); const lastYm = to.slice(0, 7);
+    while (ym <= lastYm) { const r = monthRangeOf(ym); dates.push(r.to <= to ? r.to : to); ym = addMonthsYM(ym, 1); } }
+  dates.push(to);
+  const seen = new Set(), uniq = [];
+  dates.forEach(d => { if (d && !seen.has(d) && d <= to) { seen.add(d); uniq.push(d); } });
+  uniq.sort();
+  const byMonth = days > 400;
+  return uniq.map(d => ({ d, v: netWorthAt(d), label: byMonth ? d.slice(2, 7) : d.slice(8, 10) + '.' + d.slice(5, 7) }));
+}
 function lastMonthEnds(n){ const arr=[]; const now=new Date(); for(let i=n-1;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i+1, 0); arr.push({ iso: isoOf(d), label: ymd(d.getFullYear(), d.getMonth()+1, 1).slice(2,7) }); } return arr; }
 // (netWorthSVG прибрано: усі графіки значень перейшли на historyChartBox — масштаб під дані + курсор.)
 // Рядок підписів під графіком (звичайний HTML — без спотворення).
@@ -3635,20 +3657,21 @@ views.analytics = (app) => {
   // графік чистих активів: останні 12 місяців, але НЕ РАНІШЕ за місяць першої операції.
   // До початку обліку netWorthAt() повертає лише суму стартових залишків рахунків — виходила рівна
   // лінія за місяці, яких у даних просто не було.
-  const firstTxDate = state.transactions.reduce((m, t) => (t.date && (!m || t.date < m)) ? t.date : m, null);
-  let nwMonths = lastMonthEnds(12);
-  if (firstTxDate) {
-    const fromMonth = firstTxDate.slice(0, 7) + '-01';
-    const kept = nwMonths.filter(m => m.iso >= fromMonth);
-    nwMonths = kept.length >= 2 ? kept : nwMonths.slice(-2);   // мінімум 2 точки, щоб було що малювати
-  }
-  const nwPoints = nwMonths.map(m => ({ label: m.label, value: netWorthAt(m.iso), iso: m.iso }));
+  const nwPoints = netWorthSeries(anFilter.from, anFilter.to);
+  const nwLast = nwPoints.length ? nwPoints[nwPoints.length - 1].v : netWorthAt(anFilter.to || todayISO());
   const nw = el(`<div class="card" style="padding:14px;margin-top:14px">
     <div class="row" style="justify-content:space-between;align-items:baseline"><h2>Чисті активи (₴-екв)</h2>
-      <b class="tabnum">${money(nwPoints[nwPoints.length-1].value)}</b></div>
-    <div class="muted small" style="margin-top:2px">приблизно, за поточним курсом валют</div></div>`);
-  nw.appendChild(historyChartBox(nwPoints.map(p => ({ d: p.iso, v: p.value })), 'var(--accent)', 'UAH'));
-  nw.appendChild(chartLabels(nwPoints.map(p=>p.label)));
+      <b class="tabnum">${money(nwLast)}</b></div>
+    <div class="muted small" style="margin-top:2px">приблизно, за поточним курсом валют · за обраний період</div></div>`);
+  if (nwPoints.length >= 2) {
+    const d0 = nwPoints[0], dN = nwPoints[nwPoints.length - 1];
+    const dT = plTag(d0.v ? round2((dN.v - d0.v) / Math.abs(d0.v) * 100) : null);
+    nw.appendChild(historyChartBox(nwPoints, 'var(--accent)', 'UAH'));
+    nw.appendChild(chartLabels(nwPoints.map(p => p.label)));
+    nw.appendChild(el(`<div class="small tabnum" style="margin-top:6px"><span class="muted">${money(round2(d0.v))} → </span><b>${money(round2(dN.v))}</b>${dT ? ` <span style="color:${dT.color}">${dT.txt}</span>` : ''}</div>`));
+  } else {
+    nw.appendChild(el(`<div class="muted small" style="margin-top:6px">Замало даних за обраний період, щоб побудувати графік.</div>`));
+  }
   app.appendChild(nw);
 
   // за категоріями
