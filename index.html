@@ -363,7 +363,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '1549463c90';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = 'fc9f7886a8';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -3228,6 +3228,28 @@ function netWorthAt(dateISO){
   });
   return round2(total);
 }
+// Середній місячний чистий потік за n ПОВНИХ попередніх місяців (поточний, неповний, не беремо).
+// Рахуємо так само, як «Чистий потік»: надходження − витрати − комісії переказів.
+// Місяці до першої операції пропускаємо, щоб порожнеча не занижувала середнє. null — якщо даних нема.
+function avgMonthlyNet(n){
+  const firstTx = state.transactions.reduce((m, t) => (t.date && (!m || t.date < m)) ? t.date : m, null);
+  if (!firstTx) return null;
+  const cur = todayISO().slice(0, 7);
+  let sum = 0, cnt = 0;
+  for (let i = 1; i <= n; i++) {
+    const { from, to } = monthRangeOf(addMonthsYM(cur, -i));
+    if (to < firstTx) continue;   // місяць цілком до початку обліку
+    let inc = 0, exp = 0, fees = 0;
+    state.transactions.forEach(t => {
+      if (!inRange(t, from, to)) return;
+      if (t.kind === 'INCOME') inc += txUAH(t);
+      else if (t.kind === 'EXPENSE') exp += txUAH(t);
+      else if (t.kind === 'TRANSFER') fees += feeUAH(t);
+    });
+    sum += (inc - exp - fees); cnt++;
+  }
+  return cnt ? round2(sum / cnt) : null;
+}
 function lastMonthEnds(n){ const arr=[]; const now=new Date(); for(let i=n-1;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i+1, 0); arr.push({ iso: isoOf(d), label: ymd(d.getFullYear(), d.getMonth()+1, 1).slice(2,7) }); } return arr; }
 // (netWorthSVG прибрано: усі графіки значень перейшли на historyChartBox — масштаб під дані + курсор.)
 // Рядок підписів під графіком (звичайний HTML — без спотворення).
@@ -3254,6 +3276,8 @@ function dayAxisLabels(days){
 //==================== Вигляд: Аналітика ====================
 let anFilter = { from: monthStartISO(), to: todayISO(), preset: 'month' };
 let anReport = 'main';   // варіант звіту: 'main' (дашборд) | 'byday' (витрати по днях)
+let fcMode = 'fact';     // база прогнозу балансу: 'fact' (фактичний потік) | 'plan' (лише регулярні + кредити)
+const FC_MONTHS = 3;     // скільки повних місяців усереднюємо для «за фактом»
 let anDayCat = '';        // фільтр звіту «По днях»: '' = усі статті, інакше id категорії-витрати
 // Приховані ОПЕРАЦІЇ звіту «По днях» (нетипова витрата / велика покупка) — виключаються з графіка й статистики.
 // Локальне налаштування перегляду (не синхронізується): множина id операцій.
@@ -3554,10 +3578,16 @@ views.analytics = (app) => {
     app.appendChild(rc);
   }
 
-  // ——— Прогноз балансу (лише регулярні + кредити) ———
+  // ——— Прогноз балансу ———
+  // Два режими: «за фактом» (середній реальний потік за останні місяці) і «лише регулярні + кредити»
+  // (шаблони й кредитні платежі). Раніше був тільки другий — і якщо дохід заводиться звичайними
+  // операціями, а не шаблоном, прогноз завжди йшов у мінус, хоча фактичний потік плюсовий.
   const recIncU = recurringMonthlyUAH('INCOME'), recExpU = recurringMonthlyUAH('EXPENSE'), loanU = loansMonthlyUAH();
-  const monthlyNet = round2(recIncU - recExpU - loanU);
-  if (recIncU || recExpU || loanU) {
+  const planNet = round2(recIncU - recExpU - loanU);
+  const factNet = avgMonthlyNet(FC_MONTHS);
+  const useFact = fcMode === 'fact' && factNet != null;
+  const monthlyNet = useFact ? factNet : planNet;
+  if (planNet || factNet != null) {
     const start = netWorthAt(todayISO());
     const pts = [{ label: 'зараз', value: start, iso: todayISO() }];
     let bal = start;
@@ -3565,7 +3595,17 @@ views.analytics = (app) => {
     const fc = el(`<div class="card" style="padding:14px;margin-top:14px">
       <div class="row" style="justify-content:space-between;align-items:baseline;gap:8px"><h2 style="margin:0">Прогноз балансу</h2>
         <b class="tabnum" style="color:${monthlyNet>=0?'var(--green)':'var(--red)'}">${monthlyNet>=0?'+':''}${money(monthlyNet)}/міс</b></div>
-      <div class="muted small" style="margin-top:2px">Лише регулярні платежі та кредити (без разових). Через 6 міс ≈ <b>${money(pts[pts.length-1].value)}</b>.</div></div>`);
+      <div class="muted small" style="margin-top:2px">${useFact
+        ? `За фактичним потоком: середнє за ${FC_MONTHS} останні міс (надходження − витрати − комісії).`
+        : 'Лише регулярні платежі та кредити (без разових).'} Через 6 міс ≈ <b>${money(pts[pts.length-1].value)}</b>.</div></div>`);
+    const fpill = el(`<div class="pill" style="flex-wrap:wrap;margin:8px 0 2px"></div>`);
+    [['fact', `За фактом (${FC_MONTHS} міс)`], ['plan', 'Регулярні + кредити']].forEach(([m, l]) => {
+      const b = el(`<button${(useFact ? 'fact' : 'plan') === m ? ' class="on"' : ''}>${l}</button>`);
+      if (m === 'fact' && factNet == null) { b.disabled = true; b.title = 'Ще немає повного місяця даних'; }
+      else b.onclick = () => { fcMode = m; render(); };
+      fpill.appendChild(b);
+    });
+    fc.appendChild(fpill);
     fc.appendChild(historyChartBox(pts.map(p => ({ d: p.iso, v: p.value, lbl: p.label })), 'var(--accent)', 'UAH'));
     fc.appendChild(chartLabels(pts.map(p => p.label)));
     app.appendChild(fc);
