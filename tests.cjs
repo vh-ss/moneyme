@@ -296,6 +296,48 @@ eq('loanNextDue назад: 15.06 → 15.05', S.loanNextDue({ due_date: '2026-06
   }
 }
 
+// ——— Синх історії вартості: видалена точка не воскресає ———
+{
+  const T = '2026-10-03T10:00:00.000Z';
+  const local = {
+    updatedAt: T,
+    metalsHistory: [{ date: '2026-09-01', uah: 100, at: '2026-09-01T08:00:00.000Z' }],
+    cryptoHistory: [],
+    tombstones: { metalsHistory: { '2026-08-01': T }, cryptoHistory: { '2026-08-05': T } },
+  };
+  const remote = {
+    updatedAt: '2026-10-02T10:00:00.000Z',
+    metalsHistory: [
+      { date: '2026-08-01', uah: 999, at: '2026-08-01T08:00:00.000Z' },
+      { date: '2026-09-01', uah: 100, at: '2026-09-01T08:00:00.000Z' },
+      { date: '2026-07-01', uah: 777 },   // legacy-точка без мітки at
+    ],
+    cryptoHistory: [{ date: '2026-08-05', usd: 500, at: '2026-08-05T08:00:00.000Z' }],
+    tombstones: { metalsHistory: { '2026-07-01': T }, cryptoHistory: {} },
+  };
+  const m = S.mergeAll([local, remote]);
+  eq('mergeAll: видалена точка металів не повертається', (m.metalsHistory || []).map(p => p.date).join(','), '2026-09-01');
+  eq('mergeAll: надгробок точки зберігається для інших пристроїв', !!(m.tombstones.metalsHistory || {})['2026-08-01'], true);
+  eq('mergeAll: legacy-точку без at теж можна видалити', (m.metalsHistory || []).some(p => p.date === '2026-07-01'), false);
+  eq('mergeAll: видалена точка крипти не повертається', (m.cryptoHistory || []).length, 0);
+  // Новий знімок за ту саму дату (точку записано наново) переважає надгробок
+  const fresh = S.mergeAll([{
+    updatedAt: T, metalsHistory: [{ date: '2026-08-01', uah: 5, at: '2026-10-03T12:00:00.000Z' }],
+    tombstones: { metalsHistory: { '2026-08-01': T } },
+  }]);
+  eq('mergeAll: свіжий знімок переважає надгробок', (fresh.metalsHistory || []).map(p => p.date).join(','), '2026-08-01');
+}
+{
+  const base = { metalsHistory: [], tombstones: {} };
+  const deleted = { metalsHistory: [], tombstones: { metalsHistory: { '2026-08-01': 'x' } } };
+  const snapped = { metalsHistory: [{ date: '2026-08-01', uah: 1 }], tombstones: {} };
+  eq('syncSig: видалення точки історії = локальна зміна', S.syncSig(base) !== S.syncSig(deleted), true);
+  eq('syncSig: щоденний знімок цін не провокує синх', S.syncSig(base) === S.syncSig(snapped), true);
+  const g = { tombstones: { metalsHistory: { old: '2020-01-01T00:00:00.000Z', fresh: new Date().toISOString() } } };
+  S.gcTombstones(g, Date.now());
+  eq('gcTombstones: старий надгробок історії прибрано', Object.keys(g.tombstones.metalsHistory).join(','), 'fresh');
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);

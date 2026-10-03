@@ -405,6 +405,11 @@ const Sync = {
 // Кожен запис має updatedAt; видалення лишає «надгробок» {id: updatedAt}. Злиття бере найновіший
 // запис по кожному id (надгробок виграє, якщо не старіший за live) — комутативно, не залежить від порядку.
 const SYNC_TYPES = ['accounts','categories','transactions','banks','loans','recurring','goals','crypto','metals'];
+// Історія вартості — не записи з id, а точки за датою. Для них теж потрібні надгробки:
+// інакше видалена точка «воскресає» при злитті з копією іншого пристрою.
+const HIST_TYPES = ['cryptoHistory','metalsHistory'];
+function histTombSet(type, date){ if (!state.tombstones) state.tombstones = {}; if (!state.tombstones[type]) state.tombstones[type] = {}; state.tombstones[type][date] = new Date().toISOString(); }
+function histTombClear(type, date){ const tt = state.tombstones && state.tombstones[type]; if (tt && tt[date]) delete tt[date]; }
 function deviceId(){ let d = localStorage.getItem('moneyme.demo.sync.deviceId'); if (!d) { d = 'd' + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); localStorage.setItem('moneyme.demo.sync.deviceId', d); } return d; }
 function deviceFileName(){ return 'moneyme-' + deviceId() + '.json'; }
 const TOMBSTONE_TTL = 90 * 24 * 3600 * 1000;   // надгробки живуть ~90 днів, далі чистяться
@@ -455,6 +460,7 @@ function normalize() {
   if (!Array.isArray(state.metalsHistory)) { state.metalsHistory = []; changed = true; }   // історія цін/вартості металів
   if (!state.tombstones || typeof state.tombstones !== 'object') { state.tombstones = {}; changed = true; }   // надгробки видалень для синху (per-record LWW)
   SYNC_TYPES.forEach(t => { if (!state.tombstones[t]) { state.tombstones[t] = {}; changed = true; } });
+  HIST_TYPES.forEach(t => { if (!state.tombstones[t]) { state.tombstones[t] = {}; changed = true; } });
   // міграція: старим записам без updatedAt даємо мітку всього стану (щоб «новіший пристрій виграє» при злитті)
   { const baseUpd = state.updatedAt || '2020-01-01T00:00:00.000Z'; SYNC_TYPES.forEach(t => (state[t] || []).forEach(r => { if (r && r.id != null && !r.updatedAt) { r.updatedAt = baseUpd; changed = true; } })); }
   if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1, met:1 }; changed = true; }
@@ -941,9 +947,11 @@ function recordCryptoSnapshot(){
   if (!hasCrypto()) return;
   const v = cryptoTotalUsd(); if (!(v > 0)) return;
   if (!Array.isArray(state.cryptoHistory)) state.cryptoHistory = [];
-  const t = todayISO(); const last = state.cryptoHistory[state.cryptoHistory.length - 1];
-  if (last && last.date === t) last.usd = v;
-  else state.cryptoHistory.push({ date: t, usd: v });
+  const t = todayISO(), at = new Date().toISOString();
+  const last = state.cryptoHistory[state.cryptoHistory.length - 1];
+  if (last && last.date === t) { last.usd = v; last.at = at; }
+  else state.cryptoHistory.push({ date: t, usd: v, at });
+  histTombClear('cryptoHistory', t);   // точку за сьогодні записано наново — надгробок більше не діє
   state.cryptoHistory = state.cryptoHistory.slice(-180);   // до ~півроку щоденних точок
   persist();   // без оновлення updatedAt — щоб знімок цін не перезаписував реальні правки при синху
 }
@@ -4776,8 +4784,9 @@ function recordMetalsSnapshot(){
   if (!Array.isArray(state.metalsHistory)) state.metalsHistory = [];
   const v = metalsTotalUAH(), t = todayISO(), usd = metalUsdRate();
   const last = state.metalsHistory[state.metalsHistory.length - 1];
-  const rec = { date: t, uah: (v == null ? 0 : v), px, usd };   // usd — курс на момент знімка, щоб рахувати $-ціни заднім числом
+  const rec = { date: t, uah: (v == null ? 0 : v), px, usd, at: new Date().toISOString() };   // usd — курс на момент знімка, щоб рахувати $-ціни заднім числом
   if (last && last.date === t) Object.assign(last, rec); else state.metalsHistory.push(rec);
+  histTombClear('metalsHistory', t);   // точку за сьогодні записано наново — надгробок більше не діє
   state.metalsHistory = state.metalsHistory.slice(-180);
   persist();   // без оновлення updatedAt — знімок цін не має перебивати реальні правки при синху
 }
@@ -4799,7 +4808,7 @@ function openMetalsHistoryEditor(){
       const row = el(`<div class="row" style="justify-content:space-between;align-items:center;gap:10px;padding:7px 2px;border-bottom:1px solid var(--softline)">
         <span>${fmtDate(p.date)}</span><span class="row" style="gap:8px;align-items:center"><b class="tabnum">${money(round2(p.uah || 0), 'UAH')}</b></span></div>`);
       const del = el(`<button class="btn danger sm" title="Видалити точку">${ic('close')}</button>`);
-      del.onclick = () => { deleteWithUndo(`Точку ${fmtDate(p.date)} видалено`, () => { state.metalsHistory = (state.metalsHistory || []).filter(x => x.date !== p.date); }); draw(); };
+      del.onclick = () => { deleteWithUndo(`Точку ${fmtDate(p.date)} видалено`, () => { histTombSet('metalsHistory', p.date); state.metalsHistory = (state.metalsHistory || []).filter(x => x.date !== p.date); }); draw(); };
       row.lastElementChild.appendChild(del);
       list.appendChild(row);
     });
@@ -4807,7 +4816,7 @@ function openMetalsHistoryEditor(){
   draw();
   const clr = el(`<button class="btn ghost sm" style="color:var(--red)">Очистити всю історію</button>`);
   clr.onclick = () => confirmModal('Очистити історію вартості?', 'Усі збережені знімки буде видалено, графік почне накопичуватись заново. Самі активи не зміняться.', { danger: true, okLabel: 'Очистити' })
-    .then(ok => { if (ok) { deleteWithUndo('Історію вартості очищено', () => { state.metalsHistory = []; }); draw(); } });
+    .then(ok => { if (ok) { deleteWithUndo('Історію вартості очищено', () => { (state.metalsHistory || []).forEach(p => histTombSet('metalsHistory', p.date)); state.metalsHistory = []; }); draw(); } });
   body.lastElementChild.appendChild(clr);
   openModal('Історія вартості', body);
 }
@@ -6183,10 +6192,21 @@ function mergeAll(states){
     for (const id in tomb) { if (!live.has(id)) keptTomb[id] = tomb[id]; }   // надгробки без живого запису теж лишаємо
     out[type] = arr; out.tombstones[type] = keptTomb;
   });
-  const ch = {}; states.forEach(s => (s.cryptoHistory || []).forEach(p => { if (p && p.date) ch[p.date] = p; }));
-  out.cryptoHistory = Object.values(ch).sort((a, b) => a.date < b.date ? -1 : 1).slice(-180);
-  const mh = {}; states.forEach(s => (s.metalsHistory || []).forEach(p => { if (p && p.date) mh[p.date] = p; }));
-  out.metalsHistory = Object.values(mh).sort((a, b) => a.date < b.date ? -1 : 1).slice(-180);
+  // Історія: об'єднання за датою (новіша мітка at виграє) + надгробки, щоб видалена точка не воскресала.
+  HIST_TYPES.forEach(type => {
+    const tomb = {};
+    states.forEach(s => { const tt = (s.tombstones && s.tombstones[type]) || {}; for (const d in tt) { if (!tomb[d] || tt[d] > tomb[d]) tomb[d] = tt[d]; } });
+    const live = {};
+    states.forEach(s => (s[type] || []).forEach(p => { if (!p || !p.date) return;
+      const cur = live[p.date]; if (!cur || (p.at || '') > (cur.at || '')) live[p.date] = p; }));
+    const keptTomb = {}, arr = [];
+    for (const d in live) { const td = tomb[d];
+      if (td && td >= (live[d].at || '')) { keptTomb[d] = td; continue; }   // надгробок не старіший за точку → видалено
+      arr.push(JSON.parse(JSON.stringify(live[d]))); }
+    for (const d in tomb) { if (!live[d]) keptTomb[d] = tomb[d]; }
+    out[type] = arr.sort((a, b) => a.date < b.date ? -1 : 1).slice(-180);
+    out.tombstones[type] = keptTomb;
+  });
   out.seq = out.seq || {};
   ['acc','cat','tx','bank','loan','rec','goal','cry','met'].forEach(k => { let mx = 1; states.forEach(s => { mx = Math.max(mx, (s.seq && s.seq[k]) || 1); }); out.seq[k] = mx; });
   out.version = SCHEMA_VERSION;
@@ -6195,11 +6215,12 @@ function mergeAll(states){
 // Підпис вмісту для синху (живі записи за id + надгробки) — щоб бачити, чи стан реально змінився.
 function syncSig(s){ if (!s) return ''; const parts = [];
   SYNC_TYPES.forEach(type => { const items = (s[type] || []).slice().sort((a, b) => (a.id < b.id ? -1 : 1)).map(_recSig); parts.push(type + ':' + items.join('|')); parts.push('T' + type + ':' + JSON.stringify((s.tombstones && s.tombstones[type]) || {})); });
+  HIST_TYPES.forEach(type => parts.push('T' + type + ':' + JSON.stringify((s.tombstones && s.tombstones[type]) || {})));
   return parts.join('||');
 }
 // Чистка надгробків, старших за TTL (щоб не накопичувались роками).
 function gcTombstones(s, nowMs){ const cutoff = new Date(nowMs - TOMBSTONE_TTL).toISOString();
-  SYNC_TYPES.forEach(type => { const tt = (s.tombstones && s.tombstones[type]) || {}; for (const id in tt) { if (tt[id] < cutoff) delete tt[id]; } }); }
+  SYNC_TYPES.concat(HIST_TYPES).forEach(type => { const tt = (s.tombstones && s.tombstones[type]) || {}; for (const id in tt) { if (tt[id] < cutoff) delete tt[id]; } }); }
 // Зберегти знімок поточного стану в точки відновлення (страховка — нічого не втрачаємо).
 function cloudBackupSnapshot(label, data){ try { const h = restorePoints(); h.push({ date: todayISO(), at: new Date().toISOString(), label: label || '', data: JSON.parse(JSON.stringify(data || state)) }); localStorage.setItem('moneyme.demo.history', JSON.stringify(h.slice(-7))); } catch (e) {} }
 function fmtSyncTime(iso){ try { return new Date(iso).toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' }); } catch (e) { return iso || '—'; } }
