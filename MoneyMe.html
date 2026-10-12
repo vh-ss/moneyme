@@ -236,6 +236,12 @@
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
   .swatch { width: 28px; height: 28px; border-radius: 999px; border: 0; }
   .swatch.sel { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
+  /* «Свій колір» — це сам input[type=color], стилізований під плашку (клік відкриває нативну палітру) */
+  .swatch.cust { padding: 0; cursor: pointer; background: none; -webkit-appearance: none; appearance: none; }
+  .swatch.cust::-webkit-color-swatch-wrapper { padding: 0; }
+  .swatch.cust::-webkit-color-swatch { border: 1px solid var(--line); border-radius: 999px; }
+  .swatch.cust::-moz-color-swatch { border: 1px solid var(--line); border-radius: 999px; }
+  .hexin { width: 94px; padding: 5px 7px; font-size: 12px; text-transform: lowercase; }
 
   /* modal */
   .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: grid; place-items: center; padding: 16px; z-index: 50; }
@@ -1872,13 +1878,44 @@ function enableCardDrag(node, a){
   }
 }
 
+// Вибір кольору: 10 плашок палітри + ВЛАСНИЙ колір (нативна палітра ОС або hex вручну).
+// Власний колір потрібен, щоб статті можна було розвести під себе — кольори тягнуться далі в donut,
+// у стовпчики денного звіту та в іконки, тож палітри з 10 кольорів на великий список статей не вистачає.
+const HEX_RE = /^#[0-9a-f]{6}$/;
+function normHex(c){ let v = String(c || '').trim().toLowerCase().replace(/^#/, '');   // решітка не обовʼязкова
+  if (/^[0-9a-f]{3}$/.test(v)) v = v[0] + v[0] + v[1] + v[1] + v[2] + v[2];   // abc → aabbcc
+  v = '#' + v;
+  return HEX_RE.test(v) ? v : null; }
 function swatchPicker(selected, onPick) {
-  const wrap = el(`<div class="swatches"></div>`);
+  const wrap = el(`<div class="swatches" style="align-items:center"></div>`);
+  const start = normHex(selected) || PALETTE[0];
+  const isPal = (c) => PALETTE.some(p => p.toLowerCase() === c);
+  const btns = [];
   PALETTE.forEach(c => {
-    const b = el(`<button class="swatch ${c===selected?'sel':''}" style="background:${c}"></button>`);
-    b.onclick = () => { wrap.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel')); b.classList.add('sel'); onPick(c); };
-    wrap.appendChild(b);
+    const b = el(`<button type="button" class="swatch" style="background:${c}" title="${c}"></button>`);
+    b.dataset.c = c.toLowerCase();
+    b.onclick = () => pick(c, b);
+    btns.push(b); wrap.appendChild(b);
   });
+  const box = el(`<div class="row" style="align-items:center;gap:6px;margin-left:2px" title="Власний колір"></div>`);   // не <label>: клік по hex не має відкривати палітру ОС
+  const cust = el(`<input type="color" class="swatch cust" value="${start}">`);
+  const hex = el(`<input class="hexin" maxlength="7" placeholder="#rrggbb" value="${start}" spellcheck="false">`);
+  box.appendChild(el(`<span class="muted small" style="white-space:nowrap">свій:</span>`));
+  box.appendChild(cust); box.appendChild(hex); wrap.appendChild(box);
+  // Єдина точка застосування: підсвічує джерело вибору, синхронізує обидва поля й віддає колір наверх.
+  function pick(c, btn){
+    const v = normHex(c); if (!v) return;
+    wrap.querySelectorAll('.swatch').forEach(x => x.classList.remove('sel'));
+    (btn || (isPal(v) ? btns.find(b => b.dataset.c === v) : null) || cust).classList.add('sel');
+    if (cust.value !== v) cust.value = v;
+    if (hex.value.toLowerCase() !== v) hex.value = v;
+    onPick(v);
+  }
+  cust.addEventListener('input', () => pick(cust.value, cust));
+  // hex вручну: застосовуємо лише валідний — поки людина друкує, нічого не смикаємо
+  hex.addEventListener('input', () => { const v = normHex(hex.value); if (v) { cust.value = v; pick(v, isPal(v) ? null : cust); } });
+  hex.addEventListener('blur', () => { const v = normHex(hex.value); hex.value = v || cust.value; });
+  pick(start);
   return wrap;
 }
 
