@@ -3369,7 +3369,13 @@ const FC_MONTHS = 3;     // скільки повних місяців усер�
 let anDayCat = '';        // фільтр звіту «По днях»: '' = усі статті, інакше id категорії-витрати
 // Приховані ОПЕРАЦІЇ звіту «По днях» (нетипова витрата / велика покупка) — виключаються з графіка й статистики.
 // Локальне налаштування перегляду (не синхронізується): множина id операцій.
-let anDayStack = (() => { try { return localStorage.getItem('moneyme.demo.dayStack') !== '0'; } catch (e) { return true; } })();   // кольори за статтями у денному графіку
+// Розбиття стовпчика денного графіка кольорами: 'none' | 'cat' (за статтями) | 'acc' (за рахунками).
+// «За рахунками» найцінніше разом із фільтром по одній статті: видно, з яких карток ішли ці витрати.
+let anDaySplit = (() => { try {
+  const v = localStorage.getItem('moneyme.demo.daySplit');
+  if (v === 'none' || v === 'cat' || v === 'acc') return v;
+  return localStorage.getItem('moneyme.demo.dayStack') === '0' ? 'none' : 'cat';   // міграція зі старого прапорця
+} catch (e) { return 'cat'; } })();
 let dayTxHidden = (() => { try { return new Set(JSON.parse(localStorage.getItem('moneyme.demo.dayTxHidden') || '[]')); } catch (e) { return new Set(); } })();
 function saveDayTxHidden(){ try { localStorage.setItem('moneyme.demo.dayTxHidden', JSON.stringify([...dayTxHidden])); } catch (e) {} }
 function toggleDayTxHidden(id){ if (dayTxHidden.has(id)) dayTxHidden.delete(id); else dayTxHidden.add(id); saveDayTxHidden(); render(); }
@@ -3509,13 +3515,16 @@ function renderDayReport(app, inR){
   const fwrap = el(`<div class="card" style="padding:12px 14px;margin-top:14px">
     <label class="lab">Стаття витрат</label>
     <select id="an-day-cat"><option value="">Усі статті витрат</option>${exCats.map(c=>`<option value="${c.id}">${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</select>
-    <label class="row" style="align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:8px"><input type="checkbox" id="an-day-stack" style="width:auto" ${anDayStack ? 'checked' : ''}> 🎨 Кольори за статтями <span class="muted small">(стовпчик розбито на частини)</span></label>
+    <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <span class="muted small" style="white-space:nowrap">🎨 Кольори стовпчика:</span>
+      <div class="pill" id="an-day-split" style="flex-wrap:wrap"><button data-s="none">Без розбиття</button><button data-s="cat">За статтями</button><button data-s="acc">За рахунками</button></div>
+    </div>
   </div>`);
   app.appendChild(fwrap);
   const sel = $('#an-day-cat', fwrap); sel.value = anDayCat;
   sel.addEventListener('change', () => { anDayCat = sel.value; render(); });
-  const stackBox = $('#an-day-stack', fwrap);
-  stackBox.addEventListener('change', () => { anDayStack = stackBox.checked; try { localStorage.setItem('moneyme.demo.dayStack', anDayStack ? '1' : '0'); } catch (e) {} render(); });
+  fwrap.querySelectorAll('#an-day-split button').forEach(b => { b.classList.toggle('on', b.dataset.s === anDaySplit);
+    b.onclick = () => { anDaySplit = b.dataset.s; try { localStorage.setItem('moneyme.demo.daySplit', anDaySplit); } catch (e) {} render(); }; });
 
   // витрати по днях у грн-екв; повернення (відʼємний EXPENSE) нетиться автоматично, як у categorySpent.
   // Приховані ОПЕРАЦІЇ (dayTxHidden) пропускаємо — не входять у суми, графік і статистику.
@@ -3523,32 +3532,45 @@ function renderDayReport(app, inR){
   state.transactions.forEach(t => { if (t.kind !== 'EXPENSE' || !inR(t) || dayTxHidden.has(t.id)) return;
     const amt = anDayCat ? partUAH(t, txCatAmount(t, Number(anDayCat))) : txUAH(t);
     if (!amt) return; const d = t.date.slice(0, 10); dayMap[d] = (dayMap[d] || 0) + amt; });
-  // Розбиття кожного дня по статтях — для кольорових сегментів стовпчика. Кольори беремо ті самі,
-  // що й у donut «Витрати за статтями» (distinctSliceColors розводить однакові), щоб легенди збігались.
-  const catTot = {}, dayCat = {};
-  if (anDayStack) state.transactions.forEach(t => { if (t.kind !== 'EXPENSE' || !inR(t) || dayTxHidden.has(t.id)) return;
+  // Розбиття кожного дня на частини — за СТАТТЯМИ або за РАХУНКАМИ (з яких платили). Кольори беремо
+  // власні кольори статей/рахунків (distinctSliceColors розводить однакові), щоб збігалось із donut.
+  // Рахунок частини: у split-рядка може бути свій — він завжди тієї ж валюти, що й основний
+  // (splitAccOpts це гарантує), тому partUAH коректний і тут.
+  const byAccMode = anDaySplit === 'acc';
+  const segTot = {}, daySeg = {};
+  if (anDaySplit !== 'none') state.transactions.forEach(t => { if (t.kind !== 'EXPENSE' || !inR(t) || dayTxHidden.has(t.id)) return;
     const d = t.date.slice(0, 10);
     txParts(t).forEach(p => {
       const cid = p.category_id ?? null;
       if (anDayCat && cid !== Number(anDayCat)) return;
       const v = partUAH(t, p.amount); if (!v) return;
-      const c = cid ? categoryById(cid) : null, key = String(c ? c.id : 0);
-      if (!catTot[key]) catTot[key] = { key, name: c ? c.name : 'Без статті', color: c ? c.color : '#94a3b8', icon: c ? c.icon : '', total: 0 };
-      catTot[key].total += v;
-      (dayCat[d] || (dayCat[d] = {}))[key] = (dayCat[d][key] || 0) + v;
+      let key, meta;
+      if (byAccMode) {
+        const aid = (p.account_id != null ? p.account_id : t.account_id);
+        const a = state.accounts.find(x => x.id === aid);
+        key = String(aid == null ? 0 : aid);
+        meta = { name: a ? a.name : 'Без рахунку', color: a ? a.color : '#94a3b8', icon: a ? (a.icon || '') : '' };
+      } else {
+        const c = cid ? categoryById(cid) : null;
+        key = String(c ? c.id : 0);
+        meta = { name: c ? c.name : 'Без статті', color: c ? c.color : '#94a3b8', icon: c ? (c.icon || '') : '' };
+      }
+      if (!segTot[key]) segTot[key] = { key, ...meta, total: 0 };
+      segTot[key].total += v;
+      (daySeg[d] || (daySeg[d] = {}))[key] = (daySeg[d][key] || 0) + v;
     }); });
-  // Топ-8 статей своїми кольорами, решта — одним сірим «Інші»: більше кольорів стовпчик не читає.
-  const catsAll = distinctSliceColors(Object.values(catTot).filter(c => c.total > 0).sort((a, b) => b.total - a.total));
-  const catsTop = catsAll.slice(0, 8), catsRest = catsAll.slice(8);
-  const restKeys = new Set(catsRest.map(c => c.key));
+  // Топ-8 своїми кольорами, решта — одним сірим «Інші»: більше кольорів стовпчик не читає.
+  const segsAll = distinctSliceColors(Object.values(segTot).filter(c => c.total > 0).sort((a, b) => b.total - a.total));
+  const segsTop = segsAll.slice(0, 8), segsRest = segsAll.slice(8);
+  const restKeys = new Set(segsRest.map(c => c.key));
   const OTHER_KEY = '__other';
-  const catsShown = catsRest.length
-    ? catsTop.concat([{ key: OTHER_KEY, name: 'Інші статті', color: '#94a3b8', icon: '', total: catsRest.reduce((a, c) => a + c.total, 0) }])
-    : catsTop;
+  const segsShown = segsRest.length
+    ? segsTop.concat([{ key: OTHER_KEY, name: byAccMode ? 'Інші рахунки' : 'Інші статті', color: '#94a3b8', icon: '', total: segsRest.reduce((a, c) => a + c.total, 0) }])
+    : segsTop;
   const dayParts = (d) => {
-    const m = dayCat[d]; if (!m) return [];
+    const m = daySeg[d]; if (!m) return [];
     const agg = {}; for (const k in m) { const kk = restKeys.has(k) ? OTHER_KEY : k; agg[kk] = (agg[kk] || 0) + m[k]; }
-    return catsShown.map(c => ({ name: c.name, color: c.color, v: agg[c.key] || 0 })).filter(p => p.v > 0);   // порядок сегментів однаковий у всі дні
+    return segsShown.map(c => ({ name: c.name, color: c.color, v: agg[c.key] || 0 })).filter(p => p.v > 0);   // порядок сегментів однаковий у всі дні
   };
   const days = Object.keys(dayMap).filter(d => Math.abs(dayMap[d]) > 0.005).sort();   // дні з видимими витратами
   const total = days.reduce((s, d) => s + dayMap[d], 0);
@@ -3579,7 +3601,7 @@ function renderDayReport(app, inR){
   const chart = el(`<section class="card" style="padding:14px 16px;margin-top:14px"></section>`);
   chart.appendChild(dayChart(chartDays.map(d => ({ date: d, total: dayMap[d] || 0, parts: dayParts(d) }))));
   chart.appendChild(dayAxisLabels(chartDays));
-  if (anDayStack && catsShown.length > 1) chart.appendChild(dayCatLegend(catsShown));   // при одній статті легенда зайва
+  if (anDaySplit !== 'none' && segsShown.length > 1) chart.appendChild(dayCatLegend(segsShown));   // при одному сегменті легенда зайва
   app.appendChild(chart);
 
   // Рядок операції з кнопкою сховати/показати (🙈/👁), як обгортка над стандартним txRow.
