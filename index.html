@@ -352,6 +352,7 @@
     <a data-view="analytics"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h16"/><path d="M7 21V12M12 21V5M17 21V15"/></svg></span><span class="nt">Аналітика</span></a>
     <a data-view="accounts"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18" stroke-width="2.2"/><path d="M6.5 14.5h4"/></svg></span><span class="nt">Рахунки</span></a>
     <a data-view="credits"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9.5 12 4l8.5 5.5"/><path d="M5 9.5V20M19 9.5V20M3.5 20h17M9.5 20v-6.5M14.5 20v-6.5"/></svg></span><span class="nt">Кредити</span></a>
+    <a data-view="debts"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="7.5" r="3.2"/><path d="M2.8 19.5c0-3.1 2.6-5.3 5.7-5.3 1 0 2 .23 2.8.65"/><circle cx="17" cy="16" r="4.2"/><path d="M17 13.9v4.2M15.4 16h3.2" stroke-width="1.6"/></svg></span><span class="nt">Борги</span></a>
     <a data-view="crypto"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7 13.18 10.38 16.76 10.46 13.9 12.62 14.94 16.05 12 14 9.06 16.05 10.1 12.62 7.24 10.46 10.82 10.38Z" fill="currentColor" stroke="none"/></svg></span><span class="nt">Крипто</span></a>
     <a data-view="metals"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 13.8h11.6l1.7 4.9H4.5z"/><path d="M9.1 7.6h5.8l1.3 4.1H7.8z"/></svg></span><span class="nt">Метали</span></a>
     <a data-view="goals"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5"/></svg></span><span class="nt">Цілі</span></a>
@@ -369,7 +370,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '8f503aaca4';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '619cc16e91';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -389,7 +390,7 @@ const Sync = {
 // ——— Синхронізація: per-record LWW (Last-Write-Wins) + надгробки видалень ———
 // Кожен запис має updatedAt; видалення лишає «надгробок» {id: updatedAt}. Злиття бере найновіший
 // запис по кожному id (надгробок виграє, якщо не старіший за live) — комутативно, не залежить від порядку.
-const SYNC_TYPES = ['accounts','categories','transactions','banks','loans','recurring','goals','crypto','metals'];
+const SYNC_TYPES = ['accounts','categories','transactions','banks','loans','recurring','goals','crypto','metals','debts'];
 // Історія вартості — не записи з id, а точки за датою. Для них теж потрібні надгробки:
 // інакше видалена точка «воскресає» при злитті з копією іншого пристрою.
 const HIST_TYPES = ['cryptoHistory','metalsHistory'];
@@ -437,6 +438,7 @@ function normalize() {
   (state.transactions || []).forEach(t => { if (typeof t.ord !== 'number') { t.ord = t.id; changed = true; } });
   if (!state.banks) { state.banks = []; changed = true; }
   if (!state.loans) { state.loans = []; changed = true; }
+  if (!state.debts) { state.debts = []; changed = true; }   // борги людям / від людей
   if (!state.recurring) { state.recurring = []; changed = true; }   // регулярні платежі
   if (!state.goals) { state.goals = []; changed = true; }           // цілі накопичення
   if (state.crypto === undefined) { state.crypto = []; changed = true; }   // крипто-портфель (порожній за замовчуванням)
@@ -448,8 +450,8 @@ function normalize() {
   HIST_TYPES.forEach(t => { if (!state.tombstones[t]) { state.tombstones[t] = {}; changed = true; } });
   // міграція: старим записам без updatedAt даємо мітку всього стану (щоб «новіший пристрій виграє» при злитті)
   { const baseUpd = state.updatedAt || '2020-01-01T00:00:00.000Z'; SYNC_TYPES.forEach(t => (state[t] || []).forEach(r => { if (r && r.id != null && !r.updatedAt) { r.updatedAt = baseUpd; changed = true; } })); }
-  if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1, met:1 }; changed = true; }
-  ['acc','cat','tx','bank','loan','rec','goal','cry','met'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = (k==='cry') ? ((state.crypto||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : (k==='met') ? ((state.metals||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : 1; changed = true; } });
+  if (!state.seq) { state.seq = { acc:1, cat:1, tx:1, bank:1, loan:1, rec:1, goal:1, cry:1, met:1, debt:1 }; changed = true; }
+  ['acc','cat','tx','bank','loan','rec','goal','cry','met','debt'].forEach(k => { if (state.seq[k] == null) { state.seq[k] = (k==='cry') ? ((state.crypto||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : (k==='met') ? ((state.metals||[]).reduce((m,h)=>Math.max(m,h.id||0),0)+1) : 1; changed = true; } });
   (state.categories || []).forEach(c => {
     if (c.budget === undefined && c.kind === 'EXPENSE') { c.budget = 0; changed = true; }
     if (c.kind === 'EXPENSE' && !c.budget_period) { c.budget_period = 'monthly'; changed = true; }
@@ -682,7 +684,7 @@ function translateTree(root){
   root.querySelectorAll('[title]').forEach(e => { const r = tStr(e.getAttribute('title')); if (r !== e.getAttribute('title')) e.setAttribute('title', r); });
   root.querySelectorAll('option').forEach(o => { const r = tStr(o.textContent); if (r !== o.textContent) o.textContent = r; });
 }
-const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], crypto:['Крипто','Crypto'], metals:['Метали','Metals'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
+const NAV_LABELS = { dashboard:['Огляд','Overview'], transactions:['Операції','Transactions'], analytics:['Аналітика','Analytics'], accounts:['Рахунки','Accounts'], credits:['Кредити','Credits'], debts:['Борги','Debts'], crypto:['Крипто','Crypto'], metals:['Метали','Metals'], goals:['Цілі','Goals'], recurring:['Регулярні','Recurring'], categories:['Категорії','Categories'], settings:['Налаштування','Settings'] };
 function setNavLabels(){ document.querySelectorAll('.nav a').forEach(a => { const m = NAV_LABELS[a.dataset.view]; const nt = a.querySelector('.nt'); if (m) { const lbl = (lang === 'en') ? m[1] : m[0]; if (nt) nt.textContent = lbl; a.setAttribute('aria-label', lbl); } }); }
 // #app перебудовується щоразу з українського джерела, тож переклад у EN ставимо поверх; назад у UK — просто не перекладаємо.
 function applyLang(){ setNavLabels(); if (lang === 'en') translateTree(document.getElementById('app')); }
@@ -764,7 +766,7 @@ async function downloadBackupEncrypted(){
 // Експорт операцій у CSV (роздільник «;» — зручно для Excel UA).
 function exportCSV(){
   const q = s => `"${String(s ?? '').replace(/"/g,'""')}"`;
-  const KL = { EXPENSE:'Витрата', INCOME:'Надходження', TRANSFER:'Переказ' };
+  const KL = { EXPENSE:'Витрата', INCOME:'Надходження', TRANSFER:'Переказ', DEBT:'Борг' };
   const head = ['Дата','Тип','Сума','Валюта','Рахунок','На рахунок','Категорія','Курс','Сума зарах.','Комісія','Нотатка','Теги'];
   const rows = [...state.transactions].sort((a,b)=> a.date<b.date?-1 : a.date>b.date?1 : a.id-b.id).map(t => {
     const isCr = t.kind==='CRYPTO';
@@ -1123,13 +1125,17 @@ function reorderBank(srcId, dstId) {
 // Деталі операції у вигляді блоку (тип + сума + поля) — спільне для перегляду й підтвердження видалення.
 function txInfoNode(tx){
   const isT = tx.kind === 'TRANSFER', isReimb = !!tx.reimbursement, isInc = tx.kind === 'INCOME', isCrypto = tx.kind === 'CRYPTO';
+  const isDebt = tx.kind === 'DEBT', debtRec = isDebt ? debtById(tx.debt_id) : null, debtIn = isDebt && debtTxSign(tx.debt_move) > 0;
   const cur = accountCur(tx.account_id);
   const cat = tx.category_id ? categoryById(tx.category_id) : null;
-  const typeLabel = isCrypto ? (tx.side === 'REWARD' ? 'Стейкінг (нагорода)' : tx.side === 'SELL' ? 'Продаж крипти' : 'Купівля крипти') : isT ? 'Переказ' : isReimb ? 'Повернення' : isInc ? 'Надходження' : 'Витрата';
-  const typeColor = isCrypto ? (tx.side === 'SELL' ? 'var(--red)' : 'var(--green)') : isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : 'var(--red)';
-  const amtStr = isCrypto ? (tx.side === 'SELL' ? '−' : '+') + `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}` : isT ? money(tx.amount, cur) : isReimb ? '+' + money(Math.abs(tx.amount), cur) : (isInc ? '+' : '−') + money(tx.amount, cur);
+  const typeLabel = isDebt ? (DEBT_MOVE_LABEL[tx.debt_move] || 'Борг') : isCrypto ? (tx.side === 'REWARD' ? 'Стейкінг (нагорода)' : tx.side === 'SELL' ? 'Продаж крипти' : 'Купівля крипти') : isT ? 'Переказ' : isReimb ? 'Повернення' : isInc ? 'Надходження' : 'Витрата';
+  const typeColor = isDebt ? (debtIn ? 'var(--green)' : 'var(--red)') : isCrypto ? (tx.side === 'SELL' ? 'var(--red)' : 'var(--green)') : isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : 'var(--red)';
+  const amtStr = isDebt ? (debtIn ? '+' : '−') + money(tx.amount, cur) : isCrypto ? (tx.side === 'SELL' ? '−' : '+') + `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}` : isT ? money(tx.amount, cur) : isReimb ? '+' + money(Math.abs(tx.amount), cur) : (isInc ? '+' : '−') + money(tx.amount, cur);
   const rows = [];
-  if (isCrypto) {
+  if (isDebt) {
+    rows.push(['Людина', debtRec ? debtRec.person : '—']);
+    rows.push(['Рахунок', accountName(tx.account_id)]);
+  } else if (isCrypto) {
     if (tx.side === 'REWARD') {
       rows.push(['Нараховано', `${fmtAmt(tx.base_qty || 0)} ${tx.base_sym || ''}`]);
       rows.push(['Оплата', 'без оплати (стейкінг)']);
@@ -1285,6 +1291,7 @@ function accountBalance(id) {
       if (t.account_id === id) bal -= (t.amount + (t.fee_amount||0));
       if (t.to_account_id === id) bal += (t.to_amount||0);
     }
+    else if (t.kind === 'DEBT') { if (t.account_id === id) bal += debtTxSign(t.debt_move) * (t.amount || 0); }   // позика/повернення — рух грошей, не витрата
   }
   return round2(bal);
 }
@@ -1530,7 +1537,7 @@ document.querySelectorAll('.nav a').forEach(a => {
 { const more = document.getElementById('navmore'); if (more) more.addEventListener('click', e => { e.preventDefault(); openNavMore(); }); }
 
 // Свайпи вліво/вправо — перехід між вкладками (тач).
-const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','crypto','metals','goals','recurring','categories','settings'];
+const VIEW_ORDER = ['dashboard','transactions','analytics','accounts','credits','debts','crypto','metals','goals','recurring','categories','settings'];
 applyNavMenu();   // застосувати збережені налаштування меню (приховані розділи → під «…»)
 // Порядок свайпу = видимі розділи меню (приховані під «…» пропускаємо). Поточний
 // розділ лишаємо в послідовності, навіть якщо він прихований — щоб можна було «вийти» з нього свайпом.
@@ -2764,14 +2771,16 @@ function openTransferEdit(tx) {
 //==================== Рядок операції ====================
 function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
   const isT = t.kind === 'TRANSFER', isReimb = !!t.reimbursement, isInc = t.kind === 'INCOME', isCrypto = t.kind === 'CRYPTO';
+  const isDebt = t.kind === 'DEBT', debtRec = isDebt ? debtById(t.debt_id) : null, debtIn = isDebt && debtTxSign(t.debt_move) > 0;
   const isSplit = isSplitTx(t);
   const cat = (!isT && !isCrypto && !isSplit && t.category_id) ? categoryById(t.category_id) : null;
-  const icon = isCrypto ? ic('coin') : isT ? ic('transfer') : isReimb ? ic('plus') : isSplit ? ic('split') : (cat?.icon || (isInc ? ic('plus') : ic('minus')));   // значок категорії (емодзі) або наш SVG
-  const color = isCrypto ? '#f59e0b' : isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : isSplit ? '#8b5cf6' : (cat?.color || 'var(--red)');
+  const icon = isDebt ? ic('swap') : isCrypto ? ic('coin') : isT ? ic('transfer') : isReimb ? ic('plus') : isSplit ? ic('split') : (cat?.icon || (isInc ? ic('plus') : ic('minus')));   // значок категорії (емодзі) або наш SVG
+  const color = isDebt ? '#6366f1' : isCrypto ? '#f59e0b' : isT ? '#0ea5e9' : (isInc || isReimb) ? 'var(--green)' : isSplit ? '#8b5cf6' : (cat?.color || 'var(--red)');
   const cur = accountCur(t.account_id);
-  const title = isCrypto ? `${t.side === 'REWARD' ? 'Стейкінг' : t.side === 'SELL' ? 'Продаж' : 'Купівля'} ${esc(t.base_sym || 'крипто')}` : isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isReimb ? `↩ Повернення${cat ? ' · ' + cat.name : ''}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
+  const title = isDebt ? `${DEBT_MOVE_LABEL[t.debt_move] || 'Борг'} · ${debtRec ? debtRec.person : '—'}` : isCrypto ? `${t.side === 'REWARD' ? 'Стейкінг' : t.side === 'SELL' ? 'Продаж' : 'Купівля'} ${esc(t.base_sym || 'крипто')}` : isT ? `${accountName(t.account_id)} → ${accountName(t.to_account_id)}` : isReimb ? `↩ Повернення${cat ? ' · ' + cat.name : ''}` : isSplit ? 'Кілька статей' : (cat?.name || 'Без категорії');
   let sub;
-  if (isCrypto) {
+  if (isDebt) { sub = accountName(t.account_id); }
+  else if (isCrypto) {
     sub = t.side === 'REWARD'
       ? `нагорода за стейкінг${t.exchange ? ' · ' + esc(t.exchange) : ''}${t.usd ? ' · ≈ ' + money(t.usd, 'USD') : ''}`
       : `${t.side === 'SELL' ? 'отримано' : 'сплачено'} ${fmtAmt(t.quote_qty || 0)} ${esc(t.quote_sym || '')}${t.exchange ? ' · ' + esc(t.exchange) : ''}${t.usd ? ' · ' + money(t.usd, 'USD') : ''}`;
@@ -2795,7 +2804,9 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
   } else {
     sub = accountName(t.account_id);
   }
-  const amtHtml = isCrypto
+  const amtHtml = isDebt
+    ? `<span class="txamt tabnum" style="color:${debtIn ? 'var(--green)' : 'var(--red)'}">${debtIn ? '+' : '−'}${money(t.amount, cur)}</span>`
+    : isCrypto
     ? `<span class="txamt tabnum" style="color:${t.side==='SELL'?'var(--red)':'var(--green)'}">${t.side==='SELL'?'−':'+'}${fmtAmt(t.base_qty||0)} ${esc(t.base_sym||'')}</span>`
     : isT
     ? `<span class="txamt muted">${money(t.amount,cur)}</span>`
@@ -2820,8 +2831,8 @@ function txRow(t, { onEdit, onDelete, onDup, onView } = {}) {
       const r = b.getBoundingClientRect();
       const items = [];
       if (onView) items.push({ label: 'Переглянути', icon: ic('eye'), color: '#64748b', onClick: () => onView(t) });
-      if (onEdit && !isReimb && !isCrypto) items.push({ label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => onEdit(t) });
-      if (onDup && !isReimb && !isCrypto) items.push({ label: 'Дублювати', icon: ic('dup'), color: '#8b5cf6', onClick: () => onDup(t) });
+      if (onEdit && !isReimb && !isCrypto && !isDebt) items.push({ label: 'Редагувати', icon: ic('edit'), color: '#0ea5e9', onClick: () => onEdit(t) });
+      if (onDup && !isReimb && !isCrypto && !isDebt) items.push({ label: 'Дублювати', icon: ic('dup'), color: '#8b5cf6', onClick: () => onDup(t) });
       if (onDelete) items.push({ sep: true }, { label: 'Видалити', icon: ic('close'), color: 'var(--red)', onClick: () => onDelete(t) });
       openContextMenu(r.right, r.bottom + 4, items);
     };
@@ -2892,6 +2903,253 @@ function barsSVG(months) {
   });
   return el(`<svg width="100%" height="${H}" viewBox="0 0 100 ${H}" preserveAspectRatio="none" style="overflow:visible;display:block">${bars}</svg>`);
 }
+
+//==================== Борги (позики людям і від людей) ====================
+// Позика — НЕ витрата, а повернення — НЕ дохід: гроші просто переходять між рахунком і активом
+// «мені винні» (або зобовʼязанням «я винен»). Тому це окремий вид операції — kind:'DEBT'.
+// Усі наявні зведення рахують лише EXPENSE/INCOME/TRANSFER, тож борг автоматично не псує
+// аналітику й бюджети, але баланс рахунку змінює (явні гілки в accountBalance і netWorthAt).
+// Залишок боргу НЕ зберігається полем, а рахується з операцій — тому видалення операції
+// одразу й правильно змінює борг, без окремого відкоту.
+const DEBT_MOVES = {
+  OUT: { principal: 'LEND',   back: 'REPAY'  },   // я позичив комусь → мені винні
+  IN:  { principal: 'BORROW', back: 'SETTLE' },   // я позичив у когось → я винен
+};
+const DEBT_MOVE_LABEL = { LEND: 'Позика', REPAY: 'Повернення боргу', BORROW: 'Узяв у борг', SETTLE: 'Віддав борг' };
+function debtMoves(d){ return DEBT_MOVES[d && d.dir === 'IN' ? 'IN' : 'OUT']; }
+// Рух грошей по рахунку: LEND/SETTLE — з рахунку, REPAY/BORROW — на рахунок.
+function debtTxSign(move){ return (move === 'LEND' || move === 'SETTLE') ? -1 : 1; }
+function debtById(id){ return (state.debts || []).find(d => d.id === id); }
+function debtTxs(debtId){ return state.transactions.filter(t => t.kind === 'DEBT' && t.debt_id === debtId); }
+function debtSum(d, move, uptoISO){
+  return round2(debtTxs(d.id).reduce((s, t) => s + ((t.debt_move === move && (!uptoISO || t.date <= uptoISO)) ? (t.amount || 0) : 0), 0));
+}
+function debtGiven(d, upto){ return debtSum(d, debtMoves(d).principal, upto); }
+function debtBack(d, upto){ return debtSum(d, debtMoves(d).back, upto); }
+function debtOutstanding(d, upto){ return round2(debtGiven(d, upto) - debtBack(d, upto)); }
+function debtActive(d){ return debtOutstanding(d) > 0.005; }
+function hasDebts(){ return (state.debts || []).some(debtActive); }
+// Нагадування: борг активний і термін уже близько (3 дні) або минув — як для кредитів.
+function debtPending(d){ return debtActive(d) && !!d.due_date && d.due_date <= addDaysISO(todayISO(), 3); }
+// Непогашені борги у гривні: «мені винні» +, «я винен» −. Валюту без курсу пропускаємо, як решта зведень.
+function debtsTotalUAH(uptoISO){
+  let s = 0;
+  (state.debts || []).forEach(d => {
+    const o = debtOutstanding(d, uptoISO); if (o <= 0.005) return;
+    const u = toUAH(o, d.currency || 'UAH'); if (u == null) return;
+    s += (d.dir === 'IN' ? -u : u);
+  });
+  return round2(s);
+}
+function debtsByCur(dir){
+  const m = {};
+  (state.debts || []).forEach(d => { if ((d.dir || 'OUT') !== dir) return; const o = debtOutstanding(d); if (o > 0.005) m[d.currency || 'UAH'] = round2((m[d.currency || 'UAH'] || 0) + o); });
+  return m;
+}
+function debtCurStr(m){ return Object.entries(m).map(([c, v]) => money(v, c)).join(' + '); }
+function addDebtTx(d, move, amount, accId, date, note){
+  state.transactions.push({ id: nextId('tx'), ord: nextOrd(), kind: 'DEBT', date: date || todayISO(),
+    account_id: accId, amount: round2(amount), debt_id: d.id, debt_move: move, note: note || null });
+}
+
+// ——— Форма боргу: напрям + людина + перша сума (нові); людина/термін/нотатка (редагування) ———
+// Суму й рахунок після створення не правимо тут — для цього є рухи («Позичити ще» / «Повернули»),
+// інакше запис і операції розʼїхались би.
+function openDebtForm(existing, presetDir){
+  const accs = state.accounts.filter(a => !a.archived);
+  if (!existing && !accs.length) { alertModal('Спершу додайте хоча б один рахунок.'); navigate('accounts'); return; }
+  const isNew = !existing;
+  const e = existing || {};
+  let dir = e.dir || presetDir || 'OUT';
+  const body = el(`<div>
+    ${isNew ? `<div class="pill" id="d-dir" style="margin-bottom:10px"><button type="button" data-d="OUT">Позичив комусь</button><button type="button" data-d="IN">Позичив у когось</button></div>` : ''}
+    <div><label class="lab">Людина</label><input id="d-person" value="${esc(e.person || '')}" placeholder="Імʼя"></div>
+    ${isNew ? `<div class="row">
+      <div style="flex:1"><label class="lab">Сума</label><input id="d-amt" inputmode="decimal" placeholder="0.00" style="font-size:20px;font-weight:700"></div>
+      <div style="flex:1 1 150px"><label class="lab" id="d-acclab">Рахунок</label><select id="d-acc">${accs.map(a => `<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select></div>
+    </div>
+    <div><label class="lab">Дата</label><input type="date" id="d-date" value="${todayISO()}"></div>` : ''}
+    <div><label class="lab">Обіцяв повернути до <span class="muted small">(не обовʼязково — буде нагадування)</span></label><input type="date" id="d-due" value="${e.due_date || ''}"></div>
+    <div><label class="lab">Примітка</label><input id="d-note" value="${esc(e.note || '')}" placeholder="за що / на що"></div>
+    <div class="err hidden" id="d-err"></div></div>`);
+  const syncDir = () => {
+    const lab = $('#d-acclab', body);
+    if (lab) lab.textContent = dir === 'IN' ? 'На який рахунок отримав' : 'З якого рахунку дав';
+    body.querySelectorAll('#d-dir button').forEach(b => b.classList.toggle('on', b.dataset.d === dir));
+  };
+  body.querySelectorAll('#d-dir button').forEach(b => { b.onclick = () => { dir = b.dataset.d; syncDir(); }; });
+  syncDir();
+  openModal(isNew ? 'Новий борг' : 'Редагувати борг', body, {
+    onSave: (close) => {
+      const err = $('#d-err', body);
+      const person = $('#d-person', body).value.trim();
+      if (!person) { err.textContent = 'Вкажіть, з ким борг'; err.classList.remove('hidden'); return; }
+      if (!isNew) { Object.assign(existing, { person, due_date: $('#d-due', body).value || null, note: $('#d-note', body).value.trim() || null }); save(); close(); render(); return; }
+      const amount = round2(num($('#d-amt', body).value));
+      if (!(amount > 0)) { err.textContent = 'Введіть суму більшу за 0'; err.classList.remove('hidden'); return; }
+      const accId = parseInt($('#d-acc', body).value);
+      const d = { id: nextId('debt'), person, dir, currency: accountCur(accId),
+        date: $('#d-date', body).value || todayISO(), due_date: $('#d-due', body).value || null,
+        note: $('#d-note', body).value.trim() || null };
+      state.debts.push(d);
+      addDebtTx(d, debtMoves(d).principal, amount, accId, d.date, null);
+      save(); close(); render();
+    }
+  });
+}
+
+// ——— Рух по боргу: ще позика або повернення ———
+function openDebtMove(d, move){
+  const back = move === debtMoves(d).back;
+  const cur = d.currency || 'UAH';
+  const accs = state.accounts.filter(a => !a.archived && a.currency_code === cur);
+  if (!accs.length) { alertModal(`Немає активного рахунку у валюті ${curSym(cur)} — створіть його, щоб записати рух по цьому боргу.`); return; }
+  const out = debtOutstanding(d);
+  const sign = debtTxSign(move);
+  const title = back ? (d.dir === 'IN' ? 'Віддати борг' : 'Повернули мені') : (d.dir === 'IN' ? 'Узяти ще' : 'Позичити ще');
+  const body = el(`<div>
+    <div class="muted small">${esc(d.person)} · залишок <b class="tabnum">${money(out, cur)}</b></div>
+    <div style="margin-top:8px"><label class="lab">Сума</label><input id="dm-amt" inputmode="decimal" value="${back ? out : ''}" placeholder="0.00" style="font-size:22px;font-weight:700"></div>
+    <div><label class="lab">${sign < 0 ? 'З якого рахунку' : 'На який рахунок'}</label><select id="dm-acc">${accs.map(a => `<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select></div>
+    <div><label class="lab">Дата</label><input type="date" id="dm-date" value="${todayISO()}"></div>
+    <div><label class="lab">Примітка</label><input id="dm-note" placeholder="не обовʼязково"></div>
+    <div class="err hidden" id="dm-err"></div></div>`);
+  openModal(title, body, {
+    saveLabel: back ? 'Записати повернення' : 'Записати позику',
+    onSave: (close) => {
+      const err = $('#dm-err', body);
+      const amount = round2(num($('#dm-amt', body).value));
+      if (!(amount > 0)) { err.textContent = 'Введіть суму більшу за 0'; err.classList.remove('hidden'); return; }
+      // Повернути більше, ніж винні, не можна: зайве — це вже не борг, а окреме надходження/витрата.
+      if (back && amount > out + 0.005) { err.textContent = `Більше за залишок (${money(out, cur)}). Зайве проведіть окремою операцією.`; err.classList.remove('hidden'); return; }
+      addDebtTx(d, move, amount, parseInt($('#dm-acc', body).value), $('#dm-date', body).value || todayISO(), $('#dm-note', body).value.trim() || null);
+      save(); close(); render();
+    }
+  });
+}
+
+function deleteDebt(d){
+  const n = debtTxs(d.id).length;
+  confirmModal('Видалити борг?', `${d.person} — разом із ${n} повʼязаними операціями. Баланси рахунків повернуться до стану без цього боргу.`, { danger: true, okLabel: 'Видалити' })
+    .then(ok => { if (!ok) return; deleteWithUndo('Борг видалено', () => {
+      state.transactions = state.transactions.filter(t => !(t.kind === 'DEBT' && t.debt_id === d.id));
+      state.debts = (state.debts || []).filter(x => x.id !== d.id);
+    }); });
+}
+
+// ——— Сповіщення про борги (Огляд + сторінка «Борги») ———
+function noticeDebtDue({ nav = true } = {}){
+  const due = (state.debts || []).filter(debtPending);
+  if (!due.length) return [];
+  const today = todayISO();
+  const overdue = due.some(d => d.due_date < today);
+  const items = due.map(d => `${esc(d.person)} ${money(debtOutstanding(d), d.currency)} — ${d.due_date < today ? 'прострочено з ' + fmtDate(d.due_date) : 'до ' + fmtDate(d.due_date)}`).join('; ');
+  const mine = due.some(d => (d.dir || 'OUT') === 'IN');
+  const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap${overdue ? ';background:color-mix(in srgb,var(--red) 12%,transparent);border-color:color-mix(in srgb,var(--red) 35%,transparent)' : ''}"><span>🤝 ${mine ? 'Борги' : 'Вам мають повернути'}: ${items}</span><span class="row" style="gap:6px"></span></div>`);
+  const acts = n.lastElementChild;
+  due.forEach(d => {
+    const b = el(`<button class="btn sm primary">${(d.dir || 'OUT') === 'IN' ? 'Віддати' : 'Повернули'}${due.length > 1 ? ' · ' + esc(d.person) : ''}</button>`);
+    b.onclick = () => openDebtMove(d, debtMoves(d).back);
+    acts.appendChild(b);
+  });
+  if (nav) { const b = el(`<button class="btn sm">До боргів</button>`); b.onclick = () => navigate('debts'); acts.appendChild(b); }
+  return [n];
+}
+
+// ——— Сторінка «Борги» ———
+views.debts = (app) => {
+  const head = el(`<div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h1 style="margin:0">Борги</h1><span class="row" style="gap:6px"></span></div>`);
+  const addOut = el(`<button class="btn primary">+ Позичив комусь</button>`); addOut.onclick = () => openDebtForm(null, 'OUT');
+  const addIn = el(`<button class="btn">+ Позичив у когось</button>`); addIn.onclick = () => openDebtForm(null, 'IN');
+  head.lastElementChild.appendChild(addOut); head.lastElementChild.appendChild(addIn);
+  app.appendChild(head);
+  app.appendChild(el(`<div class="muted small" style="margin-top:8px">Позика не рахується витратою, а повернення — доходом: гроші просто переходять між рахунком і боргом. Непогашені борги входять у загальний баланс і «Чисті активи».</div>`));
+
+  noticeDebtDue({ nav: false }).forEach(n => app.appendChild(n));
+
+  const list = (state.debts || []).slice();
+  if (!list.length) { app.appendChild(el(`<div class="empty" style="margin-top:14px">Боргів немає. Додайте перший — і більше не доведеться заводити фейкові рахунки.</div>`)); return; }
+
+  // Зведення: скільки винні мені й скільки винен я (за валютами) + разом у гривні.
+  const owedToMe = debtsByCur('OUT'), owedByMe = debtsByCur('IN');
+  const net = debtsTotalUAH();
+  if (Object.keys(owedToMe).length || Object.keys(owedByMe).length) {
+    app.appendChild(el(`<section class="card" style="padding:12px 14px;margin-top:14px;display:flex;gap:8px 22px;flex-wrap:wrap;font-size:14px">
+      ${Object.keys(owedToMe).length ? `<div><span class="muted">Вам винні: </span><b class="tabnum" style="color:var(--green)">${debtCurStr(owedToMe)}</b></div>` : ''}
+      ${Object.keys(owedByMe).length ? `<div><span class="muted">Ви винні: </span><b class="tabnum" style="color:var(--red)">${debtCurStr(owedByMe)}</b></div>` : ''}
+      <div><span class="muted">Разом ≈ </span><b class="tabnum" style="color:${net < 0 ? 'var(--red)' : 'var(--green)'}">${money(net, 'UAH')}</b></div>
+    </section>`));
+  }
+
+  const card = (d) => {
+    const cur = d.currency || 'UAH';
+    const given = debtGiven(d), out = debtOutstanding(d), back = debtBack(d);
+    const isIn = (d.dir || 'OUT') === 'IN';
+    const pct = given > 0 ? Math.min(100, Math.round(back / given * 100)) : 0;
+    const closed = out <= 0.005;
+    const overdue = !closed && d.due_date && d.due_date < todayISO();
+    const accent = isIn ? 'var(--red)' : 'var(--green)';
+    const node = el(`<div class="card" style="padding:10px 12px 10px 9px;min-width:0;border-left:5px solid ${closed ? 'var(--softline)' : accent}${closed ? ';opacity:.72' : ''}"></div>`);
+    const top = el(`<div style="display:flex;align-items:center;gap:8px;min-width:0">
+      <span class="txicon" style="background:${accent}2e;color:${accent};box-shadow:inset 0 0 0 1.5px ${accent}">${isIn ? ic('minus') : ic('plus')}</span>
+      <div style="flex:1;min-width:24px">
+        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.person)} <span class="muted small">· ${isIn ? 'я винен' : 'мені винні'}</span></div>
+        <div class="muted small">${closed ? 'закрито' : `залишок <b class="tabnum" style="color:${accent}">${money(out, cur)}</b> з ${money(given, cur)}`}${d.due_date ? ` · ${overdue ? '<span style="color:var(--red)">прострочено з ' + fmtDate(d.due_date) + '</span>' : 'до ' + fmtDate(d.due_date)}` : ''}${d.note ? ' · ' + esc(d.note) : ''}</div>
+      </div>
+    </div>`);
+    node.appendChild(top);
+    if (!closed && back > 0.005) node.appendChild(el(`<div class="pbar" style="margin-top:8px"><i style="width:${pct}%;background:${accent}"></i></div>`));
+
+    const acts = el(`<span class="row" style="gap:6px;flex:0 0 auto"></span>`);
+    if (!closed) {
+      const pay = el(`<button class="btn sm primary">${isIn ? 'Віддати' : 'Повернули'}</button>`);
+      pay.onclick = () => openDebtMove(d, debtMoves(d).back);
+      acts.appendChild(pay);
+    }
+    const more = el(`<button class="btn ghost sm" title="Дії">${ic('dots')}</button>`);
+    more.onclick = () => {
+      const r = more.getBoundingClientRect();
+      openContextMenu(r.right, r.bottom + 4, [
+        { label: isIn ? 'Узяти ще' : 'Позичити ще', icon: ic('plus'), color: '#0ea5e9', onClick: () => openDebtMove(d, debtMoves(d).principal) },
+        { label: 'Редагувати', icon: ic('edit'), color: '#8b5cf6', onClick: () => openDebtForm(d) },
+        { sep: true },
+        { label: 'Видалити', icon: ic('close'), color: 'var(--red)', onClick: () => deleteDebt(d) },
+      ]);
+    };
+    acts.appendChild(more);
+    top.appendChild(acts);
+
+    // Розгортання — історія рухів по цьому боргу (ті самі операції, що й в «Операціях»).
+    const sub = el(`<div style="display:none;padding:4px 2px 2px"></div>`);
+    const caret = el(`<span class="day-caret" style="display:inline-block;width:1.1em;color:var(--muted);cursor:pointer;transition:transform .15s">▸</span>`);
+    caret.onclick = () => {
+      const open = sub.style.display === 'none';
+      if (open && !sub.children.length) debtTxs(d.id).slice().sort((a, b) => (a.date < b.date ? 1 : -1))
+        .forEach(t => sub.appendChild(txRow(t, { onView: (tx) => openTxView(tx), onDelete: (tx) => deleteTx(tx) })));
+      sub.style.display = open ? 'block' : 'none';
+      caret.style.transform = open ? 'rotate(90deg)' : '';
+    };
+    top.insertBefore(caret, top.firstChild);
+    node.appendChild(sub);
+    return node;
+  };
+
+  const grid = el(`<div class="grid" style="grid-template-columns:1fr;max-width:620px;margin-top:12px"></div>`);
+  const active = list.filter(debtActive), done = list.filter(d => !debtActive(d));
+  active.sort((a, b) => (a.due_date || '9999') < (b.due_date || '9999') ? -1 : 1).forEach(d => grid.appendChild(card(d)));
+  if (!active.length) grid.appendChild(el(`<div class="muted">Активних боргів немає.</div>`));
+  app.appendChild(grid);
+
+  // Закриті борги не висять у списку — вони згорнуті (саме цього бракувало фейковим рахункам).
+  if (done.length) {
+    const wrap = el(`<div style="margin-top:14px;max-width:620px"></div>`);
+    const btn = el(`<button class="btn ghost sm">Закриті борги (${done.length})</button>`);
+    const box = el(`<div class="grid" style="grid-template-columns:1fr;margin-top:8px;display:none"></div>`);
+    done.sort((a, b) => (a.date < b.date ? 1 : -1)).forEach(d => box.appendChild(card(d)));
+    btn.onclick = () => { box.style.display = box.style.display === 'none' ? '' : 'none'; };
+    wrap.appendChild(btn); wrap.appendChild(box); app.appendChild(wrap);
+  }
+};
 
 //==================== Сповіщення (Огляд + «свої» сторінки) ====================
 // Кожен білдер повертає МАСИВ елементів (порожній, якщо сповіщати нема про що), щоб те саме
@@ -2981,10 +3239,11 @@ views.dashboard = (app) => {
   const byCur = {};
   state.accounts.filter(a => !a.archived).forEach(a => { byCur[a.currency_code] = (byCur[a.currency_code]||0) + accountBalance(a.id); });
   const allCurs = Object.keys(byCur);
-  [...dashCurSet].forEach(c => { if (c !== 'CRYPTO' && c !== 'METALS' && !allCurs.includes(c)) dashCurSet.delete(c); });
+  [...dashCurSet].forEach(c => { if (c !== 'CRYPTO' && c !== 'METALS' && c !== 'DEBTS' && !allCurs.includes(c)) dashCurSet.delete(c); });
   const selected = dashCurSet.size ? allCurs.filter(c => dashCurSet.has(c)) : allCurs;
   const showCrypto = hasCrypto() && (dashCurSet.size === 0 || dashCurSet.has('CRYPTO'));   // крипта в активах, якщо ввімкнено
   const showMetals = hasMetals() && (dashCurSet.size === 0 || dashCurSet.has('METALS'));   // метали в активах, якщо ввімкнено
+  const showDebts = hasDebts() && (dashCurSet.size === 0 || dashCurSet.has('DEBTS'));      // непогашені борги як актив/зобовʼязання
 
   const from = monthStartISO(), to = todayISO();
   let inc=0, exp=0, fees=0;
@@ -3004,6 +3263,7 @@ views.dashboard = (app) => {
   selected.forEach(c => { const v = toUAH(byCur[c], c); if (v == null) missing = true; else uah += v; });
   if (showCrypto) { const cu = cryptoTotalUAH(); if (cu == null) missing = true; else uah += cu; }
   if (showMetals) { const mu = metalsTotalUAH(); if (mu == null) missing = true; else uah += mu; }   // метали як актив
+  if (showDebts) uah += debtsTotalUAH();
   const usdRate = rateFor('USD');
   const uahInUsd = usdRate ? round2(uah / usdRate) : null;   // доларовий еквівалент загального балансу
   const ratesNote = ratesCache.date ? `курс НБУ на ${fmtDate(ratesCache.date)}`
@@ -3034,27 +3294,29 @@ views.dashboard = (app) => {
 
   // чіпи фільтра валют
   const cf = $('#curfilter', head);
-  if (allCurs.length > 1 || hasCrypto() || hasMetals()) {
+  if (allCurs.length > 1 || hasCrypto() || hasMetals() || hasDebts()) {
     const mkChip = (label, active, onClick) => { const b = el(`<button class="curchip${active?' on':''}">${label}</button>`); b.onclick = onClick; return b; };
     cf.appendChild(mkChip('Всі', dashCurSet.size===0, () => { dashCurSet.clear(); render(); }));
     allCurs.forEach(c => cf.appendChild(mkChip(curSym(c), dashCurSet.has(c), () => { dashCurSet.has(c)?dashCurSet.delete(c):dashCurSet.add(c); render(); })));
     if (hasCrypto()) cf.appendChild(mkChip('₿', dashCurSet.has('CRYPTO'), () => { dashCurSet.has('CRYPTO')?dashCurSet.delete('CRYPTO'):dashCurSet.add('CRYPTO'); render(); }));
     if (hasMetals()) cf.appendChild(mkChip('Au', dashCurSet.has('METALS'), () => { dashCurSet.has('METALS')?dashCurSet.delete('METALS'):dashCurSet.add('METALS'); render(); }));
+    if (hasDebts()) cf.appendChild(mkChip('🤝', dashCurSet.has('DEBTS'), () => { dashCurSet.has('DEBTS')?dashCurSet.delete('DEBTS'):dashCurSet.add('DEBTS'); render(); }));
   }
   $('#rrefresh', head).onclick = () => ensureRatesFresh(true);
 
   const bc = $('#bc', head);
-  if (selected.length === 0 && !showCrypto && !showMetals) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
+  if (selected.length === 0 && !showCrypto && !showMetals && !showDebts) bc.appendChild(el(`<div class="muted">Додайте рахунок, щоб почати</div>`));
   selected.forEach(cur => bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum">${money(byCur[cur],cur)}</div>`)));
   if (showCrypto) bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Криптопортфель">₿ ${money(cryptoTotalUsd(),'USD')}</div>`));
   if (showMetals) { const mv = metalsTotalUAH(); bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Дорогоцінні метали">${metalIcon('XAU',26)} ${mv==null?'—':money(mv,'UAH')}</div>`)); }
+  if (showDebts) { const dv = debtsTotalUAH(); bc.appendChild(el(`<div style="font-size:28px;font-weight:800" class="tabnum" title="Борги: мені винні мінус я винен">🤝 ${money(dv,'UAH')}</div>`)); }
   app.appendChild(head);
 
   // ——— Сповіщення: НАЙТЕРМІНОВІШЕ ЗВЕРХУ ———
   // Порядок важливий: кредит — це реальні гроші й пеня, тож він перший. Раніше він був останнім
   // і на телефоні йшов за межу екрана під бюджетами та регулярними — його просто не бачили.
   // Ті самі сповіщення показуються й на профільних сторінках (Кредити / Регулярні / Категорії).
-  [...noticeLoanDue(), ...noticeRecurDue(), ...noticeRecurSoon(), ...noticeBudgetOver()].forEach(n => app.appendChild(n));
+  [...noticeLoanDue(), ...noticeDebtDue(), ...noticeRecurDue(), ...noticeRecurSoon(), ...noticeBudgetOver()].forEach(n => app.appendChild(n));
 
   // бюджети категорій з лімітом (поточний місяць) — без тих, що 0%
   const bcard = budgetsCard({ hideZero: true });
@@ -3148,7 +3410,7 @@ views.transactions = (app) => {
       <div><label class="lab">Рахунок</label><select id="ff-acc"><option value="">Усі</option>${state.accounts.map(a=>`<option value="${a.id}" ${txFilter.account==a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
       <div><label class="lab">Категорія</label><select id="ff-cat"><option value="">Усі</option><option value="none" ${txFilter.category==='none'?'selected':''}>Без категорії</option>${[['EXPENSE','➖ Витрати'],['INCOME','➕ Надходження']].map(([k,lbl])=>{ const cs=state.categories.filter(c=>c.kind===k); return cs.length?`<optgroup label="${lbl}">${cs.map(c=>`<option value="${c.id}" ${txFilter.category==c.id?'selected':''}>${c.icon?c.icon+' ':''}${esc(c.name)}</option>`).join('')}</optgroup>`:''; }).join('')}</select></div>
       <div><label class="lab">Тип</label><select id="ff-kind">
-        <option value="">Усі</option><option value="EXPENSE">Витрати</option><option value="INCOME">Надходження</option><option value="TRANSFER">Перекази</option></select></div>
+        <option value="">Усі</option><option value="EXPENSE">Витрати</option><option value="INCOME">Надходження</option><option value="TRANSFER">Перекази</option><option value="DEBT">Борги</option></select></div>
       <div><label class="lab">Від</label><input id="ff-from" type="date" value="${txFilter.from}"></div>
       <div><label class="lab">До</label><input id="ff-to" type="date" value="${txFilter.to}"></div>
       ${allTags().length ? `<div><label class="lab">Тег</label><select id="ff-tag"><option value="">Усі</option>${allTags().map(tg=>`<option value="${esc(tg)}">#${esc(tg)}</option>`).join('')}</select></div>` : ''}
@@ -3268,9 +3530,11 @@ function netWorthAt(dateISO){
     state.transactions.forEach(t => { if (t.date > dateISO) return;
       if (t.kind==='INCOME') bal += txAccountShare(t, a.id);
       else if (t.kind==='EXPENSE') bal -= txAccountShare(t, a.id);
-      else if (t.kind==='TRANSFER'){ if(t.account_id===a.id) bal -= (t.amount+(t.fee_amount||0)); if(t.to_account_id===a.id) bal += (t.to_amount||0); } });
+      else if (t.kind==='TRANSFER'){ if(t.account_id===a.id) bal -= (t.amount+(t.fee_amount||0)); if(t.to_account_id===a.id) bal += (t.to_amount||0); }
+      else if (t.kind==='DEBT'){ if(t.account_id===a.id) bal += debtTxSign(t.debt_move) * (t.amount||0); } });
     const u = toUAH(bal, a.currency_code); total += (u==null ? bal : u);
   });
+  total += debtsTotalUAH(dateISO);   // позичене людям — усе ще мій актив, узяте в борг — зобовʼязання
   return round2(total);
 }
 // Середній місячний чистий потік за n ПОВНИХ попередніх місяців (поточний, неповний, не беремо).
@@ -6301,7 +6565,7 @@ function mergeAll(states){
     out.tombstones[type] = keptTomb;
   });
   out.seq = out.seq || {};
-  ['acc','cat','tx','bank','loan','rec','goal','cry','met'].forEach(k => { let mx = 1; states.forEach(s => { mx = Math.max(mx, (s.seq && s.seq[k]) || 1); }); out.seq[k] = mx; });
+  ['acc','cat','tx','bank','loan','rec','goal','cry','met','debt'].forEach(k => { let mx = 1; states.forEach(s => { mx = Math.max(mx, (s.seq && s.seq[k]) || 1); }); out.seq[k] = mx; });
   out.version = SCHEMA_VERSION;
   return out;
 }

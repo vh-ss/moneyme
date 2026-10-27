@@ -338,6 +338,47 @@ eq('loanNextDue назад: 15.06 → 15.05', S.loanNextDue({ due_date: '2026-06
   eq('gcTombstones: старий надгробок історії прибрано', Object.keys(g.tombstones.metalsHistory).join(','), 'fresh');
 }
 
+// ——— Борги: залишок рахується з операцій, гроші рухаються, але це не витрата ———
+{
+  const setD = (accounts, debts, txs) => vm.runInContext(
+    `state.accounts = ${JSON.stringify(accounts)}; state.debts = ${JSON.stringify(debts)}; state.transactions = ${JSON.stringify(txs)};`, sandbox);
+  const accs = [{ id: 1, name: 'Картка', currency_code: 'UAH', initial_balance: 10000 }];
+  const out = { id: 10, person: 'Петро', dir: 'OUT', currency: 'UAH', date: '2026-10-01' };
+  const inn = { id: 11, person: 'Олег', dir: 'IN', currency: 'UAH', date: '2026-10-01' };
+
+  setD(accs, [out], [{ id: 1, kind: 'DEBT', date: '2026-10-01', account_id: 1, amount: 2000, debt_id: 10, debt_move: 'LEND' }]);
+  eq('debtOutstanding: після позики винні всю суму', S.debtOutstanding(out), 2000);
+  eq('accountBalance: позика зменшує рахунок', S.accountBalance(1), 8000);
+  eq('netWorthAt: позика НЕ зменшує чисті активи', S.netWorthAt('2026-10-31'), 10000);
+  eq('debtsTotalUAH: «мені винні» — плюс', S.debtsTotalUAH(), 2000);
+
+  // часткове повернення
+  vm.runInContext(`state.transactions.push({ id:2, kind:'DEBT', date:'2026-10-15', account_id:1, amount:500, debt_id:10, debt_move:'REPAY' });`, sandbox);
+  eq('debtOutstanding: часткове повернення', S.debtOutstanding(out), 1500);
+  eq('accountBalance: повернення збільшує рахунок', S.accountBalance(1), 8500);
+  eq('debtOutstanding(upto): станом на дату до повернення', S.debtOutstanding(out, '2026-10-10'), 2000);
+  eq('netWorthAt: чисті активи незмінні й після повернення', S.netWorthAt('2026-10-31'), 10000);
+
+  // повне погашення → борг більше не активний і не висить у списку
+  vm.runInContext(`state.transactions.push({ id:3, kind:'DEBT', date:'2026-10-20', account_id:1, amount:1500, debt_id:10, debt_move:'REPAY' });`, sandbox);
+  eq('debtActive: повністю повернули — борг закритий', S.debtActive(out), false);
+  eq('debtsTotalUAH: закритий борг не рахується', S.debtsTotalUAH(), 0);
+  eq('accountBalance: гроші повернулись повністю', S.accountBalance(1), 10000);
+
+  // я позичив у когось — мінус до активів, плюс до рахунку
+  setD(accs, [inn], [{ id: 4, kind: 'DEBT', date: '2026-10-02', account_id: 1, amount: 3000, debt_id: 11, debt_move: 'BORROW' }]);
+  eq('debtOutstanding: я винен усю суму', S.debtOutstanding(inn), 3000);
+  eq('accountBalance: узяте в борг збільшує рахунок', S.accountBalance(1), 13000);
+  eq('debtsTotalUAH: «я винен» — мінус', S.debtsTotalUAH(), -3000);
+  eq('netWorthAt: позичене в когось не робить мене багатшим', S.netWorthAt('2026-10-31'), 10000);
+  vm.runInContext(`state.transactions.push({ id:5, kind:'DEBT', date:'2026-10-09', account_id:1, amount:3000, debt_id:11, debt_move:'SETTLE' });`, sandbox);
+  eq('debtActive: віддав — закрито', S.debtActive(inn), false);
+  eq('accountBalance: віддав — рахунок як був', S.accountBalance(1), 10000);
+
+  eq('debtTxSign: LEND/SETTLE — гроші з рахунку', S.debtTxSign('LEND') + S.debtTxSign('SETTLE'), -2);
+  eq('debtTxSign: REPAY/BORROW — гроші на рахунок', S.debtTxSign('REPAY') + S.debtTxSign('BORROW'), 2);
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);
