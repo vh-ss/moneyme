@@ -375,6 +375,12 @@ eq('loanNextDue назад: 15.06 → 15.05', S.loanNextDue({ due_date: '2026-06
   eq('debtActive: віддав — закрито', S.debtActive(inn), false);
   eq('accountBalance: віддав — рахунок як був', S.accountBalance(1), 10000);
 
+  // Повернули більше за залишок: до залишку — борг, надлишок — окремий дохід (відсотки)
+  eq('debtBackSplit: рівно залишок — надлишку немає', JSON.stringify(S.debtBackSplit(2000, 2000)), JSON.stringify({ main: 2000, excess: 0 }));
+  eq('debtBackSplit: часткове — усе в борг', JSON.stringify(S.debtBackSplit(2000, 500)), JSON.stringify({ main: 500, excess: 0 }));
+  eq('debtBackSplit: понад залишок — надлишок окремо', JSON.stringify(S.debtBackSplit(2000, 2300)), JSON.stringify({ main: 2000, excess: 300 }));
+  eq('debtBackSplit: борг уже закритий — усе в надлишок', JSON.stringify(S.debtBackSplit(0, 150)), JSON.stringify({ main: 0, excess: 150 }));
+  eq('debtBackSplit: копійки не губляться', JSON.stringify(S.debtBackSplit(1000.55, 1200.75)), JSON.stringify({ main: 1000.55, excess: 200.2 }));
   eq('debtTxSign: LEND/SETTLE — гроші з рахунку', S.debtTxSign('LEND') + S.debtTxSign('SETTLE'), -2);
   eq('debtTxSign: REPAY/BORROW — гроші на рахунок', S.debtTxSign('REPAY') + S.debtTxSign('BORROW'), 2);
 }

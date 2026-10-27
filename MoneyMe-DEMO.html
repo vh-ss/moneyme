@@ -1183,6 +1183,7 @@ function txInfoNode(tx){
   if (tx.note) rows.push(['Нотатка', tx.note]);
   if (tx.tags && tx.tags.length) rows.push(['Теги', tx.tags.map(x => '#' + x).join(' ')]);
   if (tx.loan_id) { const l = state.loans.find(x => x.id === tx.loan_id); if (l) rows.push(['Кредит', l.name || 'Кредит']); }
+  if (tx.debt_id && !isDebt) { const dr = debtById(tx.debt_id); if (dr) rows.push(['Борг', dr.person]); }
   if (tx.recurring_id) rows.push(['Тип запису', 'Регулярний платіж']);
   const node = el(`<div>
     <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
@@ -2942,6 +2943,8 @@ function debtMoves(d){ return DEBT_MOVES[d && d.dir === 'IN' ? 'IN' : 'OUT']; }
 function debtTxSign(move){ return (move === 'LEND' || move === 'SETTLE') ? -1 : 1; }
 function debtById(id){ return (state.debts || []).find(d => d.id === id); }
 function debtTxs(debtId){ return state.transactions.filter(t => t.kind === 'DEBT' && t.debt_id === debtId); }
+// Усі повʼязані операції, включно з надлишком (він — звичайний дохід/витрата, не DEBT).
+function debtAllTxs(debtId){ return state.transactions.filter(t => t.debt_id === debtId); }
 function debtSum(d, move, uptoISO){
   return round2(debtTxs(d.id).reduce((s, t) => s + ((t.debt_move === move && (!uptoISO || t.date <= uptoISO)) ? (t.amount || 0) : 0), 0));
 }
@@ -2968,6 +2971,11 @@ function debtsByCur(dir){
   return m;
 }
 function debtCurStr(m){ return Object.entries(m).map(([c, v]) => money(v, c)).join(' + '); }
+// Розщеплення повернення: до залишку — погашення боргу, надлишок — уже не борг.
+function debtBackSplit(outstanding, amount){
+  const main = round2(Math.min(round2(amount), Math.max(0, round2(outstanding))));
+  return { main, excess: round2(round2(amount) - main) };
+}
 function addDebtTx(d, move, amount, accId, date, note){
   state.transactions.push({ id: nextId('tx'), ord: nextOrd(), kind: 'DEBT', date: date || todayISO(),
     account_id: accId, amount: round2(amount), debt_id: d.id, debt_move: move, note: note || null });
@@ -3034,26 +3042,43 @@ function openDebtMove(d, move){
     <div><label class="lab">${sign < 0 ? 'З якого рахунку' : 'На який рахунок'}</label><select id="dm-acc">${accs.map(a => `<option value="${a.id}">${esc(a.name)} (${curSym(a.currency_code)})</option>`).join('')}</select></div>
     <div><label class="lab">Дата</label><input type="date" id="dm-date" value="${todayISO()}"></div>
     <div><label class="lab">Примітка</label><input id="dm-note" placeholder="не обовʼязково"></div>
+    <div class="muted small hidden" id="dm-ex" style="margin-top:6px"></div>
     <div class="err hidden" id="dm-err"></div></div>`);
+  // Якщо вводять більше за залишок — одразу показуємо, що надлишок піде окремою операцією,
+  // щоб це не було сюрпризом після збереження.
+  const amtEl = $('#dm-amt', body), exEl = $('#dm-ex', body);
+  const updEx = () => {
+    const ex = round2(num(amtEl.value) - out), show = back && ex > 0.005;
+    exEl.classList.toggle('hidden', !show);
+    if (show) exEl.innerHTML = `Понад залишок: <b class="tabnum">${money(ex, cur)}</b> → окремо як ${sign > 0 ? 'надходження «дохід за позикою»' : 'витрата «переплата за боргом»'}`;
+  };
+  amtEl.addEventListener('input', updEx); updEx();
   openModal(title, body, {
     saveLabel: back ? 'Записати повернення' : 'Записати позику',
     onSave: (close) => {
       const err = $('#dm-err', body);
-      const amount = round2(num($('#dm-amt', body).value));
+      const amount = round2(num(amtEl.value));
       if (!(amount > 0)) { err.textContent = 'Введіть суму більшу за 0'; err.classList.remove('hidden'); return; }
-      // Повернути більше, ніж винні, не можна: зайве — це вже не борг, а окреме надходження/витрата.
-      if (back && amount > out + 0.005) { err.textContent = `Більше за залишок (${money(out, cur)}). Зайве проведіть окремою операцією.`; err.classList.remove('hidden'); return; }
-      addDebtTx(d, move, amount, parseInt($('#dm-acc', body).value), $('#dm-date', body).value || todayISO(), $('#dm-note', body).value.trim() || null);
+      const accId = parseInt($('#dm-acc', body).value), date = $('#dm-date', body).value || todayISO(), note = $('#dm-note', body).value.trim() || null;
+      if (!back) { addDebtTx(d, move, amount, accId, date, note); save(); close(); render(); return; }
+      // Повернули більше, ніж винні: до залишку — погашення боргу, надлишок — уже не борг, а
+      // дохід за позикою (а для мого боргу — переплата/відсотки). Тому надлишок іде ЗВИЧАЙНОЮ
+      // операцією: так він потрапляє в аналітику, як і має, а залишок боргу не стає відʼємним.
+      const { main, excess } = debtBackSplit(out, amount);
+      if (main > 0) addDebtTx(d, move, main, accId, date, note);
+      if (excess > 0) state.transactions.push({ id: nextId('tx'), ord: nextOrd(),
+        kind: sign > 0 ? 'INCOME' : 'EXPENSE', date, account_id: accId, category_id: null, amount: excess,
+        debt_id: d.id, note: (note ? note + ' · ' : '') + (sign > 0 ? 'дохід за позикою' : 'переплата за боргом') });
       save(); close(); render();
     }
   });
 }
 
 function deleteDebt(d){
-  const n = debtTxs(d.id).length;
+  const n = debtAllTxs(d.id).length;
   confirmModal('Видалити борг?', `${d.person} — разом із ${n} повʼязаними операціями. Баланси рахунків повернуться до стану без цього боргу.`, { danger: true, okLabel: 'Видалити' })
     .then(ok => { if (!ok) return; deleteWithUndo('Борг видалено', () => {
-      state.transactions = state.transactions.filter(t => !(t.kind === 'DEBT' && t.debt_id === d.id));
+      state.transactions = state.transactions.filter(t => t.debt_id !== d.id);   // разом із надлишком-доходом
       state.debts = (state.debts || []).filter(x => x.id !== d.id);
     }); });
 }
@@ -3145,7 +3170,7 @@ views.debts = (app) => {
     const caret = el(`<span class="day-caret" style="display:inline-block;width:1.1em;color:var(--muted);cursor:pointer;transition:transform .15s">▸</span>`);
     caret.onclick = () => {
       const open = sub.style.display === 'none';
-      if (open && !sub.children.length) debtTxs(d.id).slice().sort((a, b) => (a.date < b.date ? 1 : -1))
+      if (open && !sub.children.length) debtAllTxs(d.id).slice().sort((a, b) => (a.date < b.date ? 1 : -1))
         .forEach(t => sub.appendChild(txRow(t, { onView: (tx) => openTxView(tx), onDelete: (tx) => deleteTx(tx) })));
       sub.style.display = open ? 'block' : 'none';
       caret.style.transform = open ? 'rotate(90deg)' : '';
