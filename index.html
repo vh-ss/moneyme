@@ -370,7 +370,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '0d5f023c3d';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '12a9e907cc';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -384,6 +384,7 @@ const Sync = {
   on: localStorage.getItem('moneyme.sync.on') === '1',
   status: 'off', detail: '', applying: false,
   token: null, tokenClient: null, fileId: null, gisLoading: null,
+  needAuth: false, authFailAt: 0, interactive: false,   // вхід у Google застарів / чи можна відкривати вікно
   pending: false, pushTimer: null,
   last: localStorage.getItem('moneyme.sync.last') || null,
 };
@@ -3063,6 +3064,15 @@ function deleteDebt(d){
 }
 
 // ——— Сповіщення про борги (Огляд + сторінка «Борги») ———
+// Вхід у Google застарів: без цієї плашки синх просто мовчки стояв, і виглядало, ніби «розлогінило».
+function noticeSyncAuth(){
+  if (!Sync.on || !Sync.needAuth || !syncAvailable()) return [];
+  const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>🔑 Синхронізацію призупинено — потрібно поновити вхід у Google (дані збережено на пристрої)</span><span class="row" style="gap:6px"></span></div>`);
+  const b = el(`<button class="btn sm primary">Поновити вхід</button>`);
+  b.onclick = () => cloudSync(true);
+  n.lastElementChild.appendChild(b);
+  return [n];
+}
 function noticeDebtDue({ nav = true } = {}){
   const due = (state.debts || []).filter(debtPending);
   if (!due.length) return [];
@@ -3341,7 +3351,7 @@ views.dashboard = (app) => {
   // Порядок важливий: кредит — це реальні гроші й пеня, тож він перший. Раніше він був останнім
   // і на телефоні йшов за межу екрана під бюджетами та регулярними — його просто не бачили.
   // Ті самі сповіщення показуються й на профільних сторінках (Кредити / Регулярні / Категорії).
-  [...noticeLoanDue(), ...noticeDebtDue(), ...noticeRecurDue(), ...noticeRecurSoon(), ...noticeBudgetOver()].forEach(n => app.appendChild(n));
+  [...noticeSyncAuth(), ...noticeLoanDue(), ...noticeDebtDue(), ...noticeRecurDue(), ...noticeRecurSoon(), ...noticeBudgetOver()].forEach(n => app.appendChild(n));
 
   // бюджети категорій з лімітом (поточний місяць) — без тих, що 0%
   const bcard = budgetsCard({ hideZero: true });
@@ -5966,6 +5976,7 @@ views.settings = (app) => {
     case 'syncing':    return ['Синхронізація…', 'var(--muted)'];
     case 'idle':       return ['✓ Синхронізовано' + (Sync.last ? ' · ' + new Date(Sync.last).toLocaleString('uk-UA') : ''), 'var(--green)'];
     case 'offline':    return ['Офлайн — зміни збережено, вивантажаться пізніше', 'var(--amber)'];
+    case 'needauth':   return ['Потрібно поновити вхід у Google', 'var(--amber)'];
     case 'error':      return ['Помилка: ' + (Sync.detail || ''), 'var(--red)'];
     default:           return [Sync.on ? 'Очікування…' : 'Вимкнено', 'var(--muted)'];
   } })();
@@ -5975,13 +5986,14 @@ views.settings = (app) => {
     ${isHttp ? '' : '<div class="notice" style="margin-top:8px">⚠️ Це локальний файл. Синхронізація доступна лише з веб-версії (GitHub Pages) — див. SETUP.md.</div>'}
     <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
       ${Sync.on
-        ? '<button class="btn" id="sy-now">Синхронізувати зараз</button><button class="btn danger" id="sy-off">Відключити</button>'
+        ? `${Sync.needAuth ? '<button class="btn primary" id="sy-auth">Поновити вхід</button>' : ''}<button class="btn" id="sy-now">Синхронізувати зараз</button><button class="btn danger" id="sy-off">Відключити</button>`
         : '<button class="btn primary" id="sy-connect">Підключити Google Drive</button>'}
     </div>
     <div class="small" style="margin-top:10px;color:${st[1]}">${esc(st[0])}</div>
   </section>`);
   if ($('#sy-connect', sync)) $('#sy-connect', sync).onclick = () => cloudConnect();
   if ($('#sy-now', sync)) $('#sy-now', sync).onclick = () => cloudSync(true);
+  if ($('#sy-auth', sync)) $('#sy-auth', sync).onclick = () => cloudSync(true);   // клік = жест користувача, з ним вікно Google дозволене
   if ($('#sy-off', sync)) $('#sy-off', sync).onclick = () => { cloudDisconnect(); render(); };
   app.appendChild(sync);
 
@@ -6384,7 +6396,8 @@ const GOOGLE_CLIENT_ID = '934338930225-arnhi5r45ptk1japnogvjqguob4q5mnv.apps.goo
 function clientId(){ return (GOOGLE_CLIENT_ID || localStorage.getItem('moneyme.sync.clientId') || '').trim(); }
 function syncAvailable(){ return location.protocol.indexOf('http') === 0 && !!clientId(); }
 function syncConfigured(){ return !!clientId(); }
-function setSyncStatus(s, detail){ Sync.status = s; Sync.detail = detail || ''; if (currentView === 'settings') render(); }
+function setSyncStatus(s, detail){ Sync.status = s; Sync.detail = detail || '';
+  if (currentView === 'settings' || currentView === 'dashboard') render(); }   // і Огляд — там плашка «поновити вхід»
 
 // Черга вивантаження після локальної зміни (викликається із save()).
 function cloudOnLocalChange(){
@@ -6394,25 +6407,70 @@ function cloudOnLocalChange(){
   Sync.pushTimer = setTimeout(cloudPush, 2500);
 }
 
+// На поганому мобільному інтернеті запит може не впасти й не завершитись — висітиме хвилинами.
+// Тому КОЖЕН мережевий крок входу/синху має межу часу й зрозумілу помилку замість вічного «Підключення…».
+const NET_TIMEOUT = 25000, UPLOAD_TIMEOUT = 60000, GIS_TIMEOUT = 20000;
+function netFetch(url, opts, ms){
+  const ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const o = ac ? Object.assign({}, opts, { signal: ac.signal }) : opts;
+  const t = setTimeout(() => { if (ac) ac.abort(); }, ms || NET_TIMEOUT);
+  return fetch(url, o).then(
+    r => { clearTimeout(t); return r; },
+    e => { clearTimeout(t); throw (e && e.name === 'AbortError') ? new Error('Мережа не відповідає — спробуйте пізніше') : e; });
+}
+function withTimeout(p, ms, msg){
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error(msg || 'Перевищено час очікування')), ms);
+    p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); });
+  });
+}
 function loadGIS(){
   if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
   if (Sync.gisLoading) return Sync.gisLoading;
   Sync.gisLoading = new Promise((res, rej) => {
     const s = document.createElement('script');
     s.src = GIS_SRC; s.async = true; s.defer = true;
-    s.onload = res; s.onerror = () => rej(new Error('Не вдалося завантажити Google Identity (немає мережі?)'));
+    const timer = setTimeout(() => { s.remove(); rej(new Error('Google не відповідає — перевірте інтернет')); }, GIS_TIMEOUT);
+    s.onload = () => { clearTimeout(timer); res(); };
+    s.onerror = () => { clearTimeout(timer); s.remove(); rej(new Error('Не вдалося завантажити Google Identity (немає мережі?)')); };
     document.head.appendChild(s);
-  });
+  }).catch(e => { Sync.gisLoading = null; throw e; });   // невдачу НЕ кешуємо: інакше всі наступні спроби падали одразу, до перезавантаження
   return Sync.gisLoading;
 }
 const TOKEN_KEY = 'moneyme.sync.token';
 // Токен зберігаємо (≈1 год) і перевикористовуємо між перезавантаженнями — щоб не просити
 // вхід щоразу (особливо на телефоні, де браузер «вивантажує» сторінку у фоні).
+const TOKEN_MARGIN = 5 * 60 * 1000;    // не беремо токен, якому лишилось менше 5 хв — щоб не впасти посеред синху
+const TOKEN_RENEW_AT = 15 * 60 * 1000; // за 15 хв до кінця вже пробуємо поновити на найближчому дотику
+const AUTH_RETRY = 15 * 60 * 1000;     // після невдалого поновлення не смикаємо частіше
 function getCachedToken(){
-  if (Sync.token && Sync.token.exp - Date.now() > 60000) return Sync.token.access_token;
-  try { const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null'); if (t && t.exp - Date.now() > 60000) { Sync.token = t; return t.access_token; } } catch (e) {}
+  if (Sync.token && Sync.token.exp - Date.now() > TOKEN_MARGIN) return Sync.token.access_token;
+  try { const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null'); if (t && t.exp - Date.now() > TOKEN_MARGIN) { Sync.token = t; return t.access_token; } } catch (e) {}
   return null;
 }
+// Вікно Google відкривається ЛИШЕ з дії користувача: у фоні (таймер, повернення на вкладку, поява
+// мережі) браузер блокує попап → приходив error_callback і все виглядало як «розлогінило».
+// Тому поновлення чіпляємо до НАЙБЛИЖЧОГО дотику: із підказкою акаунта й живою Google-сесією
+// вікно закривається саме, людина бачить щонайбільше спалах.
+function armTokenRefresh(){
+  if (Sync._reauthArmed) return;
+  if (Date.now() - (Sync.authFailAt || 0) < AUTH_RETRY) return;
+  if (!localStorage.getItem('moneyme.sync.account')) return;   // без підказки акаунта вікно показало б вибір — не робимо це несподівано
+  Sync._reauthArmed = true;
+  const onGesture = () => {
+    document.removeEventListener('pointerdown', onGesture, true);
+    Sync._reauthArmed = false;
+    if (getCachedToken()) return;
+    acquireToken('').then(() => { Sync.needAuth = false; Sync.authFailAt = 0; setSyncStatus('idle'); cloudSync(false); })
+                    .catch(() => { Sync.authFailAt = Date.now(); if (Sync.needAuth) setSyncStatus('needauth'); });
+  };
+  document.addEventListener('pointerdown', onGesture, true);
+}
+// Токен протух у фоні: показуємо зрозумілий стан (а не «Помилка») і пробуємо поновити на дотику.
+function requestReauth(){ Sync.needAuth = true; armTokenRefresh(); }
+// Профілактика: поки токен ще живий, але добігає кінця — поновлюємо заздалегідь, щоб вхід
+// не «злітав» посеред роботи (саме це відчувалось як постійне розлогінення).
+function maybeRenewSoon(){ const t = Sync.token; if (t && t.exp - Date.now() < TOKEN_RENEW_AT) armTokenRefresh(); }
 function saveToken(resp){
   Sync.token = { access_token: resp.access_token, exp: Date.now() + ((resp.expires_in || 3300) * 1000) };
   try { localStorage.setItem(TOKEN_KEY, JSON.stringify(Sync.token)); } catch (e) {}
@@ -6431,13 +6489,19 @@ function ensureTokenClient(){
 // Запит нового токена через вікно Google. prompt:'' — ТИХО для збереженого акаунта (через hint —
 // без вибору акаунта); 'consent' — з вибором акаунта (для «Підключити»).
 function acquireToken(prompt){
-  return loadGIS().then(() => { ensureTokenClient(); return new Promise((res, rej) => {
-    Sync._tokRes = res; Sync._tokRej = rej;
-    const cfg = { prompt: prompt || '' };
-    if (!prompt) { const hint = localStorage.getItem('moneyme.sync.account'); if (hint) cfg.hint = hint; }   // тихе оновлення того ж акаунта
-    try { Sync.tokenClient.requestAccessToken(cfg); }
-    catch (e) { Sync._tokRes = Sync._tokRej = null; rej(e); }
-  }); });
+  return loadGIS().then(() => { ensureTokenClient();
+    const p = new Promise((res, rej) => {
+      Sync._tokRes = res; Sync._tokRej = rej;
+      const cfg = { prompt: prompt || '' };
+      if (!prompt) { const hint = localStorage.getItem('moneyme.sync.account'); if (hint) cfg.hint = hint; }   // тихе оновлення того ж акаунта
+      try { Sync.tokenClient.requestAccessToken(cfg); }
+      catch (e) { Sync._tokRes = Sync._tokRej = null; rej(e); }
+    });
+    // Якщо вікно Google не відповіло (зависла мережа) — не чекаємо вічно. Тихому поновленню
+    // даємо мало часу, явному входу — багато: людина може вводити пароль і код.
+    return withTimeout(p, prompt ? 180000 : 30000, 'Вхід Google не відповів — перевірте інтернет і спробуйте ще раз')
+      .catch(e => { Sync._tokRes = Sync._tokRej = null; throw e; });
+  });
 }
 // interactive=false → лише наявний токен (НЕ відкриваємо вікно у фоні). true → тихе оновлення (з hint).
 function getToken(interactive){
@@ -6448,7 +6512,7 @@ function getToken(interactive){
 // Email підключеного акаунта (для login_hint, щоб тихе оновлення не питало вибір акаунта).
 async function fetchAccountEmail(){
   try { const tok = getCachedToken(); if (!tok) return null;
-    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + tok } });
+    const r = await netFetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + tok } }, 12000);
     if (r.ok) { const j = await r.json(); return j.email || null; }
   } catch (e) {}
   return null;
@@ -6456,8 +6520,13 @@ async function fetchAccountEmail(){
 async function driveFetch(url, opts){
   const tok = await getToken(false);
   const o = Object.assign({}, opts); o.headers = Object.assign({}, o.headers, { Authorization: 'Bearer ' + tok });
-  let r = await fetch(url, o);
-  if (r.status === 401) { Sync.token = null; localStorage.removeItem(TOKEN_KEY); const t2 = await getToken(true); o.headers.Authorization = 'Bearer ' + t2; r = await fetch(url, o); }   // протух — тихо оновлюємо
+  const ms = (o.method && o.method !== 'GET') ? UPLOAD_TIMEOUT : NET_TIMEOUT;
+  let r = await netFetch(url, o, ms);
+  if (r.status === 401) {   // протух
+    Sync.token = null; localStorage.removeItem(TOKEN_KEY);
+    if (!Sync.interactive) { requestReauth(); throw new Error('Потрібно поновити вхід у Google'); }   // у фоні попап усе одно заблокують
+    const t2 = await getToken(true); o.headers.Authorization = 'Bearer ' + t2; r = await netFetch(url, o, ms);
+  }
   return r;
 }
 async function driveFindFile(){
@@ -6660,16 +6729,19 @@ async function cloudSync(interactive){
   if (!syncAvailable()) { setSyncStatus('off'); return; }
   if (!navigator.onLine) { setSyncStatus('offline'); return; }
   if (Sync.syncing) { Sync.again = true; return; }   // не паралелити синх
-  Sync.syncing = true;
+  Sync.syncing = true; Sync.interactive = !!interactive;
   try {
     setSyncStatus('syncing');
     // Токен: якщо протух — пробуємо ТИХО оновити (prompt:'' з hint; для активної Google-сесії — без вікна).
     // Це і у ФОНІ — щоб зміни доливались самі, а не висіли в черзі до ручного синху. Не вийшло тихо у фоні —
     // лишаємо в черзі без вікна входу (наступний тригер спробує знову).
     if (!getCachedToken()) {
-      try { await acquireToken(''); }
-      catch (e) { if (interactive) throw e; setSyncStatus(Sync.on ? 'idle' : 'off'); return; }
+      // ФОН: вікно входу відкривати не можна (браузер заблокує попап без дії користувача).
+      // Показуємо зрозумілий стан і чекаємо дотику / кнопки «Поновити вхід».
+      if (!interactive) { requestReauth(); setSyncStatus('needauth'); return; }
+      await acquireToken('');
     }
+    Sync.needAuth = false; Sync.authFailAt = 0;
     const myName = deviceFileName();
     const files = await driveListSyncFiles();
     const downloads = await Promise.all(files.map(async f => { try { return { f, j: await driveDownload(f.id) }; } catch (e) { return null; } }));
@@ -6702,19 +6774,21 @@ async function cloudSync(interactive){
     if (legacy) { try { await driveDeleteFile(legacy.id); } catch (e) {} }
     markSynced();
     setSyncStatus('idle');
+    maybeRenewSoon();   // токен добігає кінця — поновимо на найближчому дотику, не чекаючи обриву
     await attachmentSync(merged);   // вивантажити нові фото / прибрати сиріт (окремі файли att-<id>.jpg)
     cloudVersionedBackup(10);
-  } catch (e) { setSyncStatus('error', e.message || String(e)); }
-  finally { Sync.syncing = false; if (Sync.again) { Sync.again = false; setTimeout(() => cloudSync(false), 400); } }
+  } catch (e) { if (Sync.needAuth) setSyncStatus('needauth'); else setSyncStatus('error', e.message || String(e)); }
+  finally { Sync.syncing = false; Sync.interactive = false; if (Sync.again) { Sync.again = false; setTimeout(() => cloudSync(false), 400); } }
 }
 function cloudPush(){ return cloudSync(false); }   // вивантаження = повна (але комутативна) синхронізація
 // Підключення акаунта з ізоляцією даних: дані кожного Google-акаунта — окремі.
 // На спільному пристрої локальні дані НЕ заливаються в чужий акаунт без підтвердження.
 async function cloudConnect(){
+  if (Sync.status === 'connecting') return;   // повторний тап поки триває вхід лише плодив паралельні вікна
   if (!syncConfigured()) { alertModal('Спершу вставте Google Client ID у Налаштуваннях.'); return; }
   if (location.protocol.indexOf('http') !== 0) { alertModal('Синхронізація працює лише з https-хостингу (GitHub Pages), не з локального файлу.'); return; }
   try {
-    setSyncStatus('connecting');
+    setSyncStatus('connecting'); Sync.interactive = true;
     Sync.token = null; localStorage.removeItem(TOKEN_KEY); localStorage.removeItem('moneyme.sync.account');   // свіжий вхід — можна обрати акаунт
     await acquireToken('consent');
     const email = await fetchAccountEmail();   // запамʼятовуємо акаунт → подальші оновлення тихі (без вибору)
@@ -6742,16 +6816,18 @@ async function cloudConnect(){
         state = seed(); normalize(); persist(); _syncPrev = _snapSig(); render();
       }
     }
-    Sync.on = true; localStorage.setItem('moneyme.sync.on', '1'); localStorage.setItem('moneyme.sync.everConnected', '1');
+    Sync.on = true; Sync.needAuth = false; Sync.authFailAt = 0;
+    localStorage.setItem('moneyme.sync.on', '1'); localStorage.setItem('moneyme.sync.everConnected', '1');
     Sync.fileId = null;
     setSyncStatus('idle');
     await cloudSync(true);   // запише наш device-файл і дозливає (дані вже «наші»)
   } catch (e) { setSyncStatus('error', e.message || String(e)); }
+  finally { Sync.interactive = false; }
 }
 async function cloudDisconnect(){
   const wipe = await confirmModal('Відключити Google Drive?', 'Дані у Drive лишаться. Чи очистити локальні дані MoneyMe на цьому пристрої (зручно на спільному пристрої)?', { okLabel: 'Очистити локальні', cancelLabel: 'Лишити дані' });
   if (Sync.token && window.google && google.accounts) { try { google.accounts.oauth2.revoke(Sync.token.access_token, function(){}); } catch (e) {} }
-  Sync.on = false; Sync.token = null; Sync.fileId = null;
+  Sync.on = false; Sync.token = null; Sync.fileId = null; Sync.needAuth = false; Sync.authFailAt = 0;
   localStorage.removeItem('moneyme.sync.on');
   localStorage.removeItem('moneyme.sync.base');
   localStorage.removeItem(TOKEN_KEY);
