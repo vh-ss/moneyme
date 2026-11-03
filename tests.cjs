@@ -385,6 +385,22 @@ eq('loanNextDue назад: 15.06 → 15.05', S.loanNextDue({ due_date: '2026-06
   eq('debtTxSign: REPAY/BORROW — гроші на рахунок', S.debtTxSign('REPAY') + S.debtTxSign('BORROW'), 2);
 }
 
+// ——— Переказ: загальна сума списання (сума + комісія) ———
+{
+  const setT = (txs) => vm.runInContext(
+    `state.accounts = [{id:1,name:'Приват UAH',currency_code:'UAH',initial_balance:100000},{id:2,name:'Приват USD',currency_code:'USD',initial_balance:0}]; state.transactions = ${JSON.stringify(txs)};`, sandbox);
+  const tx = { id: 1, kind: 'TRANSFER', date: '2026-10-30', account_id: 1, to_account_id: 2, amount: 22935.78, to_amount: 500, exchange_rate: 500 / 22935.78, fee_amount: 50.46 };
+
+  near('transferTotal: сума + комісія', S.transferTotal(tx), 22986.24);
+  eq('transferTotal: без комісії — сама сума', S.transferTotal({ amount: 1000 }), 1000);
+  eq('transferTotal: порожній переказ', S.transferTotal({}), 0);
+
+  setT([tx]);
+  near('accountBalance: з рахунка пішло саме transferTotal', S.accountBalance(1), 100000 - 22986.24);
+  near('accountBalance: зараховано суму призначення', S.accountBalance(2), 500);
+  eq('баланс джерела = початок − transferTotal', vm.runInContext('round2(100000 - accountBalance(1))', sandbox), S.transferTotal(tx));
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);
