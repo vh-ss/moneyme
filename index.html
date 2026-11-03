@@ -370,7 +370,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '12ca004b65';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '777da28d7f';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -1264,13 +1264,17 @@ const $ = (sel, root=document) => root.querySelector(sel);
 const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const num = (s) => { const n = parseFloat(String(s).replace(',', '.')); return isNaN(n) ? 0 : n; };
-const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+// Math.round(-0.1) дає −0, і далі все нижче за копійку виводилось як «-0,00 ₴» — нормалізуємо нуль.
+const round2 = (n) => { const r = Math.round((n + Number.EPSILON) * 100) / 100; return r === 0 ? 0 : r; };
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
 const monthStartISO = () => todayISO().slice(0,8) + '01';
 const yearStartISO = () => todayISO().slice(0,4) + '-01-01';
 function money(amount, cur='UAH') {
   if (hideBalances) return '••••• ' + curSym(cur);
   let v = isFinite(amount) ? amount : 0;
+  // Крихти від арифметики з плаваючою комою не мають показуватись як «-0,00 ₴»:
+  // усе, що округлюється до нуля, і є нуль — без знака мінус.
+  if (Math.abs(v) < 0.005) v = 0;
   // демо-масштаб лише для скріншота і ТІЛЬКИ коли немає відкритого діалогу (щоб у формах були справжні числа)
   if (screenshotMode && !document.querySelector('.overlay')) v = v * screenshotFactor;
   try { return new Intl.NumberFormat('uk-UA',{style:'currency',currency:cur,currencyDisplay:'narrowSymbol',maximumFractionDigits:2}).format(v); }
@@ -4584,7 +4588,7 @@ function openGoalForm(existing){
 
 //==================== Вигляд: Криптовалюти ====================
 // Форматування кількості монет (велика або з багатьма знаками після коми).
-function fmtAmt(n){ const v = Number(n) || 0; return v.toLocaleString('uk-UA', { maximumFractionDigits: 8 }); }
+function fmtAmt(n){ let v = Number(n) || 0; if (Math.abs(v) < 5e-9) v = 0; return v.toLocaleString('uk-UA', { maximumFractionDigits: 8 }); }
 function cryptoRound(x){ return Math.max(0, Math.round((Number(x) || 0) * 1e8) / 1e8); }   // округлення крипто-кількості (8 знаків, не від'ємне)
 // Знак P&L: повертає {txt, color} для відсотка прибутку/збитку.
 function plTag(pct){ if (pct == null) return null; const up = pct >= 0; return { txt: (up?'▲ ':'▼ ') + (up?'+':'') + pct.toFixed(1) + '%', color: up?'var(--green)':'var(--red)' }; }
@@ -5126,7 +5130,7 @@ function openCryptoTrade(base, side){
     save(); close(); render();
   }});
 }
-function round2plusCrypto(x){ return Math.round((Number(x) || 0) * 1e8) / 1e8; }   // як cryptoRound, але дозволяє 0 без clamp до >0 (для проміжних розрахунків)
+function round2plusCrypto(x){ const r = Math.round((Number(x) || 0) * 1e8) / 1e8; return r === 0 ? 0 : r; }   // як cryptoRound, але дозволяє 0 без clamp до >0 (для проміжних розрахунків)
 
 //==================== Дорогоцінні метали ====================
 // Ціни беремо з НБУ — того самого запиту, що й валюти (ensureRatesFresh):

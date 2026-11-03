@@ -401,6 +401,19 @@ eq('loanNextDue назад: 15.06 → 15.05', S.loanNextDue({ due_date: '2026-06
   eq('баланс джерела = початок − transferTotal', vm.runInContext('round2(100000 - accountBalance(1))', sandbox), S.transferTotal(tx));
 }
 
+// ——— Нуль не буває від'ємним («-0,00 ₴») ———
+{
+  const r2 = (n) => vm.runInContext('round2(' + n + ')', sandbox);
+  ok('round2(-0.001) — звичайний нуль, не −0', Object.is(r2(-0.001), 0));
+  ok('round2(-0) — звичайний нуль', Object.is(r2(-0), 0));
+  ok('round2 не чіпає звичайні числа', r2(-12.345) === -12.35 || r2(-12.345) === -12.34);
+  eq('money(-0.001) без мінуса', S.money(-0.001, 'UAH').includes('-') || S.money(-0.001, 'UAH').includes('−'), false);
+  eq('money(-0) без мінуса', S.money(-0, 'UAH').includes('-') || S.money(-0, 'UAH').includes('−'), false);
+  eq('money(-0.004) округлюється до нуля без знака', S.money(-0.004, 'UAH'), S.money(0, 'UAH'));
+  ok('money(-0.01) лишається мінусовою', /[-−]/.test(S.money(-0.01, 'UAH')));
+  eq('fmtAmt(-0) без мінуса', S.fmtAmt(-0), S.fmtAmt(0));
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);
