@@ -57,14 +57,15 @@
   .nav a:hover:not(.active) { background: var(--hover); }
   .nav a .ni { font-size: 15px; line-height: 1; display: inline-flex; align-items: center; }
   .nav a .ni svg { width: 1.35em; height: 1.35em; display: block; }
-  /* Тихий індикатор синхронізації в шапці: зʼявляється, лише коли синх зупинився.
-     Жодних плашок поверх застосунку — зайти й внести витрату можна завжди. */
-  .syncdot { display: none; align-items: center; gap: 4px; margin-left: 8px; padding: 3px 8px; border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--amber) 50%, transparent); background: color-mix(in srgb, var(--amber) 14%, transparent);
-    color: var(--amber); font: inherit; font-size: 11px; font-weight: 700; line-height: 1; white-space: nowrap; }
+  /* Індикатор синхронізації в шапці: видно, що вона жива («✓ 2 хв») і коли зупинилась.
+     Це НЕ плашка — нічого не перекриває й нічого не вимагає; зайти й внести витрату можна завжди. */
+  .syncdot { display: none; flex: 0 0 auto; align-items: center; gap: 4px; margin-left: 8px; padding: 3px 8px; border-radius: 999px;
+    border: 1px solid var(--line); background: transparent;
+    color: var(--muted); font: inherit; font-size: 11px; font-weight: 700; line-height: 1; white-space: nowrap; }
   .syncdot[data-show="1"] { display: inline-flex; }
-  .syncdot { flex: 0 0 auto; }
+  .syncdot.warn { border-color: color-mix(in srgb, var(--amber) 50%, transparent); background: color-mix(in srgb, var(--amber) 14%, transparent); color: var(--amber); }
   .syncdot.err { border-color: color-mix(in srgb, var(--red) 50%, transparent); background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+  .syncdot.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
   .navmore-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; color: var(--muted); background: none; border: none; cursor: pointer; font: inherit; font-weight: 500; font-size: 14px; white-space: nowrap; }
   .navmore-btn .ni { font-size: 15px; line-height: 1; display: inline-flex; align-items: center; }
   .navmore-btn .ni svg { width: 1.35em; height: 1.35em; display: block; }
@@ -6412,16 +6413,41 @@ function setSyncStatus(s, detail){ Sync.status = s; Sync.detail = detail || '';
 // Єдина видима ознака проблем із синхронізацією — маленький значок у шапці. Він нічого не
 // перекриває й нічого не вимагає: натиснути можна тоді, коли зручно (вікно Google відкривається
 // лише з такого натискання — у фоні браузер попап усе одно блокує).
+// «Скільки минуло» — коротко, щоб вміститись у шапку телефона.
+function syncAgoText(iso){
+  if (!iso) return '';
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (!isFinite(m) || m < 0) return '';
+  if (m < 1) return 'щойно';
+  if (m < 60) return m + ' хв';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + ' год';
+  return Math.floor(h / 24) + ' дн';
+}
 function paintSyncDot(){
   const d = document.getElementById('syncdot'); if (!d) return;
-  const stuck = Sync.on && syncAvailable() && (Sync.needAuth || Sync.status === 'error');
-  d.setAttribute('data-show', stuck ? '1' : '0');
-  d.classList.toggle('err', !Sync.needAuth && Sync.status === 'error');
-  if (!stuck) return;
-  d.textContent = Sync.needAuth ? '⟳ вхід' : '⚠ синх';
-  d.title = Sync.needAuth
-    ? 'Синхронізацію призупинено — натисніть, щоб поновити вхід у Google. Дані збережено на пристрої.'
-    : 'Синхронізація не вдалася' + (Sync.detail ? ': ' + Sync.detail : '') + ' — натисніть, щоб спробувати ще раз.';
+  const on = Sync.on && syncAvailable();
+  d.setAttribute('data-show', on ? '1' : '0');
+  if (!on) return;
+  const ago = syncAgoText(Sync.last);
+  const when = Sync.last ? ' · востаннє ' + fmtSyncTime(Sync.last) : '';
+  let cls = 'ok', text, title;
+  switch (Sync.status) {
+    case 'connecting':
+    case 'syncing':
+      cls = ''; text = '⟳ синх…'; title = 'Синхронізація з Google Drive просто зараз' + when; break;
+    case 'needauth':
+      cls = 'warn'; text = '⟳ вхід'; title = 'Синхронізацію призупинено — натисніть, щоб поновити вхід у Google. Дані збережено на пристрої.' + when; break;
+    case 'error':
+      cls = 'err'; text = '⚠ синх'; title = 'Синхронізація не вдалася' + (Sync.detail ? ': ' + Sync.detail : '') + ' — натисніть, щоб спробувати ще раз.' + when; break;
+    case 'offline':
+      cls = ''; text = '⛅ офлайн'; title = 'Немає мережі. Зміни збережено на пристрої — вивантажаться самі, щойно зʼявиться інтернет.' + when; break;
+    default:
+      text = '✓' + (ago ? ' ' + ago : ''); title = 'Синхронізовано автоматично' + (when || ' — ще не було') + '. Працює у фоні: при вході, появі мережі та після кожної зміни.';
+  }
+  d.className = 'syncdot' + (cls ? ' ' + cls : '');
+  d.textContent = text;
+  d.title = title;
 }
 
 // Черга вивантаження після локальної зміни (викликається із save()).
@@ -6899,6 +6925,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && Sy
 // Періодична фонова синхронізація (раз на ~90 с), поки вкладка активна — щоб зміни з інших пристроїв
 // підтягувались самі, без ручного «Синхронізувати».
 setInterval(() => { if (Sync.on && syncAvailable() && navigator.onLine && !document.hidden) cloudSync(false); }, 90 * 1000);
+setInterval(paintSyncDot, 30 * 1000);   // «✓ 2 хв» у шапці має лишатись правдою, а не застигати
 </script>
 </body>
 </html>

@@ -414,6 +414,17 @@ eq('loanNextDue назад: 15.06 → 15.05', S.loanNextDue({ due_date: '2026-06
   eq('fmtAmt(-0) без мінуса', S.fmtAmt(-0), S.fmtAmt(0));
 }
 
+// ——— Значок синхронізації: «скільки минуло» ———
+{
+  const ago = (minAgo) => S.syncAgoText(new Date(Date.now() - minAgo * 60000).toISOString());
+  eq('syncAgoText: щойно', ago(0), 'щойно');
+  eq('syncAgoText: хвилини', ago(7), '7 хв');
+  eq('syncAgoText: години', ago(125), '2 год');
+  eq('syncAgoText: дні', ago(60 * 26), '1 дн');
+  eq('syncAgoText: ще не синхронізовано', S.syncAgoText(null), '');
+  eq('syncAgoText: сміття не ламає шапку', S.syncAgoText('не-дата'), '');
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);
