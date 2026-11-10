@@ -395,7 +395,7 @@ const Sync = {
   on: localStorage.getItem('moneyme.sync.on') === '1',
   status: 'off', detail: '', applying: false,
   token: null, tokenClient: null, fileId: null, gisLoading: null,
-  needAuth: false, interactive: false,   // вхід у Google застарів / чи можна відкривати вікно
+  needAuth: false, interactive: false, authFailAt: 0, reauthing: false,   // вхід у Google застарів / чи можна відкривати вікно
   pending: false, pushTimer: null,
   last: localStorage.getItem('moneyme.sync.last') || null,
 };
@@ -6437,7 +6437,7 @@ function paintSyncDot(){
     case 'syncing':
       cls = ''; text = '⟳ синх…'; title = 'Синхронізація з Google Drive просто зараз' + when; break;
     case 'needauth':
-      cls = 'warn'; text = '⟳ вхід'; title = 'Синхронізацію призупинено — натисніть, щоб поновити вхід у Google. Дані збережено на пристрої.' + when; break;
+      cls = 'warn'; text = '⟳ вхід'; title = 'Вхід у Google поновлюється сам — зачекайте. Якщо довго висить, натисніть. Дані збережено на пристрої.' + when; break;
     case 'error':
       cls = 'err'; text = '⚠ синх'; title = 'Синхронізація не вдалася' + (Sync.detail ? ': ' + Sync.detail : '') + ' — натисніть, щоб спробувати ще раз.' + when; break;
     case 'offline':
@@ -6497,11 +6497,40 @@ function getCachedToken(){
   try { const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null'); if (t && t.exp - Date.now() > TOKEN_MARGIN) { Sync.token = t; return t.access_token; } } catch (e) {}
   return null;
 }
-// Токен протух: НІЧОГО не відкриваємо. Раніше поновлення чіплялось до найближчого дотику — і
-// людина, яка зайшла швидко внести витрату, діставала вікно Google посеред екрана (а без мережі
-// воно ще й висіло). Тепер синх просто тихо чекає: дані лежать локально, значок у шапці підкаже,
-// а вікно входу зʼявиться лише коли користувач сам натисне той значок.
-function requestReauth(){ Sync.needAuth = true; }
+// Поновлення входу має відбуватись САМО — тиснути нічого не треба. Але дві умови, вистраждані
+// на практиці: (1) перші секунди після запуску не чіпаємо нічого — зайти й швидко внести витрату
+// важливіше за синх, і саме вікно Google «на першому дотику» виглядало як блокування входу;
+// (2) без мережі не пробуємо — там вікно просто висить. Не вийшло — тихо, значок у шапці, повтор пізніше.
+const REAUTH_QUIET = 45 * 1000;        // «карантин» після запуску застосунку
+const REAUTH_RETRY = 10 * 60 * 1000;   // після невдачі не смикаємо частіше
+const TOKEN_RENEW_AT = 15 * 60 * 1000; // поки токен ще живий, але добігає — поновлюємо заздалегідь
+const APP_STARTED = Date.now();
+function canAutoReauth(){
+  if (!Sync.on || !syncAvailable() || !navigator.onLine) return false;
+  if (Date.now() - APP_STARTED < REAUTH_QUIET) return false;
+  if (Date.now() - (Sync.authFailAt || 0) < REAUTH_RETRY) return false;
+  if (!localStorage.getItem('moneyme.sync.account')) return false;   // без підказки акаунта вікно показало б вибір
+  if ($('#modal-root') && $('#modal-root').children.length) return false;   // не збивати відкриту форму
+  return true;
+}
+// Тиха спроба поновити токен. Вікно Google для збереженого акаунта з живою сесією закривається
+// саме — людина бачить щонайбільше спалах; якщо браузер попап заблокував, приходить помилка і ми
+// просто чекаємо наступної нагоди (значок у шапці тим часом показує «⟳ вхід»).
+function tryAutoReauth(force){
+  if (Sync.reauthing || (!force && getCachedToken()) || !canAutoReauth()) return Promise.resolve(false);
+  const wasStuck = Sync.needAuth;
+  Sync.reauthing = true;
+  return acquireToken('')
+    .then(() => { Sync.needAuth = false; Sync.authFailAt = 0; Sync.reauthing = false; setSyncStatus('idle'); if (wasStuck) cloudSync(false); return true; })
+    .catch(() => { Sync.authFailAt = Date.now(); Sync.reauthing = false; if (Sync.needAuth) setSyncStatus('needauth'); return false; });
+}
+// Токен протух у фоні: позначаємо стан і одразу пробуємо поновити самі.
+function requestReauth(){ Sync.needAuth = true; tryAutoReauth(); }
+// Профілактика: поновлюємо, поки токен ЩЕ живий — так протухання майже не настає, і вікно (якщо
+// воно взагалі зʼявиться) трапляється посеред роботи, а не на вході.
+// force=true: поновлюємо, хоча токен ще дійсний. Старий токен лишається на місці — якщо спроба
+// не вдалась, синх далі працює на ньому до самого кінця строку.
+function maybeRenewSoon(){ const t = Sync.token; if (t && t.exp - Date.now() < TOKEN_RENEW_AT) tryAutoReauth(true); }
 function saveToken(resp){
   Sync.token = { access_token: resp.access_token, exp: Date.now() + ((resp.expires_in || 3300) * 1000) };
   try { localStorage.setItem(TOKEN_KEY, JSON.stringify(Sync.token)); } catch (e) {}
@@ -6767,8 +6796,9 @@ async function cloudSync(interactive){
     // Це і у ФОНІ — щоб зміни доливались самі, а не висіли в черзі до ручного синху. Не вийшло тихо у фоні —
     // лишаємо в черзі без вікна входу (наступний тригер спробує знову).
     if (!getCachedToken()) {
-      // ФОН: вікно входу відкривати не можна (браузер заблокує попап без дії користувача).
-      // Показуємо зрозумілий стан і чекаємо дотику / кнопки «Поновити вхід».
+      // ФОН: requestReauth сам пробує тихо поновити вхід (з карантином після запуску й лише
+      // за наявності мережі). Тут не чекаємо на нього — ця синхронізація просто перенесеться на
+      // наступний тригер, а застосунок тим часом не підвисає.
       if (!interactive) { requestReauth(); setSyncStatus('needauth'); return; }
       await acquireToken('');
     }
@@ -6805,6 +6835,7 @@ async function cloudSync(interactive){
     if (legacy) { try { await driveDeleteFile(legacy.id); } catch (e) {} }
     markSynced();
     setSyncStatus('idle');
+    maybeRenewSoon();   // токен добігає кінця — поновимо заздалегідь, щоб синх не став зовсім
     await attachmentSync(merged);   // вивантажити нові фото / прибрати сиріт (окремі файли att-<id>.jpg)
     cloudVersionedBackup(10);
   } catch (e) { if (Sync.needAuth) setSyncStatus('needauth'); else setSyncStatus('error', e.message || String(e)); }
@@ -6912,6 +6943,10 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
 const _syncDotBtn = document.getElementById('syncdot');
 if (_syncDotBtn) _syncDotBtn.onclick = () => cloudSync(true);   // клік = жест користувача, з ним вікно Google дозволене
 paintSyncDot();
+
+// Дотик по екрану — найкраща нагода поновити вхід: одразу після дії користувача браузер попап
+// дозволяє. Карантин REAUTH_QUIET усе одно діє, тож швидко зайти й внести витрату ніщо не заважає.
+document.addEventListener('pointerdown', () => { if (Sync.needAuth) tryAutoReauth(); }, true);
 
 // Автосинхронізація при старті/поверненні в застосунок/появі мережі.
 // Усі ці тригери — ФОНОВІ: cloudSync(false) синхронізує лише за наявності збереженого
