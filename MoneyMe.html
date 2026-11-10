@@ -57,6 +57,14 @@
   .nav a:hover:not(.active) { background: var(--hover); }
   .nav a .ni { font-size: 15px; line-height: 1; display: inline-flex; align-items: center; }
   .nav a .ni svg { width: 1.35em; height: 1.35em; display: block; }
+  /* Тихий індикатор синхронізації в шапці: зʼявляється, лише коли синх зупинився.
+     Жодних плашок поверх застосунку — зайти й внести витрату можна завжди. */
+  .syncdot { display: none; align-items: center; gap: 4px; margin-left: 8px; padding: 3px 8px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--amber) 50%, transparent); background: color-mix(in srgb, var(--amber) 14%, transparent);
+    color: var(--amber); font: inherit; font-size: 11px; font-weight: 700; line-height: 1; white-space: nowrap; }
+  .syncdot[data-show="1"] { display: inline-flex; }
+  .syncdot { flex: 0 0 auto; }
+  .syncdot.err { border-color: color-mix(in srgb, var(--red) 50%, transparent); background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
   .navmore-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; color: var(--muted); background: none; border: none; cursor: pointer; font: inherit; font-weight: 500; font-size: 14px; white-space: nowrap; }
   .navmore-btn .ni { font-size: 15px; line-height: 1; display: inline-flex; align-items: center; }
   .navmore-btn .ni svg { width: 1.35em; height: 1.35em; display: block; }
@@ -301,6 +309,7 @@
     .wrap { padding: 12px 10px 70px; }
     .nav { padding: 11px 6px; gap: 1px; }
     .brand { display: none; }   /* на телефоні логотип ховаємо — лишаємо лише іконки розділів */
+    .syncdot { margin-left: 2px; margin-right: 2px; padding: 3px 6px; }   /* значок синху лишається видимим */
     .nav a { padding: 10px 6px; font-size: 13px; }
     .nav a .nt, .navmore-btn .nt { display: none; }
     .nav a .ni { font-size: 19px; }
@@ -347,6 +356,7 @@
 <header>
   <div class="nav">
     <div class="brand"><img class="logo" src="icons/icon-192.png" alt="MoneyMe"><span class="bt">MoneyMe</span></div>
+    <button type="button" id="syncdot" class="syncdot" data-show="0"></button>
     <a data-view="dashboard"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18" stroke-width="1.1" opacity=".4"/><path d="M12 12 18.4 7.4"/><circle cx="16" cy="9" r="1.4" fill="currentColor" stroke="none"/></svg></span><span class="nt">Огляд</span></a>
     <a data-view="transactions"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="16.5" rx="1.6"/><rect x="9" y="2.4" width="6" height="3" rx="1" fill="currentColor" stroke="none"/><path d="M8.5 12.5h7M8.5 16h4.5" stroke-width="1.7"/></svg></span><span class="nt">Операції</span></a>
     <a data-view="analytics"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h16"/><path d="M7 21V12M12 21V5M17 21V15"/></svg></span><span class="nt">Аналітика</span></a>
@@ -384,7 +394,7 @@ const Sync = {
   on: localStorage.getItem('moneyme.sync.on') === '1',
   status: 'off', detail: '', applying: false,
   token: null, tokenClient: null, fileId: null, gisLoading: null,
-  needAuth: false, authFailAt: 0, interactive: false,   // вхід у Google застарів / чи можна відкривати вікно
+  needAuth: false, interactive: false,   // вхід у Google застарів / чи можна відкривати вікно
   pending: false, pushTimer: null,
   last: localStorage.getItem('moneyme.sync.last') || null,
 };
@@ -538,8 +548,9 @@ const I18N_EN = {
   '📈 Історія портфеля накопичується — графік зʼявиться за кілька днів користування.':'📈 Portfolio history is accumulating — the chart will appear after a few days of use.',
   'Приховати баланси (••••)':'Hide balances (••••)','Цифри для скріна (демо-суми, реальні дані не змінюються)':'Screenshot numbers (demo amounts, real data unchanged)','Автозавантаження бекап-файлу раз на день':'Auto-download backup file once a day',
   'MoneyMe працює у вашому браузері й офлайн: дані зберігаються локально (localStorage) на пристрої. У веб-версії (PWA) їх можна синхронізувати між ПК і телефоном через вашу приховану папку Google Drive. Для перенесення чи бекапу також є експорт у файл.':'MoneyMe runs in your browser and offline: data is stored locally (localStorage) on the device. In the web version (PWA) it can sync between PC and phone via your hidden Google Drive folder. There is also export to file for transfer or backup.',
-  'Синхронізація — Google Drive':'Sync — Google Drive','Зберегти ID':'Save ID','Підключити Google Drive':'Connect Google Drive','Синхронізувати зараз':'Sync now','Відключити':'Disconnect',
-  'Зберігає дані у прихованій папці вашого Google Drive і синхронізує ПК ↔ телефон. Працює лише у веб-версії (https), не у файлі. Офлайн усе одно працює — зміни вивантажаться, щойно зʼявиться мережа.':'Stores data in a hidden folder of your Google Drive and syncs PC ↔ phone. Works only in the web version (https), not from a file. Offline still works — changes upload once you are back online.',
+  'Синхронізація — Google Drive':'Sync — Google Drive','Зберегти ID':'Save ID','Підключити Google Drive':'Connect Google Drive','Відключити':'Disconnect','Поновити вхід':'Renew sign-in',
+  'Зберігає дані у прихованій папці вашого Google Drive і синхронізує ПК ↔ телефон. Працює лише у веб-версії (https), не у файлі. Усе відбувається автоматично у фоні — нічого тиснути не треба. Офлайн застосунок працює як завжди, зміни вивантажаться, щойно зʼявиться мережа.':'Stores data in a hidden folder of your Google Drive and syncs PC ↔ phone. Works only in the web version (https), not from a file. It all happens automatically in the background — nothing to press. Offline the app works as usual; changes upload once you are back online.',
+  'Призупинено — потрібно поновити вхід у Google (дані збережено на пристрої)':'Paused — sign in to Google again (your data is saved on this device)',
   'Доступна нова версія MoneyMe':'A new version of MoneyMe is available','Оновити':'Update','Пізніше':'Later',
   '✓ Синхронізовано':'✓ Synced','Підключення…':'Connecting…','Синхронізація…':'Syncing…','Очікування…':'Waiting…','Вимкнено':'Off',
   'Офлайн — зміни збережено, вивантажаться пізніше':'Offline — changes saved, will upload later',
@@ -3073,15 +3084,6 @@ function deleteDebt(d){
 }
 
 // ——— Сповіщення про борги (Огляд + сторінка «Борги») ———
-// Вхід у Google застарів: без цієї плашки синх просто мовчки стояв, і виглядало, ніби «розлогінило».
-function noticeSyncAuth(){
-  if (!Sync.on || !Sync.needAuth || !syncAvailable()) return [];
-  const n = el(`<div class="notice" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>🔑 Синхронізацію призупинено — потрібно поновити вхід у Google (дані збережено на пристрої)</span><span class="row" style="gap:6px"></span></div>`);
-  const b = el(`<button class="btn sm primary">Поновити вхід</button>`);
-  b.onclick = () => cloudSync(true);
-  n.lastElementChild.appendChild(b);
-  return [n];
-}
 function noticeDebtDue({ nav = true } = {}){
   const due = (state.debts || []).filter(debtPending);
   if (!due.length) return [];
@@ -3360,7 +3362,7 @@ views.dashboard = (app) => {
   // Порядок важливий: кредит — це реальні гроші й пеня, тож він перший. Раніше він був останнім
   // і на телефоні йшов за межу екрана під бюджетами та регулярними — його просто не бачили.
   // Ті самі сповіщення показуються й на профільних сторінках (Кредити / Регулярні / Категорії).
-  [...noticeSyncAuth(), ...noticeLoanDue(), ...noticeDebtDue(), ...noticeRecurDue(), ...noticeRecurSoon(), ...noticeBudgetOver()].forEach(n => app.appendChild(n));
+  [...noticeLoanDue(), ...noticeDebtDue(), ...noticeRecurDue(), ...noticeRecurSoon(), ...noticeBudgetOver()].forEach(n => app.appendChild(n));
 
   // бюджети категорій з лімітом (поточний місяць) — без тих, що 0%
   const bcard = budgetsCard({ hideZero: true });
@@ -5985,23 +5987,22 @@ views.settings = (app) => {
     case 'syncing':    return ['Синхронізація…', 'var(--muted)'];
     case 'idle':       return ['✓ Синхронізовано' + (Sync.last ? ' · ' + new Date(Sync.last).toLocaleString('uk-UA') : ''), 'var(--green)'];
     case 'offline':    return ['Офлайн — зміни збережено, вивантажаться пізніше', 'var(--amber)'];
-    case 'needauth':   return ['Потрібно поновити вхід у Google', 'var(--amber)'];
+    case 'needauth':   return ['Призупинено — потрібно поновити вхід у Google (дані збережено на пристрої)', 'var(--amber)'];
     case 'error':      return ['Помилка: ' + (Sync.detail || ''), 'var(--red)'];
     default:           return [Sync.on ? 'Очікування…' : 'Вимкнено', 'var(--muted)'];
   } })();
   const sync = el(`<section class="card" style="padding:18px;margin-top:16px">
     <h2>Синхронізація — Google Drive</h2>
-    <p class="muted small">Зберігає дані у прихованій папці вашого Google Drive і синхронізує ПК ↔ телефон. Працює лише у веб-версії (https), не у файлі. Офлайн усе одно працює — зміни вивантажаться, щойно зʼявиться мережа.</p>
+    <p class="muted small">Зберігає дані у прихованій папці вашого Google Drive і синхронізує ПК ↔ телефон. Працює лише у веб-версії (https), не у файлі. Усе відбувається автоматично у фоні — нічого тиснути не треба. Офлайн застосунок працює як завжди, зміни вивантажаться, щойно зʼявиться мережа.</p>
     ${isHttp ? '' : '<div class="notice" style="margin-top:8px">⚠️ Це локальний файл. Синхронізація доступна лише з веб-версії (GitHub Pages) — див. SETUP.md.</div>'}
     <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
       ${Sync.on
-        ? `${Sync.needAuth ? '<button class="btn primary" id="sy-auth">Поновити вхід</button>' : ''}<button class="btn" id="sy-now">Синхронізувати зараз</button><button class="btn danger" id="sy-off">Відключити</button>`
+        ? `${Sync.needAuth ? '<button class="btn primary" id="sy-auth">Поновити вхід</button>' : ''}<button class="btn danger" id="sy-off">Відключити</button>`
         : '<button class="btn primary" id="sy-connect">Підключити Google Drive</button>'}
     </div>
     <div class="small" style="margin-top:10px;color:${st[1]}">${esc(st[0])}</div>
   </section>`);
   if ($('#sy-connect', sync)) $('#sy-connect', sync).onclick = () => cloudConnect();
-  if ($('#sy-now', sync)) $('#sy-now', sync).onclick = () => cloudSync(true);
   if ($('#sy-auth', sync)) $('#sy-auth', sync).onclick = () => cloudSync(true);   // клік = жест користувача, з ним вікно Google дозволене
   if ($('#sy-off', sync)) $('#sy-off', sync).onclick = () => { cloudDisconnect(); render(); };
   app.appendChild(sync);
@@ -6406,7 +6407,22 @@ function clientId(){ return (GOOGLE_CLIENT_ID || localStorage.getItem('moneyme.s
 function syncAvailable(){ return location.protocol.indexOf('http') === 0 && !!clientId(); }
 function syncConfigured(){ return !!clientId(); }
 function setSyncStatus(s, detail){ Sync.status = s; Sync.detail = detail || '';
-  if (currentView === 'settings' || currentView === 'dashboard') render(); }   // і Огляд — там плашка «поновити вхід»
+  paintSyncDot();
+  if (currentView === 'settings') render(); }
+// Єдина видима ознака проблем із синхронізацією — маленький значок у шапці. Він нічого не
+// перекриває й нічого не вимагає: натиснути можна тоді, коли зручно (вікно Google відкривається
+// лише з такого натискання — у фоні браузер попап усе одно блокує).
+function paintSyncDot(){
+  const d = document.getElementById('syncdot'); if (!d) return;
+  const stuck = Sync.on && syncAvailable() && (Sync.needAuth || Sync.status === 'error');
+  d.setAttribute('data-show', stuck ? '1' : '0');
+  d.classList.toggle('err', !Sync.needAuth && Sync.status === 'error');
+  if (!stuck) return;
+  d.textContent = Sync.needAuth ? '⟳ вхід' : '⚠ синх';
+  d.title = Sync.needAuth
+    ? 'Синхронізацію призупинено — натисніть, щоб поновити вхід у Google. Дані збережено на пристрої.'
+    : 'Синхронізація не вдалася' + (Sync.detail ? ': ' + Sync.detail : '') + ' — натисніть, щоб спробувати ще раз.';
+}
 
 // Черга вивантаження після локальної зміни (викликається із save()).
 function cloudOnLocalChange(){
@@ -6450,36 +6466,16 @@ const TOKEN_KEY = 'moneyme.sync.token';
 // Токен зберігаємо (≈1 год) і перевикористовуємо між перезавантаженнями — щоб не просити
 // вхід щоразу (особливо на телефоні, де браузер «вивантажує» сторінку у фоні).
 const TOKEN_MARGIN = 5 * 60 * 1000;    // не беремо токен, якому лишилось менше 5 хв — щоб не впасти посеред синху
-const TOKEN_RENEW_AT = 15 * 60 * 1000; // за 15 хв до кінця вже пробуємо поновити на найближчому дотику
-const AUTH_RETRY = 15 * 60 * 1000;     // після невдалого поновлення не смикаємо частіше
 function getCachedToken(){
   if (Sync.token && Sync.token.exp - Date.now() > TOKEN_MARGIN) return Sync.token.access_token;
   try { const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null'); if (t && t.exp - Date.now() > TOKEN_MARGIN) { Sync.token = t; return t.access_token; } } catch (e) {}
   return null;
 }
-// Вікно Google відкривається ЛИШЕ з дії користувача: у фоні (таймер, повернення на вкладку, поява
-// мережі) браузер блокує попап → приходив error_callback і все виглядало як «розлогінило».
-// Тому поновлення чіпляємо до НАЙБЛИЖЧОГО дотику: із підказкою акаунта й живою Google-сесією
-// вікно закривається саме, людина бачить щонайбільше спалах.
-function armTokenRefresh(){
-  if (Sync._reauthArmed) return;
-  if (Date.now() - (Sync.authFailAt || 0) < AUTH_RETRY) return;
-  if (!localStorage.getItem('moneyme.sync.account')) return;   // без підказки акаунта вікно показало б вибір — не робимо це несподівано
-  Sync._reauthArmed = true;
-  const onGesture = () => {
-    document.removeEventListener('pointerdown', onGesture, true);
-    Sync._reauthArmed = false;
-    if (getCachedToken()) return;
-    acquireToken('').then(() => { Sync.needAuth = false; Sync.authFailAt = 0; setSyncStatus('idle'); cloudSync(false); })
-                    .catch(() => { Sync.authFailAt = Date.now(); if (Sync.needAuth) setSyncStatus('needauth'); });
-  };
-  document.addEventListener('pointerdown', onGesture, true);
-}
-// Токен протух у фоні: показуємо зрозумілий стан (а не «Помилка») і пробуємо поновити на дотику.
-function requestReauth(){ Sync.needAuth = true; armTokenRefresh(); }
-// Профілактика: поки токен ще живий, але добігає кінця — поновлюємо заздалегідь, щоб вхід
-// не «злітав» посеред роботи (саме це відчувалось як постійне розлогінення).
-function maybeRenewSoon(){ const t = Sync.token; if (t && t.exp - Date.now() < TOKEN_RENEW_AT) armTokenRefresh(); }
+// Токен протух: НІЧОГО не відкриваємо. Раніше поновлення чіплялось до найближчого дотику — і
+// людина, яка зайшла швидко внести витрату, діставала вікно Google посеред екрана (а без мережі
+// воно ще й висіло). Тепер синх просто тихо чекає: дані лежать локально, значок у шапці підкаже,
+// а вікно входу зʼявиться лише коли користувач сам натисне той значок.
+function requestReauth(){ Sync.needAuth = true; }
 function saveToken(resp){
   Sync.token = { access_token: resp.access_token, exp: Date.now() + ((resp.expires_in || 3300) * 1000) };
   try { localStorage.setItem(TOKEN_KEY, JSON.stringify(Sync.token)); } catch (e) {}
@@ -6750,7 +6746,7 @@ async function cloudSync(interactive){
       if (!interactive) { requestReauth(); setSyncStatus('needauth'); return; }
       await acquireToken('');
     }
-    Sync.needAuth = false; Sync.authFailAt = 0;
+    Sync.needAuth = false;
     const myName = deviceFileName();
     const files = await driveListSyncFiles();
     const downloads = await Promise.all(files.map(async f => { try { return { f, j: await driveDownload(f.id) }; } catch (e) { return null; } }));
@@ -6783,7 +6779,6 @@ async function cloudSync(interactive){
     if (legacy) { try { await driveDeleteFile(legacy.id); } catch (e) {} }
     markSynced();
     setSyncStatus('idle');
-    maybeRenewSoon();   // токен добігає кінця — поновимо на найближчому дотику, не чекаючи обриву
     await attachmentSync(merged);   // вивантажити нові фото / прибрати сиріт (окремі файли att-<id>.jpg)
     cloudVersionedBackup(10);
   } catch (e) { if (Sync.needAuth) setSyncStatus('needauth'); else setSyncStatus('error', e.message || String(e)); }
@@ -6825,7 +6820,7 @@ async function cloudConnect(){
         state = seed(); normalize(); persist(); _syncPrev = _snapSig(); render();
       }
     }
-    Sync.on = true; Sync.needAuth = false; Sync.authFailAt = 0;
+    Sync.on = true; Sync.needAuth = false;
     localStorage.setItem('moneyme.sync.on', '1'); localStorage.setItem('moneyme.sync.everConnected', '1');
     Sync.fileId = null;
     setSyncStatus('idle');
@@ -6836,7 +6831,7 @@ async function cloudConnect(){
 async function cloudDisconnect(){
   const wipe = await confirmModal('Відключити Google Drive?', 'Дані у Drive лишаться. Чи очистити локальні дані MoneyMe на цьому пристрої (зручно на спільному пристрої)?', { okLabel: 'Очистити локальні', cancelLabel: 'Лишити дані' });
   if (Sync.token && window.google && google.accounts) { try { google.accounts.oauth2.revoke(Sync.token.access_token, function(){}); } catch (e) {} }
-  Sync.on = false; Sync.token = null; Sync.fileId = null; Sync.needAuth = false; Sync.authFailAt = 0;
+  Sync.on = false; Sync.token = null; Sync.fileId = null; Sync.needAuth = false;
   localStorage.removeItem('moneyme.sync.on');
   localStorage.removeItem('moneyme.sync.base');
   localStorage.removeItem(TOKEN_KEY);
@@ -6888,10 +6883,14 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
     } catch (e) {}
   });
 }
+const _syncDotBtn = document.getElementById('syncdot');
+if (_syncDotBtn) _syncDotBtn.onclick = () => cloudSync(true);   // клік = жест користувача, з ним вікно Google дозволене
+paintSyncDot();
+
 // Автосинхронізація при старті/поверненні в застосунок/появі мережі.
 // Усі ці тригери — ФОНОВІ: cloudSync(false) синхронізує лише за наявності збереженого
 // токена і НІКОЛИ не відкриває вікно входу Google. Вікно зʼявляється тільки коли користувач
-// сам тисне «Підключити» чи «Синхронізувати зараз».
+// сам тисне «Підключити» в Налаштуваннях або значок синхронізації в шапці.
 if (Sync.on && syncAvailable()) { setSyncStatus('idle'); cloudSync(false); }
 else if (!navigator.onLine && Sync.on) { setSyncStatus('offline'); }
 window.addEventListener('online', () => { if (Sync.on && syncAvailable()) cloudSync(false); });
