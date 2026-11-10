@@ -66,6 +66,7 @@
   .syncdot.warn { border-color: color-mix(in srgb, var(--amber) 50%, transparent); background: color-mix(in srgb, var(--amber) 14%, transparent); color: var(--amber); }
   .syncdot.err { border-color: color-mix(in srgb, var(--red) 50%, transparent); background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
   .syncdot.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
+  .syncdot .sdi { display: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
   .navmore-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; color: var(--muted); background: none; border: none; cursor: pointer; font: inherit; font-weight: 500; font-size: 14px; white-space: nowrap; }
   .navmore-btn .ni { font-size: 15px; line-height: 1; display: inline-flex; align-items: center; }
   .navmore-btn .ni svg { width: 1.35em; height: 1.35em; display: block; }
@@ -310,7 +311,18 @@
     .wrap { padding: 12px 10px 70px; }
     .nav { padding: 11px 6px; gap: 1px; }
     .brand { display: none; }   /* на телефоні логотип ховаємо — лишаємо лише іконки розділів */
-    .syncdot { margin-left: 2px; margin-right: 2px; padding: 3px 6px; }   /* значок синху лишається видимим */
+    /* У шапці телефона місця мало, тож значок узагалі не стоїть у рядку меню: від нього лишається
+       кольорова точка в кутку шапки (поза потоком — нуль пікселів по горизонту), а текст живе
+       в підказці. Повний напис («✓ 2 хв») показуємо лише там, де ширина це дозволяє. */
+    .syncdot { position: absolute; top: 2px; right: 2px; z-index: 2;
+      margin: 0; padding: 5px; width: auto; min-width: 0; border: none; background: none; }
+    .syncdot .sdl { display: none; }
+    .syncdot .sdi { display: block; }
+    .syncdot.warn, .syncdot.err { background: none; }
+    .syncdot:not(.ok):not(.warn):not(.err) .sdi { opacity: .55; }
+    .syncdot .sdi.busy { animation: sdpulse 1.1s ease-in-out infinite; }
+    @keyframes sdpulse { 0%, 100% { opacity: 1 } 50% { opacity: .25 } }
+    @media (prefers-reduced-motion: reduce) { .syncdot .sdi.busy { animation: none } }
     .nav a { padding: 10px 6px; font-size: 13px; }
     .nav a .nt, .navmore-btn .nt { display: none; }
     .nav a .ni { font-size: 19px; }
@@ -357,7 +369,7 @@
 <header>
   <div class="nav">
     <div class="brand"><img class="logo" src="icons/icon-192.png" alt="MoneyMe"><span class="bt">MoneyMe</span></div>
-    <button type="button" id="syncdot" class="syncdot" data-show="0"></button>
+    <button type="button" id="syncdot" class="syncdot" data-show="0"><span class="sdi" aria-hidden="true"></span><span class="sdl"></span></button>
     <a data-view="dashboard"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18" stroke-width="1.1" opacity=".4"/><path d="M12 12 18.4 7.4"/><circle cx="16" cy="9" r="1.4" fill="currentColor" stroke="none"/></svg></span><span class="nt">Огляд</span></a>
     <a data-view="transactions"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="16.5" rx="1.6"/><rect x="9" y="2.4" width="6" height="3" rx="1" fill="currentColor" stroke="none"/><path d="M8.5 12.5h7M8.5 16h4.5" stroke-width="1.7"/></svg></span><span class="nt">Операції</span></a>
     <a data-view="analytics"><span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h16"/><path d="M7 21V12M12 21V5M17 21V15"/></svg></span><span class="nt">Аналітика</span></a>
@@ -6467,8 +6479,11 @@ function paintSyncDot(){
       text = '✓' + (ago ? ' ' + ago : ''); title = 'Синхронізовано автоматично' + (when || ' — ще не було') + '. Працює у фоні: при вході, появі мережі та після кожної зміни.';
   }
   d.className = 'syncdot' + (cls ? ' ' + cls : '');
-  d.textContent = text;
+  const lab = d.querySelector('.sdl'), dot = d.querySelector('.sdi');
+  if (lab) lab.textContent = text; else d.textContent = text;
+  if (dot) dot.classList.toggle('busy', Sync.status === 'syncing' || Sync.status === 'connecting');
   d.title = title;
+  d.setAttribute('aria-label', title);   /* на телефоні видно лише точку — назву читає рідер */
 }
 
 // Черга вивантаження після локальної зміни (викликається із save()).
