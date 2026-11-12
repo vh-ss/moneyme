@@ -393,7 +393,7 @@
 //==================== Стан і збереження ====================
 const STORE_KEY = 'moneyme.v1';
 const SCHEMA_VERSION = 2;
-const APP_VERSION = '8287519b32';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
+const APP_VERSION = '8d76350816';   // підставляється збиранням (.build-pwa.cjs) — хеш збірки = версія деплою
 const PALETTE = ['#3b82f6','#22c55e','#f97316','#8b5cf6','#ef4444','#ec4899','#14b8a6','#eab308','#0ea5e9','#64748b'];
 const CURRENCIES = ['UAH','USD','EUR','PLN','GBP'];
 const CUR_SYMBOL = { UAH:'₴', USD:'$', EUR:'€', PLN:'zł', GBP:'£' };
@@ -407,7 +407,7 @@ const Sync = {
   on: localStorage.getItem('moneyme.sync.on') === '1',
   status: 'off', detail: '', applying: false,
   token: null, tokenClient: null, fileId: null, gisLoading: null,
-  needAuth: false, interactive: false, authFailAt: 0, reauthing: false,   // вхід у Google застарів / чи можна відкривати вікно
+  needAuth: false, interactive: false, authFailAt: 0, reauthing: false, consentMissing: false,   // вхід у Google застарів / чи можна відкривати вікно
   pending: false, pushTimer: null,
   last: localStorage.getItem('moneyme.sync.last') || null,
 };
@@ -6000,7 +6000,9 @@ views.settings = (app) => {
     case 'syncing':    return ['Синхронізація…', 'var(--muted)'];
     case 'idle':       return ['✓ Синхронізовано' + (Sync.last ? ' · ' + new Date(Sync.last).toLocaleString('uk-UA') : ''), 'var(--green)'];
     case 'offline':    return ['Офлайн — зміни збережено, вивантажаться пізніше', 'var(--amber)'];
-    case 'needauth':   return ['Призупинено — потрібно поновити вхід у Google (дані збережено на пристрої)', 'var(--amber)'];
+    case 'needauth':   return [Sync.consentMissing
+      ? 'Призупинено — натисніть «Поновити вхід» і підтвердьте доступ до Google Drive (дані збережено на пристрої)'
+      : 'Призупинено — потрібно поновити вхід у Google (дані збережено на пристрої)', 'var(--amber)'];
     case 'error':      return ['Помилка: ' + (Sync.detail || ''), 'var(--red)'];
     default:           return [Sync.on ? 'Очікування…' : 'Вимкнено', 'var(--muted)'];
   } })();
@@ -6449,7 +6451,10 @@ function paintSyncDot(){
     case 'syncing':
       cls = ''; text = '⟳ синх…'; title = 'Синхронізація з Google Drive просто зараз' + when; break;
     case 'needauth':
-      cls = 'warn'; text = '⟳ вхід'; title = 'Вхід у Google поновлюється сам — зачекайте. Якщо довго висить, натисніть. Дані збережено на пристрої.' + when; break;
+      cls = 'warn'; text = '⟳ вхід';
+      title = (Sync.consentMissing
+        ? 'Потрібен ваш дозвіл: натисніть і підтвердьте доступ до Google Drive. Дані збережено на пристрої.'
+        : 'Вхід у Google поновлюється сам — зачекайте. Якщо довго висить, натисніть. Дані збережено на пристрої.') + when; break;
     case 'error':
       cls = 'err'; text = '⚠ синх'; title = 'Синхронізація не вдалася' + (Sync.detail ? ': ' + Sync.detail : '') + ' — натисніть, щоб спробувати ще раз.' + when; break;
     case 'offline':
@@ -6522,6 +6527,7 @@ const TOKEN_RENEW_AT = 15 * 60 * 1000; // поки токен ще живий, �
 const APP_STARTED = Date.now();
 function canAutoReauth(){
   if (!Sync.on || !syncAvailable() || !navigator.onLine) return false;
+  if (Sync.consentMissing) return false;   // без вікна згоди тиха спроба лише крутилась би вхолосту
   if (Date.now() - APP_STARTED < REAUTH_QUIET) return false;
   if (Date.now() - (Sync.authFailAt || 0) < REAUTH_RETRY) return false;
   if (!localStorage.getItem('moneyme.sync.account')) return false;   // без підказки акаунта вікно показало б вибір
@@ -6546,6 +6552,13 @@ function requestReauth(){ Sync.needAuth = true; tryAutoReauth(); }
 // force=true: поновлюємо, хоча токен ще дійсний. Старий токен лишається на місці — якщо спроба
 // не вдалась, синх далі працює на ньому до самого кінця строку.
 function maybeRenewSoon(){ const t = Sync.token; if (t && t.exp - Date.now() < TOKEN_RENEW_AT) tryAutoReauth(true); }
+// Google може видати токен БЕЗ доступу до Drive — наприклад, якщо у вікні згоди знято галочку
+// «Google Drive». Зовні все добре, а потім КОЖЕН запит падає з «403 insufficientPermissions».
+// Тому перевіряємо дозвіл одразу, на місці.
+function tokenHasDriveScope(scope){
+  if (!scope) return true;   // старі відповіді без поля scope не чіпаємо
+  return /drive\.appdata/.test(String(scope));
+}
 function saveToken(resp){
   Sync.token = { access_token: resp.access_token, exp: Date.now() + ((resp.expires_in || 3300) * 1000) };
   try { localStorage.setItem(TOKEN_KEY, JSON.stringify(Sync.token)); } catch (e) {}
@@ -6555,7 +6568,11 @@ function ensureTokenClient(){
   Sync.tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId(), scope: DRIVE_SCOPE,
     callback: (resp) => {
-      if (resp && resp.access_token) { saveToken(resp); if (Sync._tokRes) { Sync._tokRes(Sync.token.access_token); Sync._tokRes = Sync._tokRej = null; } }
+      if (resp && resp.access_token && !tokenHasDriveScope(resp.scope)) {
+        Sync.consentMissing = true;   // тихе поновлення це не полагодить — потрібне вікно згоди
+        if (Sync._tokRej) { Sync._tokRej(new Error('Не надано доступ до Google Drive — поновіть вхід і залиште галочку доступу до Drive')); Sync._tokRes = Sync._tokRej = null; }
+      }
+      else if (resp && resp.access_token) { Sync.consentMissing = false; saveToken(resp); if (Sync._tokRes) { Sync._tokRes(Sync.token.access_token); Sync._tokRes = Sync._tokRej = null; } }
       else if (Sync._tokRej) { Sync._tokRej(new Error('Доступ не надано')); Sync._tokRes = Sync._tokRej = null; }
     },
     error_callback: (err) => { if (Sync._tokRej) { Sync._tokRej(new Error((err && err.type) || 'Помилка входу')); Sync._tokRes = Sync._tokRej = null; } },
@@ -6567,14 +6584,15 @@ function acquireToken(prompt){
   return loadGIS().then(() => { ensureTokenClient();
     const p = new Promise((res, rej) => {
       Sync._tokRes = res; Sync._tokRej = rej;
-      const cfg = { prompt: prompt || '' };
-      if (!prompt) { const hint = localStorage.getItem('moneyme.sync.account'); if (hint) cfg.hint = hint; }   // тихе оновлення того ж акаунта
+      const want = prompt || (Sync.consentMissing ? 'consent' : '');   // бракує дозволу — тиха спроба марна
+      const cfg = { prompt: want };
+      if (!want) { const hint = localStorage.getItem('moneyme.sync.account'); if (hint) cfg.hint = hint; }   // тихе оновлення того ж акаунта
       try { Sync.tokenClient.requestAccessToken(cfg); }
       catch (e) { Sync._tokRes = Sync._tokRej = null; rej(e); }
     });
     // Якщо вікно Google не відповіло (зависла мережа) — не чекаємо вічно. Тихому поновленню
     // даємо мало часу, явному входу — багато: людина може вводити пароль і код.
-    return withTimeout(p, prompt ? 180000 : 30000, 'Вхід Google не відповів — перевірте інтернет і спробуйте ще раз')
+    return withTimeout(p, (prompt || Sync.consentMissing) ? 180000 : 30000, 'Вхід Google не відповів — перевірте інтернет і спробуйте ще раз')
       .catch(e => { Sync._tokRes = Sync._tokRej = null; throw e; });
   });
 }
@@ -6592,6 +6610,58 @@ async function fetchAccountEmail(){
   } catch (e) {}
   return null;
 }
+// Google кладе причину збою в тіло відповіді. Без неї «Drive list 403» — це глухий кут:
+// незрозуміло, чи бракує дозволу, чи вичерпано ліміт запитів, чи вимкнено сам Drive API.
+function parseGoogleErr(txt){
+  try {
+    const e = JSON.parse(txt).error;
+    if (!e) return null;
+    const reason = (e.errors && e.errors[0] && e.errors[0].reason) || e.status || '';
+    return { reason: String(reason || ''), message: String(e.message || '') };
+  } catch (_) { return null; }
+}
+// Людською мовою — щоб у Налаштуваннях було видно, що саме робити.
+function driveErrHuman(reason){
+  return ({
+    insufficientPermissions: 'застосунку не дали доступ до Google Drive — поновіть вхід і підтвердьте дозвіл',
+    insufficientFilePermissions: 'немає доступу до файла в Drive',
+    accessNotConfigured: 'Drive API вимкнено в проєкті Google',
+    forbidden: 'Google відмовив у доступі — поновіть вхід',
+    rateLimitExceeded: 'забагато запитів до Drive — повторимо за хвилину',
+    userRateLimitExceeded: 'забагато запитів до Drive — повторимо за хвилину',
+    sharingRateLimitExceeded: 'забагато запитів до Drive — повторимо за хвилину',
+    dailyLimitExceeded: 'вичерпано денний ліміт Drive — повторимо згодом',
+    dailyLimitExceededUnreg: 'запит без ключа застосунку — поновіть вхід',
+    storageQuotaExceeded: 'на Google Drive немає вільного місця',
+    appNotAuthorizedToFile: 'файл створив інший застосунок',
+    backendError: 'Google тимчасово недоступний',
+    internalError: 'Google тимчасово недоступний',
+    RESOURCE_EXHAUSTED: 'забагато запитів до Drive — повторимо за хвилину',
+    PERMISSION_DENIED: 'Google відмовив у доступі — поновіть вхід',
+  })[reason] || '';
+}
+// Причини, через які варто просто зачекати й повторити, а не оголошувати збій синхронізації.
+function driveRetryable(status, reason){
+  if (status === 429 || status >= 500) return true;
+  if (status !== 403) return false;
+  return ['rateLimitExceeded', 'userRateLimitExceeded', 'sharingRateLimitExceeded', 'backendError', 'internalError', 'RESOURCE_EXHAUSTED'].indexOf(reason) >= 0;
+}
+// 403 через брак дозволу лікується лише новим входом — токен тут уже марний.
+function driveNeedsConsent(status, reason){
+  return status === 403 && ['insufficientPermissions', 'forbidden', 'PERMISSION_DENIED', 'dailyLimitExceededUnreg'].indexOf(reason) >= 0;
+}
+function driveErr(r, what){
+  const g = (r && r.__gerr) || null;
+  const human = g ? driveErrHuman(g.reason) : '';
+  const tail = human || (g && g.message) || '';
+  return new Error(what + ' ' + ((r && r.status) || '') + (tail ? ': ' + tail : ''));
+}
+// Причину читаємо з КОПІЇ відповіді — тіло оригіналу лишається незайманим для викликача.
+async function readGoogleErr(r){
+  if (!r || r.__gerr !== undefined) return r;
+  try { r.__gerr = parseGoogleErr(await r.clone().text()); } catch (_) { r.__gerr = null; }
+  return r;
+}
 async function driveFetch(url, opts){
   const tok = await getToken(false);
   const o = Object.assign({}, opts); o.headers = Object.assign({}, o.headers, { Authorization: 'Bearer ' + tok });
@@ -6602,18 +6672,34 @@ async function driveFetch(url, opts){
     if (!Sync.interactive) { requestReauth(); throw new Error('Потрібно поновити вхід у Google'); }   // у фоні попап усе одно заблокують
     const t2 = await getToken(true); o.headers.Authorization = 'Bearer ' + t2; r = await netFetch(url, o, ms);
   }
+  // Ліміт запитів і 5xx — не збій синхронізації, а привід зачекати: два тихі повтори.
+  for (let i = 0; i < 2 && !r.ok; i++) {
+    await readGoogleErr(r);
+    if (!driveRetryable(r.status, r.__gerr && r.__gerr.reason)) break;
+    await new Promise(res => setTimeout(res, 1500 * (i + 1)));
+    r = await netFetch(url, o, ms);
+  }
+  if (!r.ok) {
+    await readGoogleErr(r);
+    // Бракує дозволу на Drive: токен уже ні на що не годиться — просимо новий вхід.
+    if (driveNeedsConsent(r.status, r.__gerr && r.__gerr.reason)) {
+      Sync.token = null; try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+      Sync.consentMissing = true;   // наступний вхід — із вікном згоди, інакше 403 повториться
+      requestReauth();
+    }
+  }
   return r;
 }
 async function driveFindFile(){
   const q = encodeURIComponent("name='" + DRIVE_FILE_NAME + "'");
   const r = await driveFetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,modifiedTime)&q=' + q);
-  if (!r.ok) throw new Error('Drive list ' + r.status);
+  if (!r.ok) throw driveErr(r, 'Drive list');
   const j = await r.json();
   return (j.files && j.files[0]) ? j.files[0].id : null;
 }
 async function driveDownload(id){
   const r = await driveFetch('https://www.googleapis.com/drive/v3/files/' + id + '?alt=media');
-  if (!r.ok) throw new Error('Drive get ' + r.status);
+  if (!r.ok) throw driveErr(r, 'Drive get');
   return r.json();
 }
 async function driveUpload(id, payload){
@@ -6621,7 +6707,7 @@ async function driveUpload(id, payload){
   if (id) {
     const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files/' + id + '?uploadType=media',
       { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
-    if (!r.ok) throw new Error('Drive update ' + r.status);
+    if (!r.ok) throw driveErr(r, 'Drive update');
     return id;
   }
   const boundary = 'mm' + Math.random().toString(16).slice(2);
@@ -6630,14 +6716,14 @@ async function driveUpload(id, payload){
     '\r\n--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + boundary + '--';
   const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
     { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body: multipart });
-  if (!r.ok) throw new Error('Drive create ' + r.status);
+  if (!r.ok) throw driveErr(r, 'Drive create');
   return (await r.json()).id;
 }
 // ——— Версійні бекапи в Drive (історія знімків в appDataFolder) ———
 async function driveListBackups(){
   const q = encodeURIComponent("name contains 'moneyme-backup-'");
   const r = await driveFetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)&pageSize=100&q=' + q);
-  if (!r.ok) throw new Error('Drive list ' + r.status);
+  if (!r.ok) throw driveErr(r, 'Drive list');
   const j = await r.json();
   return (j.files || []).filter(f => /^moneyme-backup-/.test(f.name)).sort((a, b) => a.name < b.name ? -1 : 1);
 }
@@ -6753,25 +6839,25 @@ function fmtSyncTime(iso){ try { return new Date(iso).toLocaleString('uk-UA', { 
 // Список файлів синху в appDataFolder: per-device (moneyme-<id>.json) + legacy (moneyme-data.json). Бекапи виключаємо.
 async function driveListSyncFiles(){
   const r = await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=200&fields=files(id,name,modifiedTime)&q=" + encodeURIComponent("name contains 'moneyme-'"));
-  if (!r.ok) throw new Error('Drive list ' + r.status);
+  if (!r.ok) throw driveErr(r, 'Drive list');
   const j = await r.json();
   return (j.files || []).filter(f => f.name === DRIVE_FILE_NAME || /^moneyme-d[0-9a-z]+\.json$/i.test(f.name));   // legacy або per-device, без backup-
 }
 // Створити/оновити файл за іменем у appDataFolder.
 async function driveUploadNamed(id, name, payload){
   const body = JSON.stringify(payload);
-  if (id) { const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files/' + id + '?uploadType=media', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body }); if (!r.ok) throw new Error('Drive update ' + r.status); return id; }
+  if (id) { const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files/' + id + '?uploadType=media', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body }); if (!r.ok) throw driveErr(r, 'Drive update'); return id; }
   const boundary = 'mm' + Math.random().toString(16).slice(2);
   const meta = { name, parents: ['appDataFolder'] };
   const multipart = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + boundary + '--';
   const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body: multipart });
-  if (!r.ok) throw new Error('Drive create ' + r.status);
+  if (!r.ok) throw driveErr(r, 'Drive create');
   return (await r.json()).id;
 }
 // ——— Вкладення в Drive: кожне фото — окремий незмінний файл att-<id>.jpg в appDataFolder ———
 async function driveListAttFiles(){
   const r = await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1000&fields=files(id,name,modifiedTime)&q=" + encodeURIComponent("name contains 'att-'"));
-  if (!r.ok) throw new Error('Drive list att ' + r.status);
+  if (!r.ok) throw driveErr(r, 'Drive list att');
   const j = await r.json();
   return (j.files || []).map(f => { const m = /^att-(att_.+)\.jpg$/.exec(f.name || ''); return m ? { id: m[1], fileId: f.id, modifiedAt: Date.parse(f.modifiedTime || '') || 0 } : null; }).filter(Boolean);
 }
@@ -6782,7 +6868,7 @@ async function driveUploadBlob(name, blob){
   const post = '\r\n--' + boundary + '--';
   const body = new Blob([pre, blob, post]);   // бінарний multipart — Blob-тіло, без base64
   const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body });
-  if (!r.ok) throw new Error('att upload ' + r.status);
+  if (!r.ok) throw driveErr(r, 'att upload');
   return (await r.json()).id;
 }
 // Вивантажує нові локальні фото окремими файлами та прибирає сиріт (старші за grace). Best-effort — не валить синх.

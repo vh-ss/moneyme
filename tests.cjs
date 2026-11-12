@@ -425,6 +425,45 @@ eq('loanNextDue назад: 15.06 → 15.05', S.loanNextDue({ due_date: '2026-06
   eq('syncAgoText: сміття не ламає шапку', S.syncAgoText('не-дата'), '');
 }
 
+// ——— Збій Drive: показуємо причину, а не голий код ———
+{
+  const body = (reason, msg) => JSON.stringify({ error: { code: 403, message: msg || '', errors: [{ reason }] } });
+  eq('причина читається з тіла відповіді', S.parseGoogleErr(body('insufficientPermissions', 'Insufficient Permission')).reason, 'insufficientPermissions');
+  eq('повідомлення Google читається теж', S.parseGoogleErr(body('x', 'Insufficient Permission')).message, 'Insufficient Permission');
+  eq('не-JSON не ламає розбір', S.parseGoogleErr('<html>502</html>'), null);
+  eq('порожнє тіло не ламає розбір', S.parseGoogleErr(''), null);
+  eq('новий формат (status без errors)', S.parseGoogleErr(JSON.stringify({ error: { status: 'PERMISSION_DENIED', message: 'nope' } })).reason, 'PERMISSION_DENIED');
+
+  const err = (status, reason) => S.driveErr({ status, __gerr: { reason, message: 'Insufficient Permission' } }, 'Drive list').message;
+  ok('403 без дозволу — зрозуміле пояснення', /поновіть вхід/.test(err(403, 'insufficientPermissions')));
+  ok('403 через ліміт — про ліміт, а не про дозвіл', /забагато запитів/.test(err(403, 'userRateLimitExceeded')));
+  ok('нема місця на Drive — так і кажемо', /немає вільного місця/.test(err(403, 'storageQuotaExceeded')));
+  ok('код статусу лишається в тексті', /403/.test(err(403, 'insufficientPermissions')));
+  ok('невідома причина — показуємо текст Google', /Insufficient Permission/.test(err(403, 'щосьНове')));
+  eq('зовсім без тіла — старий короткий вигляд', S.driveErr({ status: 500 }, 'Drive get').message, 'Drive get 500');
+
+  ok('ліміт запитів — повторюємо', S.driveRetryable(403, 'userRateLimitExceeded'));
+  ok('429 — повторюємо', S.driveRetryable(429, ''));
+  ok('5xx — повторюємо', S.driveRetryable(503, ''));
+  eq('брак дозволу — повторювати марно', S.driveRetryable(403, 'insufficientPermissions'), false);
+  eq('404 — не повторюємо', S.driveRetryable(404, ''), false);
+
+  ok('брак дозволу → потрібен новий вхід', S.driveNeedsConsent(403, 'insufficientPermissions'));
+  ok('PERMISSION_DENIED → потрібен новий вхід', S.driveNeedsConsent(403, 'PERMISSION_DENIED'));
+  eq('ліміт запитів входу НЕ потребує', S.driveNeedsConsent(403, 'rateLimitExceeded'), false);
+  eq('401 тут не розглядаємо (є окрема гілка)', S.driveNeedsConsent(401, 'authError'), false);
+}
+
+// ——— Токен без дозволу на Drive — не токен ———
+{
+  const full = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
+  ok('повний дозвіл приймаємо', S.tokenHasDriveScope(full));
+  eq('лише email — дозволу на Drive немає', S.tokenHasDriveScope('https://www.googleapis.com/auth/userinfo.email'), false);
+  eq('порожній рядок — немає', S.tokenHasDriveScope(''), true);
+  ok('відповідь без поля scope не ламаємо', S.tokenHasDriveScope(undefined));
+  ok('порядок дозволів не має значення', S.tokenHasDriveScope('openid https://www.googleapis.com/auth/drive.appdata'));
+}
+
 // ——— Підсумок ———
 console.log(`\n${failed === 0 ? '✓' : '✗'} Тести: ${passed} пройдено, ${failed} впало.`);
 process.exit(failed === 0 ? 0 : 1);
